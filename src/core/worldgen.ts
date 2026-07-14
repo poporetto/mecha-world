@@ -126,6 +126,7 @@ interface LotParams {
   glassy: boolean;
   inset: number;
   neon: number; // 0 none, else neon block id
+  awning: number; // street-level awning color for low-rise shops
 }
 
 function lotParams(lotX: number, lotZ: number): LotParams {
@@ -149,7 +150,9 @@ function lotParams(lotX: number, lotZ: number): LotParams {
   const inset = Math.floor(hash2(lotX + 17, lotZ - 61) * 3);
   let neon = 0;
   if (district > 0.48 && h2 > 0.2) neon = h1 > 0.5 ? B.NeonPink : B.NeonCyan;
-  return { height, wall, glassy, inset, neon };
+  const awnings = [B.Red, B.Yellow, B.NeonCyan, B.NeonPink];
+  const awning = awnings[Math.floor(hash2(lotX - 7, lotZ + 13) * 4) % 4];
+  return { height, wall, glassy, inset, neon, awning };
 }
 
 function isTreeAnchor(x: number, z: number): boolean {
@@ -188,11 +191,27 @@ export function generateChunkData(cx: number, cz: number): Uint8Array {
         case ColKind.Bank:
           setY(0, B.Sand);
           break;
-        case ColKind.Road:
-          setY(0, B.Road);
+        case ColKind.Road: {
+          const lxm = mod(x, CELL), lzm = mod(z, CELL);
+          const ns = lxm < ROAD_W, ew = lzm < ROAD_W;
+          let id: number = B.Road;
+          if (ns && !ew) {
+            if (lxm === 2 && mod(z, 6) < 3) id = B.RoadLine; // lane dashes
+            if ((lzm >= 6 && lzm <= 7) || lzm >= CELL - 2) id = mod(x, 2) === 0 ? B.RoadLine : B.Road; // crosswalk
+          } else if (ew && !ns) {
+            if (lzm === 2 && mod(x, 6) < 3) id = B.RoadLine;
+            if ((lxm >= 6 && lxm <= 7) || lxm >= CELL - 2) id = mod(z, 2) === 0 ? B.RoadLine : B.Road;
+          }
+          setY(0, id);
           break;
+        }
         case ColKind.Sidewalk:
           setY(0, B.Sidewalk);
+          // streetlamps: slim gray pole with a warm lamp on top
+          if (hash2(x * 7 + 3, z * 7 - 9) < 0.012 && !isTreeAnchor(x, z)) {
+            for (let y = 1; y <= 3; y++) setY(y, B.Roof);
+            setY(4, B.WindowLit);
+          }
           break;
         case ColKind.Landmark: {
           const lm = info.lm!;
@@ -206,6 +225,10 @@ export function generateChunkData(cx: number, cz: number): Uint8Array {
           const lxm = mod(x, CELL), lzm = mod(z, CELL);
           const onPath = path && (lxm === 13 || lzm === 13);
           setY(0, onPath ? B.Sand : B.Grass);
+          if (!onPath) {
+            const fh = hash2(x + 9, z + 9);
+            if (fh < 0.05) setY(1, fh < 0.025 ? B.Flower : B.Yellow); // flower bushes
+          }
           break;
         }
         case ColKind.Lot: {
@@ -214,8 +237,16 @@ export function generateChunkData(cx: number, cz: number): Uint8Array {
           const lo = ROAD_W + 1 + p.inset, hi = CELL - 2 - p.inset;
           if (lxm >= lo && lxm <= hi && lzm >= lo && lzm <= hi) {
             setY(0, B.Plaza);
-            const perim = lxm === lo || lxm === hi || lzm === lo || lzm === hi;
-            for (let y = 1; y < p.height; y++) {
+            // tall towers step back to a narrower upper tier
+            const tall = p.height >= 30;
+            const tierY = Math.floor(p.height * 0.66);
+            const inner = lxm >= lo + 2 && lxm <= hi - 2 && lzm >= lo + 2 && lzm <= hi - 2;
+            const topY = tall && !inner ? tierY : p.height;
+            for (let y = 1; y < topY; y++) {
+              const upperTier = tall && y > tierY;
+              const perim = upperTier
+                ? lxm === lo + 2 || lxm === hi - 2 || lzm === lo + 2 || lzm === hi - 2
+                : lxm === lo || lxm === hi || lzm === lo || lzm === hi;
               let id: number = p.wall;
               if (perim) {
                 if (p.glassy) {
@@ -224,10 +255,25 @@ export function generateChunkData(cx: number, cz: number): Uint8Array {
                   const isWindow = y % 4 !== 1 && mod(lxm + lzm, 3) !== 0;
                   id = isWindow ? (hash3(x, y, z) < 0.3 ? B.WindowLit : B.Window) : p.wall;
                 }
+                // colorful shop awnings above the ground floor of low-rises
+                if (p.height < 14 && y === 2) id = p.awning;
               }
               setY(y, id);
             }
-            setY(p.height, perim && p.neon ? p.neon : B.Roof);
+            {
+              const perimTop = lxm === lo || lxm === hi || lzm === lo || lzm === hi;
+              setY(topY, perimTop && p.neon ? p.neon : B.Roof);
+            }
+            // rooftop clutter: vents, AC boxes, the odd antenna mast
+            if (topY === p.height) {
+              const rh = hash3(x, p.height, z);
+              if (rh < 0.05) setY(p.height + 1, B.Roof);
+              if (rh < 0.014) setY(p.height + 2, B.WallGray);
+              if (rh > 0.996) {
+                for (let yy = 1; yy <= 4; yy++) setY(p.height + yy, B.Roof);
+                setY(p.height + 5, B.Red);
+              }
+            }
           } else {
             setY(0, B.Sidewalk);
           }

@@ -22,6 +22,9 @@ export const enum B {
   NeonCyan = 18,
   Sand = 19,
   Plaza = 20,
+  RoadLine = 21,
+  Yellow = 22,
+  Flower = 23,
 }
 
 export const BLOCK_COLORS: number[] = [];
@@ -45,6 +48,9 @@ BLOCK_COLORS[B.NeonPink] = 0xff4fa3;
 BLOCK_COLORS[B.NeonCyan] = 0x39e6e0;
 BLOCK_COLORS[B.Sand] = 0xe8d9a4;
 BLOCK_COLORS[B.Plaza] = 0xd4d6dd;
+BLOCK_COLORS[B.RoadLine] = 0xeeeef2;
+BLOCK_COLORS[B.Yellow] = 0xf7c948;
+BLOCK_COLORS[B.Flower] = 0xff6fa8;
 
 export function isSolid(id: number): boolean {
   return id !== B.Air && id !== B.Water;

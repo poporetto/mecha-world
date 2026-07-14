@@ -63,8 +63,8 @@ class Sfx {
     src.start(t);
   }
 
-  explode(size: number): void {
-    if (!this.ctx) return;
+  explode(size: number, vol = 1): void {
+    if (!this.ctx || vol <= 0) return;
     const ctx = this.ctx, t = ctx.currentTime;
     const dur = 0.35 + size * 0.45;
     const src = ctx.createBufferSource();
@@ -74,7 +74,7 @@ class Sfx {
     f.frequency.setValueAtTime(900 + size * 600, t);
     f.frequency.exponentialRampToValueAtTime(80, t + dur);
     const g = ctx.createGain();
-    this.env(g, t, 0.25 + size * 0.45, dur);
+    this.env(g, t, (0.25 + size * 0.45) * vol, dur);
     src.connect(f).connect(g).connect(this.master);
     src.start(t);
     // sub thump
@@ -83,7 +83,7 @@ class Sfx {
     o.frequency.setValueAtTime(90, t);
     o.frequency.exponentialRampToValueAtTime(28, t + 0.3);
     const g2 = ctx.createGain();
-    this.env(g2, t, 0.4 + size * 0.3, 0.32);
+    this.env(g2, t, (0.4 + size * 0.3) * vol, 0.32);
     o.connect(g2).connect(this.master);
     o.start(t);
     o.stop(t + 0.35);
@@ -103,8 +103,8 @@ class Sfx {
     o.stop(t + 0.3);
   }
 
-  rocket(): void {
-    if (!this.ctx) return;
+  rocket(vol = 1): void {
+    if (!this.ctx || vol <= 0.04) return;
     const ctx = this.ctx, t = ctx.currentTime;
     const src = ctx.createBufferSource();
     src.buffer = this.noiseBuffer(0.5);
@@ -112,7 +112,7 @@ class Sfx {
     f.type = 'highpass';
     f.frequency.value = 900;
     const g = ctx.createGain();
-    this.env(g, t, 0.22, 0.5);
+    this.env(g, t, 0.22 * vol, 0.5);
     src.connect(f).connect(g).connect(this.master);
     src.start(t);
   }

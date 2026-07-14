@@ -64,7 +64,7 @@ export class Hud {
       <div class="toast" id="toast"><h1 id="toast-h"></h1><p id="toast-p"></p></div>
       <div class="cross"></div>
       <div class="vig" id="vig"></div>
-      <div class="hint">ARROWS / WASD move · SHIFT boost · SPACE jump<br/>mouse look · click canvas to lock cursor</div>
+      <div class="hint">ARROWS / WASD move · SHIFT boost · SPACE jump<br/>drag mouse to rotate camera · click to attack + mouse-look</div>
     `;
     this.hpFill = document.getElementById('hpfill')!;
     this.bossWrap = document.getElementById('boss')!;

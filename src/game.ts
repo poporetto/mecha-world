@@ -37,6 +37,8 @@ export class Game {
 
   private keys = new Set<string>();
   private mouseDown = [false, false, false];
+  private drag: { x: number; y: number; sx: number; sy: number; button: number; moved: boolean } | null = null;
+  private lastCollapseScan = 0;
   private camYaw = 0;
   private camPitch = 0.32;
   private locked = false;
@@ -125,18 +127,42 @@ export class Game {
     });
     this.renderer.domElement.addEventListener('mousedown', (e) => {
       if (!this.started) return;
-      // attacks always fire — even while re-acquiring pointer lock
-      if (!this.locked) this.renderer.domElement.requestPointerLock();
       this.mouseDown[e.button] = true;
-      if (e.button === 0) this.swingSaber();
-      if (e.button === 2) this.fireLaser();
+      if (this.locked) {
+        // pointer locked: instant attacks, mouse-look already active
+        if (e.button === 0) this.swingSaber();
+        if (e.button === 2) this.fireLaser();
+      } else {
+        // unlocked: could be a click (attack) or a drag (rotate camera)
+        this.drag = { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, button: e.button, moved: false };
+      }
     });
-    window.addEventListener('mouseup', (e) => (this.mouseDown[e.button] = false));
+    window.addEventListener('mouseup', (e) => {
+      this.mouseDown[e.button] = false;
+      if (this.drag && e.button === this.drag.button) {
+        if (!this.drag.moved && this.started) {
+          // plain click: attack and (re)acquire pointer lock for mouse-look
+          this.renderer.domElement.requestPointerLock();
+          if (e.button === 0) this.swingSaber();
+          if (e.button === 2) this.fireLaser();
+        }
+        this.drag = null;
+      }
+    });
     window.addEventListener('contextmenu', (e) => e.preventDefault());
     window.addEventListener('mousemove', (e) => {
-      if (!this.locked) return;
-      this.camYaw -= e.movementX * 0.0026;
-      this.camPitch = Math.max(-0.5, Math.min(1.2, this.camPitch + e.movementY * 0.0022));
+      if (this.locked) {
+        this.camYaw -= e.movementX * 0.0026;
+        this.camPitch = Math.max(-0.5, Math.min(1.2, this.camPitch + e.movementY * 0.0022));
+      } else if (this.drag) {
+        // drag-to-rotate works without pointer lock
+        const dx = e.clientX - this.drag.x, dy = e.clientY - this.drag.y;
+        if (Math.abs(e.clientX - this.drag.sx) + Math.abs(e.clientY - this.drag.sy) > 5) this.drag.moved = true;
+        this.camYaw -= dx * 0.005;
+        this.camPitch = Math.max(-0.5, Math.min(1.2, this.camPitch + dy * 0.004));
+        this.drag.x = e.clientX;
+        this.drag.y = e.clientY;
+      }
     });
   }
 
@@ -160,13 +186,13 @@ export class Game {
       for (const ang of [-0.45, 0, 0.45]) {
         const cos = Math.cos(ang), sin = Math.sin(ang);
         const d = new THREE.Vector3(dir.x * cos - dir.z * sin, dir.y, dir.x * sin + dir.z * cos);
-        const p = this.player.pos.clone().addScaledVector(d, 7);
-        p.y += 4.2;
-        this.destroyAt(p, 3.6, 0.25);
+        const p = this.player.pos.clone().addScaledVector(d, 9);
+        p.y += 5.6;
+        this.destroyAt(p, 4.4, 0.25);
       }
-      const pc = this.player.pos.clone().addScaledVector(dir, 7);
-      pc.y += 4.2;
-      this.hitMonster(pc, 9, 12);
+      const pc = this.player.pos.clone().addScaledVector(dir, 9);
+      pc.y += 5.6;
+      this.hitMonster(pc, 11, 12);
     }, 190);
   }
 
@@ -177,8 +203,8 @@ export class Game {
     this.player.yaw = this.camYaw + Math.PI;
     const dir = this.aimDir();
     const from = this.player.pos.clone();
-    from.y += 5;
-    from.addScaledVector(dir, 3);
+    from.y += 6.6;
+    from.addScaledVector(dir, 3.8);
     const mesh = new THREE.Mesh(
       new THREE.BoxGeometry(0.25, 0.25, 1.6),
       new THREE.MeshBasicMaterial({ color: 0x39e6ff })
@@ -190,7 +216,7 @@ export class Game {
   }
 
   private fireRocket(from: THREE.Vector3, toward: THREE.Vector3): void {
-    sfx.rocket();
+    sfx.rocket(1 - Math.min(1, from.distanceTo(this.player.pos) / 130));
     const dir = toward.clone().sub(from).normalize();
     const mesh = new THREE.Mesh(
       new THREE.BoxGeometry(0.5, 0.5, 1.4),
@@ -215,7 +241,7 @@ export class Game {
     this.player.yaw = this.camYaw + Math.PI;
     const dir = this.aimDir();
     const from = this.player.pos.clone();
-    from.y += 5.4;
+    from.y += 7;
     const hit = this.world.raycast(from.x, from.y, from.z, dir.x, dir.y, dir.z, 90);
     const dist = hit ? hit.dist : 90;
     this.beamMesh.position.copy(from).addScaledVector(dir, dist / 2);
@@ -237,7 +263,7 @@ export class Game {
     const m = this.monster;
     if (!m || m.dying) return false;
     _v.copy(m.group.position);
-    _v.y += 11;
+    _v.y += 14;
     if (_v.distanceTo(p) < radius + m.hitRadius) {
       m.takeDamage(dmg);
       this.debris.burst(p, [15], 6);
@@ -250,7 +276,7 @@ export class Game {
     const m = this.monster;
     if (!m || m.dying) return;
     _v.copy(m.group.position);
-    _v.y += 11;
+    _v.y += 14;
     const toM = _v.clone().sub(from);
     const along = toM.dot(dir);
     if (along < 0 || along > maxDist) return;
@@ -263,11 +289,13 @@ export class Game {
     if (res.count > 0) {
       this.chunks.markDirty(res.dirty);
       this.debris.burst(p, res.ids, Math.min(26, 6 + res.count / 3));
-      if (this.time - this.lastBoomSound > 0.09) {
+      // explosion loudness falls off with distance from the player
+      const vol = 1 - Math.min(1, p.distanceTo(this.player.pos) / 110);
+      if (vol > 0.04 && this.time - this.lastBoomSound > 0.09) {
         this.lastBoomSound = this.time;
-        sfx.explode(Math.min(1, res.count / 60));
+        sfx.explode(Math.min(1, res.count / 60), vol);
       }
-      this.checkCollapse(p, r);
+      if (res.count >= 6) this.checkCollapse(p, r);
     }
     this.npcs.scare(p, 34);
     this.cars.scare(p, 34);
@@ -275,6 +303,9 @@ export class Game {
 
   // Anything the blast disconnected from the ground breaks off and falls.
   private checkCollapse(p: THREE.Vector3, r: number): void {
+    // the flood fill can walk a whole building — don't run it every beam tick
+    if (this.time - this.lastCollapseScan < 0.25) return;
+    this.lastCollapseScan = this.time;
     const cut = this.world.collapseScan(p.x, p.y, p.z, r);
     if (!cut) return;
     this.chunks.markDirty(cut.dirty);
@@ -297,7 +328,8 @@ export class Game {
       const at = f.mesh.position.clone();
       at.y = f.groundY + 1;
       this.debris.burst(at, f.sampleIds, Math.min(40, 10 + f.blockCount / 8));
-      sfx.explode(Math.min(1, f.blockCount / 150));
+      const vol = 1 - Math.min(1, at.distanceTo(this.player.pos) / 130);
+      if (vol > 0.04) sfx.explode(Math.min(1, f.blockCount / 150), vol);
       this.npcs.scare(at, 40);
       this.cars.scare(at, 40);
       this.scene.remove(f.mesh);
@@ -442,7 +474,7 @@ export class Game {
       let boom = false;
       if (this.world.solidAt(p.pos.x, p.pos.y, p.pos.z) || p.pos.y < 0.2) boom = true;
       if (p.kind === 'laser' && this.hitMonster(p.pos, 2, 7)) boom = true;
-      if (p.kind === 'rocket' && p.pos.distanceTo(this.player.pos) < 5.5) {
+      if (p.kind === 'rocket' && p.pos.distanceTo(this.player.pos) < 7) {
         boom = true;
         this.damagePlayer(16);
       }
@@ -460,8 +492,8 @@ export class Game {
 
   private updateCamera(): void {
     const pivot = this.player.pos.clone();
-    pivot.y += 7.6;
-    const dist = 22;
+    pivot.y += 9.9;
+    const dist = 28;
     const dir = new THREE.Vector3(
       Math.sin(this.camYaw) * Math.cos(this.camPitch),
       Math.sin(this.camPitch),

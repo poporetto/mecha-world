@@ -82,12 +82,12 @@ export abstract class Monster {
 
 // ------------------------------------------------------------------- Kaiju
 
-export const MONSTER_SCALE = 1.6;
+export const MONSTER_SCALE = 2.2;
 
 export class Kaiju extends Monster {
   name = 'GORGOSAUR';
   reward: 'beam' = 'beam';
-  hitRadius = 14;
+  hitRadius = 19;
   private legL: THREE.Mesh;
   private legR: THREE.Mesh;
   private tail: THREE.Group;
@@ -180,13 +180,13 @@ export class Kaiju extends Monster {
     if (this.stompT <= 0) {
       this.stompT = 1.1;
       const fwd = new THREE.Vector3(Math.sin(this.heading), 0, Math.cos(this.heading));
-      const p = this.group.position.clone().addScaledVector(fwd, 8);
-      p.y = this.group.position.y + 6;
-      ctx.destroyAt(p, 7, 0.5);
+      const p = this.group.position.clone().addScaledVector(fwd, 11);
+      p.y = this.group.position.y + 8;
+      ctx.destroyAt(p, 8, 0.5);
       const feet = this.group.position.clone();
-      feet.y += 1.5;
-      ctx.destroyAt(feet, 5, 0.3);
-      if (this.group.position.distanceTo(ctx.playerPos) < 16) {
+      feet.y += 2;
+      ctx.destroyAt(feet, 6, 0.3);
+      if (this.group.position.distanceTo(ctx.playerPos) < 20) {
         ctx.damagePlayer(14);
       }
     }
@@ -198,7 +198,7 @@ export class Kaiju extends Monster {
 export class RocketBeast extends Monster {
   name = 'MISSILE MAW';
   reward: 'boots' = 'boots';
-  hitRadius = 11;
+  hitRadius = 15;
   private orbitA = Math.random() * Math.PI * 2;
   private fireT = 3;
   private podL: THREE.Mesh;
@@ -249,7 +249,7 @@ export class RocketBeast extends Monster {
     this.group.position.x += (tx - this.group.position.x) * Math.min(1, dt * 0.8);
     this.group.position.z += (tz - this.group.position.z) * Math.min(1, dt * 0.8);
     const gy = ctx.world.groundHeight(this.group.position.x, this.group.position.z, 40);
-    const targetY = gy + 6 + Math.sin(t * 1.3) * 2;
+    const targetY = gy + 9 + Math.sin(t * 1.3) * 2.5;
     this.group.position.y += (targetY - this.group.position.y) * Math.min(1, dt * 2);
 
     // face player

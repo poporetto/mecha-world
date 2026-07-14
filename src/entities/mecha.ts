@@ -3,7 +3,7 @@
 
 import * as THREE from 'three';
 
-export const MECHA_SCALE = 1.7;
+export const MECHA_SCALE = 2.2;
 
 const WHITE = 0xf4f5f8;
 const BLUE = 0x2b5fc7;
@@ -43,12 +43,24 @@ export class MechaModel {
     this.legR = this.makeLeg(0.58);
     g.add(this.legL, this.legR);
 
-    // hip / abdomen
+    // hip / abdomen with skirt armor plates
     const pelvis = box(1.25, 0.55, 0.85, WHITE);
     pelvis.position.y = 2.0;
     const crotch = box(0.45, 0.5, 0.5, RED);
     crotch.position.set(0, 1.95, 0.28);
-    g.add(pelvis, crotch);
+    const skirtF = box(0.95, 0.5, 0.14, WHITE);
+    skirtF.position.set(0, 1.78, 0.46);
+    skirtF.rotation.x = 0.18;
+    const skirtB = box(0.95, 0.5, 0.14, WHITE);
+    skirtB.position.set(0, 1.78, -0.46);
+    skirtB.rotation.x = -0.18;
+    const skirtL = box(0.16, 0.55, 0.6, WHITE);
+    skirtL.position.set(-0.72, 1.78, 0);
+    skirtL.rotation.z = -0.2;
+    const skirtR = skirtL.clone();
+    skirtR.position.x = 0.72;
+    skirtR.rotation.z = 0.2;
+    g.add(pelvis, crotch, skirtF, skirtB, skirtL, skirtR);
 
     this.torso = new THREE.Group();
     this.torso.position.y = 2.25;
@@ -129,6 +141,9 @@ export class MechaModel {
     thigh.position.y = -0.5;
     const knee = box(0.42, 0.28, 0.5, JOINT);
     knee.position.y = -1.05;
+    const kneePad = box(0.48, 0.34, 0.16, WHITE);
+    kneePad.position.set(0, -1.02, 0.32);
+    leg.add(kneePad);
     const shin = box(0.58, 0.95, 0.66, WHITE);
     shin.position.y = -1.62;
     const ankle = box(0.34, 0.2, 0.4, JOINT);
@@ -160,6 +175,16 @@ export class MechaModel {
       const muzzle = box(0.16, 0.35, 0.16, 0x39e6ff, 0x39e6ff);
       muzzle.position.set(0, -2.45, 0.1);
       arm.add(body, scope, muzzle);
+      // shield strapped to the outside of the rifle arm
+      const shield = box(0.14, 1.9, 1.05, RED);
+      shield.position.set(-0.42, -1.35, 0);
+      const shieldTrim = box(0.06, 1.9, 0.2, WHITE);
+      shieldTrim.position.set(-0.5, -1.35, 0);
+      const crossV = box(0.06, 0.85, 0.2, YELLOW);
+      crossV.position.set(-0.51, -1.3, 0);
+      const crossH = box(0.06, 0.2, 0.7, YELLOW);
+      crossH.position.set(-0.51, -1.3, 0);
+      arm.add(shield, shieldTrim, crossV, crossH);
     } else {
       const fist = box(0.46, 0.42, 0.46, JOINT);
       fist.position.y = -1.95;

@@ -104,8 +104,8 @@ export class World {
   // groups of blocks near the blast that no longer reach the ground and cut
   // them loose. Returns their blocks (for a falling mesh) + dirtied chunks.
   collapseScan(px: number, py: number, pz: number, r: number): { blocks: [number, number, number, number][]; dirty: Set<string> } | null {
-    const BOUND = 30; // horizontal search limit from blast center
-    const COMP_CAP = 5000; // bigger components count as supported (bail)
+    const BOUND = 48; // horizontal search limit from blast center
+    const COMP_CAP = 22000; // truly huge components count as supported (bail)
     const visited = new Set<string>();
     const out: [number, number, number, number][] = [];
     const dirty = new Set<string>();
@@ -147,7 +147,7 @@ export class World {
             }
           }
 
-          if (!supported && comp.length >= 4 && out.length + comp.length <= 6000) {
+          if (!supported && comp.length >= 4 && out.length + comp.length <= 22000) {
             for (const [x, y, z] of comp) {
               const id = this.getBlock(x, y, z);
               out.push([x, y, z, id]);
