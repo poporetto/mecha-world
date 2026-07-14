@@ -60,6 +60,9 @@ export class Hud {
         <div class="chip" id="chip-laser"><b>RMB</b> LASER</div>
         <div class="chip locked" id="chip-beam"><b>E</b> BEAM — defeat the kaiju</div>
         <div class="chip locked" id="chip-boots"><b>SPACE(hold)</b> ROCKET BOOTS — defeat Missile Maw</div>
+        <div class="chip locked" id="chip-nova"><b>Q</b> NOVA — ???</div>
+        <div class="chip locked" id="chip-shield">SHIELD — ???</div>
+        <div class="chip" id="chip-power" style="display:none"></div>
       </div>
       <div class="toast" id="toast"><h1 id="toast-h"></h1><p id="toast-p"></p></div>
       <div class="cross"></div>
@@ -75,6 +78,8 @@ export class Hud {
     this.chips = {
       beam: document.getElementById('chip-beam')!,
       boots: document.getElementById('chip-boots')!,
+      nova: document.getElementById('chip-nova')!,
+      shield: document.getElementById('chip-shield')!,
     };
   }
 
@@ -126,11 +131,18 @@ export class Hud {
     this.toastTimer = seconds;
   }
 
-  unlock(key: 'beam' | 'boots', label: string): void {
+  unlock(key: 'beam' | 'boots' | 'nova' | 'shield', label: string): void {
     const chip = this.chips[key];
     chip.classList.remove('locked');
     chip.innerHTML = label;
     chip.style.borderColor = '#39e6e0';
+  }
+
+  setPowerLevel(level: number): void {
+    const chip = document.getElementById('chip-power')!;
+    chip.style.display = 'block';
+    chip.style.borderColor = '#f6b1d5';
+    chip.innerHTML = `<b>PWR</b> Lv ${level}`;
   }
 
   damageFlash(): void {

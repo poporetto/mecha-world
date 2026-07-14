@@ -28,29 +28,30 @@ export const enum B {
 }
 
 export const BLOCK_COLORS: number[] = [];
-BLOCK_COLORS[B.Road] = 0x4c4d56;
-BLOCK_COLORS[B.Sidewalk] = 0xb4b4bc;
-BLOCK_COLORS[B.Grass] = 0x62c14f;
-BLOCK_COLORS[B.Water] = 0x3fa2ec;
-BLOCK_COLORS[B.Dirt] = 0x8a6544;
-BLOCK_COLORS[B.WallGray] = 0xd9dadf;
-BLOCK_COLORS[B.WallTan] = 0xf0ddb2;
-BLOCK_COLORS[B.WallBrick] = 0xd08a66;
-BLOCK_COLORS[B.Window] = 0x3f74ad;
-BLOCK_COLORS[B.WindowLit] = 0xffe28a;
-BLOCK_COLORS[B.Glass] = 0x9ed4f2;
-BLOCK_COLORS[B.Roof] = 0x777988;
-BLOCK_COLORS[B.Trunk] = 0x8a5c3a;
-BLOCK_COLORS[B.Leaves] = 0x4fa843;
-BLOCK_COLORS[B.Red] = 0xe8442f;
-BLOCK_COLORS[B.White] = 0xfafafc;
-BLOCK_COLORS[B.NeonPink] = 0xff4fa3;
-BLOCK_COLORS[B.NeonCyan] = 0x39e6e0;
-BLOCK_COLORS[B.Sand] = 0xe8d9a4;
-BLOCK_COLORS[B.Plaza] = 0xd4d6dd;
-BLOCK_COLORS[B.RoadLine] = 0xeeeef2;
-BLOCK_COLORS[B.Yellow] = 0xf7c948;
-BLOCK_COLORS[B.Flower] = 0xff6fa8;
+// soft pastel palette
+BLOCK_COLORS[B.Road] = 0x73758a;
+BLOCK_COLORS[B.Sidewalk] = 0xd2d3dd;
+BLOCK_COLORS[B.Grass] = 0xa5dfa0;
+BLOCK_COLORS[B.Water] = 0x9fd2f0;
+BLOCK_COLORS[B.Dirt] = 0xc9a687;
+BLOCK_COLORS[B.WallGray] = 0xe9e7f0;
+BLOCK_COLORS[B.WallTan] = 0xf8ead0;
+BLOCK_COLORS[B.WallBrick] = 0xeab49e;
+BLOCK_COLORS[B.Window] = 0x9fc2e4;
+BLOCK_COLORS[B.WindowLit] = 0xffedbb;
+BLOCK_COLORS[B.Glass] = 0xcbe7f8;
+BLOCK_COLORS[B.Roof] = 0xb3b5c8;
+BLOCK_COLORS[B.Trunk] = 0xbb9070;
+BLOCK_COLORS[B.Leaves] = 0x99d98f;
+BLOCK_COLORS[B.Red] = 0xf0968a;
+BLOCK_COLORS[B.White] = 0xfcfcff;
+BLOCK_COLORS[B.NeonPink] = 0xf6b1d5;
+BLOCK_COLORS[B.NeonCyan] = 0xa9ece6;
+BLOCK_COLORS[B.Sand] = 0xf4e8c6;
+BLOCK_COLORS[B.Plaza] = 0xe6e7ee;
+BLOCK_COLORS[B.RoadLine] = 0xf6f6fa;
+BLOCK_COLORS[B.Yellow] = 0xf8dfa2;
+BLOCK_COLORS[B.Flower] = 0xf8bcd8;
 
 export function isSolid(id: number): boolean {
   return id !== B.Air && id !== B.Water;

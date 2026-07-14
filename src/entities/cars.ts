@@ -10,7 +10,7 @@ import { roadInfo } from '../core/worldgen';
 const COUNT = 18;
 const DESPAWN_R = 120;
 const CELL = 26;
-const PAINT = [0xe84040, 0x3a7bd5, 0xf2f2f2, 0x33363e, 0xf7c948, 0x39c2c9, 0xff8ad5, 0x8ad57a];
+const PAINT = [0xf2a5a5, 0xa5c4f2, 0xfafafa, 0x9a9cb0, 0xf8dfa2, 0xa8e6e2, 0xf6c2dd, 0xc2eab2];
 
 interface Car {
   group: THREE.Group;

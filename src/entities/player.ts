@@ -15,6 +15,8 @@ const FLY_V = 15;
 export interface Abilities {
   beam: boolean;
   boots: boolean;
+  nova: boolean;
+  shield: boolean;
 }
 
 export class Player {
@@ -25,7 +27,7 @@ export class Player {
   grounded = false;
   hp = 100;
   maxHp = 100;
-  abilities: Abilities = { beam: false, boots: false };
+  abilities: Abilities = { beam: false, boots: false, nova: false, shield: false };
   private animT = 0;
 
   constructor(private world: World) {}

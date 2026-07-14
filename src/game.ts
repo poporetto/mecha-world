@@ -5,10 +5,12 @@ import { World } from './core/world';
 import { ChunkManager } from './render/chunkManager';
 import { Player } from './entities/player';
 import { NpcManager } from './entities/npcs';
-import { Kaiju, Monster, MonsterCtx, RocketBeast } from './entities/monsters';
+import { IronColossus, Kaiju, Monster, MonsterCtx, Reward, RocketBeast, VoltSerpent } from './entities/monsters';
 import { CarManager } from './entities/cars';
+import { RepairManager } from './core/repair';
 import { Debris } from './fx/debris';
 import { buildFallingChunk, FallingChunk, updateFallingChunk } from './fx/collapse';
+import { Explosions } from './fx/explosions';
 import { Sky } from './fx/sky';
 import { sfx } from './fx/sound';
 import { Hud } from './ui/hud';
@@ -17,7 +19,7 @@ interface Projectile {
   pos: THREE.Vector3;
   vel: THREE.Vector3;
   life: number;
-  kind: 'laser' | 'rocket';
+  kind: 'laser' | 'rocket' | 'boulder';
   mesh: THREE.Mesh;
 }
 
@@ -52,9 +54,16 @@ export class Game {
   private sky: Sky;
   private falling: FallingChunk[] = [];
   private lastBoomSound = 0;
+  private explosions = new Explosions();
+  private repair: RepairManager;
+  private hemi: THREE.HemisphereLight;
+  private sun: THREE.DirectionalLight;
+  private novaCooldown = 0;
+  private power = 1;
+  private powerLevel = 1;
 
   private monster: Monster | null = null;
-  private bossPhase: 'pre-kaiju' | 'kaiju' | 'pre-rocket' | 'rocket' | 'endless' = 'pre-kaiju';
+  private bossIndex = 0; // progression through the campaign bosses
   private bossTimer = 14;
   private clock = new THREE.Clock();
   private time = 0;
@@ -67,14 +76,14 @@ export class Game {
 
     this.camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 500);
 
-    // sky, fog, lights — bright anime afternoon
-    this.scene.background = new THREE.Color(0x7ec9f7);
-    this.scene.fog = new THREE.Fog(0x9edcff, 110, 280);
-    const hemi = new THREE.HemisphereLight(0xe6f6ff, 0x7a8a72, 1.25);
-    const sun = new THREE.DirectionalLight(0xfff4dd, 1.35);
-    sun.position.set(0.6, 1, 0.35);
-    this.scene.add(hemi, sun);
-    this.sky = new Sky(sun.position.clone().normalize());
+    // sky, fog, lights — pastel day, drives the day/night cycle each frame
+    this.scene.background = new THREE.Color(0xa5d5f5);
+    this.scene.fog = new THREE.Fog(0xc3e4f8, 110, 280);
+    this.hemi = new THREE.HemisphereLight(0xe6f6ff, 0x8a9a86, 1.25);
+    this.sun = new THREE.DirectionalLight(0xfff4dd, 1.35);
+    this.sun.position.set(0.6, 1, 0.35);
+    this.scene.add(this.hemi, this.sun);
+    this.sky = new Sky();
     this.scene.add(this.sky.group);
 
     this.chunks = new ChunkManager(this.world, this.scene);
@@ -84,7 +93,9 @@ export class Game {
 
     this.npcs = new NpcManager(this.world);
     this.cars = new CarManager(this.world);
-    this.scene.add(this.npcs.group, this.cars.group, this.debris.mesh);
+    this.repair = new RepairManager(this.world);
+    this.scene.add(this.npcs.group, this.cars.group, this.debris.mesh, this.explosions.group);
+
 
     // beam (unlockable): a long emissive box scaled to hit distance
     this.beamMesh = new THREE.Mesh(
@@ -120,6 +131,7 @@ export class Game {
       if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
       this.keys.add(e.code);
       if (e.code === 'KeyF') this.fireLaser();
+      if (e.code === 'KeyQ') this.novaPulse();
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
     document.addEventListener('pointerlockchange', () => {
@@ -192,7 +204,7 @@ export class Game {
       }
       const pc = this.player.pos.clone().addScaledVector(dir, 9);
       pc.y += 5.6;
-      this.hitMonster(pc, 11, 12);
+      this.hitMonster(pc, 11, 12 * this.power);
     }, 190);
   }
 
@@ -228,6 +240,62 @@ export class Game {
     this.projectiles.push({ pos: from.clone(), vel: dir.multiplyScalar(26), life: 6, kind: 'rocket', mesh });
   }
 
+  // AoE shockwave unlocked by defeating the Volt Serpent
+  private novaPulse(): void {
+    if (!this.player.abilities.nova || this.novaCooldown > 0 || !this.started) return;
+    this.novaCooldown = 6;
+    const c = this.player.pos.clone();
+    c.y += 4;
+    this.explosions.boom(c, 14);
+    sfx.explode(1, 1);
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const p = c.clone();
+      p.x += Math.sin(a) * 10;
+      p.z += Math.cos(a) * 10;
+      this.destroyAt(p, 4.5, 0.3);
+    }
+    if (this.monster && !this.monster.dying) {
+      const d = this.monster.group.position.distanceTo(this.player.pos);
+      if (d < 34) this.monster.takeDamage(45 * this.power);
+    }
+  }
+
+  // Volt Serpent lightning: a bright column + crack of thunder
+  private zapAt(p: THREE.Vector3): void {
+    const bolt = new THREE.Mesh(
+      new THREE.BoxGeometry(1.2, 60, 1.2),
+      new THREE.MeshBasicMaterial({ color: 0xbfe8ff, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false })
+    );
+    bolt.position.set(p.x, p.y + 30, p.z);
+    this.scene.add(bolt);
+    setTimeout(() => {
+      this.scene.remove(bolt);
+      bolt.geometry.dispose();
+      (bolt.material as THREE.Material).dispose();
+    }, 140);
+    this.explosions.boom(p, 5);
+    sfx.zap(1 - Math.min(1, p.distanceTo(this.player.pos) / 130));
+  }
+
+  private throwBoulder(from: THREE.Vector3, toward: THREE.Vector3): void {
+    const dir = toward.clone().sub(from);
+    const dist = dir.length();
+    dir.normalize();
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(2.4, 2.4, 2.4),
+      new THREE.MeshLambertMaterial({ color: 0x8d939e })
+    );
+    mesh.position.copy(from);
+    mesh.rotation.set(Math.random() * 3, Math.random() * 3, 0);
+    this.scene.add(mesh);
+    // lob in an arc: forward speed + upward kick, boulder gravity pulls it down
+    const vel = dir.multiplyScalar(Math.min(30, dist * 0.45));
+    vel.y += 14;
+    this.projectiles.push({ pos: from.clone(), vel, life: 8, kind: 'boulder', mesh });
+    sfx.rocket(1 - Math.min(1, from.distanceTo(this.player.pos) / 130));
+  }
+
   private updateBeam(dt: number): void {
     const active = this.player.abilities.beam && this.keys.has('KeyE') && this.started;
     this.player.model.aiming = active;
@@ -255,7 +323,7 @@ export class Game {
       this.beamTick = 0.12;
       const end = from.clone().addScaledVector(dir, dist);
       if (hit) this.destroyAt(end, 3, 0.15);
-      this.hitMonsterRay(from, dir, dist + 8, 6);
+      this.hitMonsterRay(from, dir, dist + 8, 6 * this.power);
     }
   }
 
@@ -288,7 +356,9 @@ export class Game {
     const res = this.world.destroySphere(p.x, p.y, p.z, r);
     if (res.count > 0) {
       this.chunks.markDirty(res.dirty);
+      this.repair.noteDamage(res.dirty, this.time);
       this.debris.burst(p, res.ids, Math.min(26, 6 + res.count / 3));
+      if (res.count > 4) this.explosions.boom(p, Math.min(9, 2 + r));
       // explosion loudness falls off with distance from the player
       const vol = 1 - Math.min(1, p.distanceTo(this.player.pos) / 110);
       if (vol > 0.04 && this.time - this.lastBoomSound > 0.09) {
@@ -309,6 +379,7 @@ export class Game {
     const cut = this.world.collapseScan(p.x, p.y, p.z, r);
     if (!cut) return;
     this.chunks.markDirty(cut.dirty);
+    this.repair.noteDamage(cut.dirty, this.time);
     if (this.falling.length >= 5) {
       // too many falling pieces already — turn this one straight into rubble
       this.debris.burst(p, cut.blocks.slice(0, 6).map((b) => b[3]), 30);
@@ -328,6 +399,7 @@ export class Game {
       const at = f.mesh.position.clone();
       at.y = f.groundY + 1;
       this.debris.burst(at, f.sampleIds, Math.min(40, 10 + f.blockCount / 8));
+      this.explosions.boom(at, Math.min(12, 4 + f.blockCount / 60));
       const vol = 1 - Math.min(1, at.distanceTo(this.player.pos) / 130);
       if (vol > 0.04) sfx.explode(Math.min(1, f.blockCount / 150), vol);
       this.npcs.scare(at, 40);
@@ -348,6 +420,8 @@ export class Game {
         destroyAt: (p, r, s) => this.destroyAt(p, r, s),
         damagePlayer: (a) => this.damagePlayer(a),
         fireRocket: (f, t) => this.fireRocket(f, t),
+        throwBoulder: (f, t) => this.throwBoulder(f, t),
+        zapAt: (p) => this.zapAt(p),
       };
       this.monster.update(dt, this.time, ctx);
       this.hud.setBossHP(this.monster.hp / this.monster.maxHp);
@@ -362,9 +436,9 @@ export class Game {
       }
       if (this.monster.dead) {
         this.scene.remove(this.monster.group);
+        if (this.monster instanceof VoltSerpent) this.monster.removeSegmentsFrom(this.scene);
         this.monster = null;
-        this.bossTimer = this.bossPhase === 'kaiju' ? 22 : 35;
-        this.bossPhase = this.bossPhase === 'kaiju' ? 'pre-rocket' : 'endless';
+        this.bossTimer = 25;
       }
       return;
     }
@@ -376,28 +450,35 @@ export class Game {
     const d = 100;
     const x = this.player.pos.x + Math.sin(a) * d;
     const z = this.player.pos.z + Math.cos(a) * d;
-    if (this.bossPhase === 'pre-kaiju') {
-      this.monster = new Kaiju(x, z);
-      this.bossPhase = 'kaiju';
-      this.hud.toast('⚠ KAIJU SIGNAL ⚠', 'GORGOSAUR is tearing through the city. Defeat it to learn the BEAM.', 5);
-    } else if (this.bossPhase === 'pre-rocket') {
-      this.monster = new RocketBeast(x, z);
-      this.bossPhase = 'rocket';
-      this.hud.toast('⚠ AIRBORNE THREAT ⚠', 'MISSILE MAW inbound. Defeat it to earn ROCKET BOOTS.', 5);
+
+    const campaign: Array<{ make: (x: number, z: number) => Monster; toast: [string, string] }> = [
+      { make: (x2, z2) => new Kaiju(x2, z2), toast: ['⚠ KAIJU SIGNAL ⚠', 'GORGOSAUR is tearing through the city. Defeat it to learn the BEAM.'] },
+      { make: (x2, z2) => new RocketBeast(x2, z2), toast: ['⚠ AIRBORNE THREAT ⚠', 'MISSILE MAW inbound. Defeat it to earn ROCKET BOOTS.'] },
+      { make: (x2, z2) => new VoltSerpent(x2, z2), toast: ['⚠ SEISMIC WEAVE ⚠', 'VOLT SERPENT surfacing. Defeat it to learn the NOVA PULSE.'] },
+      { make: (x2, z2) => new IronColossus(x2, z2), toast: ['⚠ HEAVY FOOTFALLS ⚠', 'IRON COLOSSUS approaching. Defeat it to earn the AEGIS SHIELD.'] },
+    ];
+
+    if (this.bossIndex < campaign.length) {
+      const entry = campaign[this.bossIndex++];
+      this.monster = entry.make(x, z);
+      this.hud.toast(entry.toast[0], entry.toast[1], 5);
     } else {
-      // endless mode: alternate stronger bosses, reward = repairs
-      const m = Math.random() < 0.5 ? new Kaiju(x, z) : new RocketBeast(x, z);
-      m.maxHp = m.hp = Math.round(m.maxHp * 1.4);
-      (m as any).reward = 'repair';
+      // endless mode: any boss, scaled up each power level; reward = repairs + power
+      const pool = [Kaiju, RocketBeast, VoltSerpent, IronColossus];
+      const M = pool[Math.floor(Math.random() * pool.length)];
+      const m = new M(x, z);
+      m.maxHp = m.hp = Math.round(m.maxHp * (1.3 + this.powerLevel * 0.2));
+      m.reward = 'repair';
       this.monster = m;
-      this.hud.toast('⚠ NEW CONTACT ⚠', m.name + ' detected. Defeat it for full repairs.', 4);
+      this.hud.toast('⚠ NEW CONTACT ⚠', m.name + ' detected. Defeat it for repairs and a power boost.', 4);
     }
+    if (this.monster instanceof VoltSerpent) this.monster.addSegmentsTo(this.scene);
     this.scene.add(this.monster.group);
     this.hud.showBoss(this.monster.name);
     sfx.roar();
   }
 
-  private grantReward(reward: 'beam' | 'boots' | 'repair'): void {
+  private grantReward(reward: Reward): void {
     sfx.jingle();
     if (reward === 'beam') {
       this.player.abilities.beam = true;
@@ -407,13 +488,31 @@ export class Game {
       this.player.abilities.boots = true;
       this.hud.unlock('boots', '<b>SPACE (hold)</b> ROCKET BOOTS');
       this.hud.toast('ROCKET BOOTS UNLOCKED', 'Hold SPACE in the air to fly', 5);
+    } else if (reward === 'nova') {
+      this.player.abilities.nova = true;
+      this.hud.unlock('nova', '<b>Q</b> NOVA PULSE');
+      this.hud.toast('NOVA PULSE UNLOCKED', 'Press Q for a devastating shockwave', 5);
+    } else if (reward === 'shield') {
+      this.player.abilities.shield = true;
+      this.hud.unlock('shield', 'AEGIS SHIELD 50%');
+      this.hud.toast('AEGIS SHIELD ONLINE', 'All damage is halved', 5);
     } else {
       this.player.heal(100);
-      this.hud.toast('THREAT NEUTRALIZED', 'Full repairs delivered', 4);
+      this.powerLevel++;
+      this.power = 1 + (this.powerLevel - 1) * 0.25;
+      this.hud.setPowerLevel(this.powerLevel);
+      this.hud.toast('POWER LEVEL ' + this.powerLevel, 'Weapons upgraded · full repairs delivered', 4);
     }
   }
 
   private damagePlayer(amount: number): void {
+    if (this.player.abilities.shield) {
+      amount *= 0.5;
+      // shield shimmer
+      const flash = this.player.pos.clone();
+      flash.y += 5;
+      this.explosions.boom(flash, 3);
+    }
     this.player.damage(amount);
     this.hud.damageFlash();
     sfx.thud();
@@ -429,6 +528,7 @@ export class Game {
     const dt = Math.min(0.05, this.clock.getDelta());
     this.time += dt;
     this.laserCooldown -= dt;
+    this.novaCooldown -= dt;
 
     if (this.started) {
       const right = this.keys.has('KeyD') || this.keys.has('ArrowRight');
@@ -455,7 +555,27 @@ export class Game {
     this.updateProjectiles(dt);
     this.updateFalling(dt);
     this.debris.update(dt);
-    this.sky.update(dt, this.player.pos, this.camera);
+    this.explosions.update(dt);
+
+    // townspeople rebuild the city while things are quiet
+    const rep = this.repair.update(dt, this.time, this.player.pos.x, this.player.pos.z);
+    if (rep) {
+      this.chunks.markDirty(rep.dirty);
+      for (const site of rep.startedSites) this.npcs.spawnWorkers(site.x, site.z);
+      // sparkle on a few freshly restored blocks
+      for (let i = 0; i < Math.min(3, rep.restored.length); i++) {
+        const b = rep.restored[Math.floor(Math.random() * rep.restored.length)];
+        this.debris.burst(new THREE.Vector3(b.x + 0.5, b.y + 1, b.z + 0.5), [18], 2);
+      }
+    }
+
+    // day/night cycle drives sky, fog and lights
+    const skyState = this.sky.update(dt, this.time, this.player.pos, this.camera);
+    (this.scene.background as THREE.Color).copy(skyState.skyColor);
+    (this.scene.fog as THREE.Fog).color.copy(skyState.fogColor);
+    this.sun.intensity = skyState.sunIntensity;
+    this.sun.position.copy(skyState.sunDir);
+    this.hemi.intensity = skyState.hemiIntensity;
     this.hud.setHP(this.player.hp / this.player.maxHp);
     this.hud.update(dt);
 
@@ -468,18 +588,23 @@ export class Game {
       const p = this.projectiles[i];
       p.life -= dt;
       if (p.kind === 'rocket') p.vel.y -= 2 * dt;
+      if (p.kind === 'boulder') {
+        p.vel.y -= 16 * dt;
+        p.mesh.rotation.x += dt * 3;
+        p.mesh.rotation.z += dt * 2;
+      }
       p.pos.addScaledVector(p.vel, dt);
       p.mesh.position.copy(p.pos);
 
       let boom = false;
       if (this.world.solidAt(p.pos.x, p.pos.y, p.pos.z) || p.pos.y < 0.2) boom = true;
-      if (p.kind === 'laser' && this.hitMonster(p.pos, 2, 7)) boom = true;
-      if (p.kind === 'rocket' && p.pos.distanceTo(this.player.pos) < 7) {
+      if (p.kind === 'laser' && this.hitMonster(p.pos, 2, 7 * this.power)) boom = true;
+      if (p.kind !== 'laser' && p.pos.distanceTo(this.player.pos) < (p.kind === 'boulder' ? 8 : 7)) {
         boom = true;
-        this.damagePlayer(16);
+        this.damagePlayer(p.kind === 'boulder' ? 22 : 16);
       }
       if (boom) {
-        this.destroyAt(p.pos, p.kind === 'laser' ? 2.4 : 3.6, p.kind === 'laser' ? 0.12 : 0.35);
+        this.destroyAt(p.pos, p.kind === 'laser' ? 2.4 : p.kind === 'boulder' ? 5 : 3.6, 0.2);
       }
       if (boom || p.life <= 0) {
         this.scene.remove(p.mesh);

@@ -9,7 +9,7 @@ import { isOpenStreet } from '../core/worldgen';
 const NPC_COUNT = 42;
 const SPAWN_R = 70;
 const DESPAWN_R = 110;
-const SHIRT = [0xd94f4f, 0x4f6fd9, 0x3fa060, 0xe0b040, 0x8a5fc0, 0x39c2c9, 0xe07aa8, 0x777c88];
+const SHIRT = [0xf2a5a5, 0xa5bdf2, 0x9fd9a8, 0xf8dfa2, 0xc9aee8, 0xa8e6e2, 0xf6c2dd, 0xc5c9d8];
 const SKIN = [0xf2c9a5, 0xd9a878, 0xa8764f, 0xf5d9bd];
 
 interface Npc {
@@ -23,11 +23,13 @@ interface Npc {
   phase: number;
   pet?: THREE.Group;
   petPos?: THREE.Vector3;
+  home?: THREE.Vector3; // workers stay near their repair site
+  life?: number; // workers despawn when the job is done
 }
 
-function makePerson(seed: number): { group: THREE.Group; armL: THREE.Mesh; armR: THREE.Mesh } {
+function makePerson(seed: number, worker = false): { group: THREE.Group; armL: THREE.Mesh; armR: THREE.Mesh } {
   const g = new THREE.Group();
-  const shirt = SHIRT[Math.floor(hash2(seed, 1) * SHIRT.length)];
+  const shirt = worker ? 0xf28c3a : SHIRT[Math.floor(hash2(seed, 1) * SHIRT.length)];
   const skin = SKIN[Math.floor(hash2(seed, 2) * SKIN.length)];
   const pants = hash2(seed, 3) < 0.5 ? 0x2e3440 : 0x6b5d4f;
   const mat = (c: number) => new THREE.MeshLambertMaterial({ color: c });
@@ -37,8 +39,8 @@ function makePerson(seed: number): { group: THREE.Group; armL: THREE.Mesh; armR:
   legs.position.y = 0.16;
   const head = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.22, 0.22), mat(skin));
   head.position.y = 0.8;
-  const hair = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.08, 0.24), mat(0x2a2a2e));
-  hair.position.y = 0.93;
+  const hair = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.08, 0.24), mat(worker ? 0xf8dc4a : 0x2a2a2e));
+  hair.position.y = 0.93; // workers get a yellow hard hat
   const armL = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.34, 0.09), mat(shirt));
   armL.position.set(-0.23, 0.62, 0);
   armL.geometry.translate(0, -0.14, 0);
@@ -101,6 +103,16 @@ export class NpcManager {
         n.dir = Math.atan2(n.pos.x - nearest.x, n.pos.z - nearest.z);
       }
 
+      // workers time out and head home once the site is repaired
+      if (n.life !== undefined) {
+        n.life -= dt;
+        if (n.life <= 0) {
+          this.group.remove(n.group);
+          this.npcs.splice(i, 1);
+          continue;
+        }
+      }
+
       n.timer -= dt;
       let speed = 0;
       if (n.state === 'flee') {
@@ -112,6 +124,10 @@ export class NpcManager {
         if (n.timer <= 0) {
           if (Math.random() < 0.3) { n.state = 'idle'; n.timer = 1 + Math.random() * 3; }
           else { n.dir += (Math.random() - 0.5) * 2; n.timer = 2 + Math.random() * 4; }
+        }
+        // workers orbit their site instead of drifting off
+        if (n.home && n.pos.distanceTo(n.home) > 14) {
+          n.dir = Math.atan2(n.home.x - n.pos.x, n.home.z - n.pos.z);
         }
       } else if (n.timer <= 0) {
         n.state = 'wander';
@@ -159,6 +175,30 @@ export class NpcManager {
         n.pet.position.y += speed > 0 ? Math.abs(Math.sin(t * 12 + n.phase)) * 0.08 : 0;
         n.pet.rotation.y = Math.atan2(n.pos.x - n.petPos.x, n.pos.z - n.petPos.z);
       }
+    }
+  }
+
+  // orange-vested repair crew that hangs around a rebuild site
+  spawnWorkers(x: number, z: number, count = 2): void {
+    for (let i = 0; i < count; i++) {
+      const seed = this.seed++;
+      const { group, armL, armR } = makePerson(seed, true);
+      const px = x + (Math.random() - 0.5) * 8;
+      const pz = z + (Math.random() - 0.5) * 8;
+      const gh = this.world.groundHeight(px, pz, 12);
+      if (gh > 6) continue;
+      const npc: Npc = {
+        group, armL, armR,
+        pos: new THREE.Vector3(px, gh, pz),
+        dir: Math.random() * Math.PI * 2,
+        state: 'wander',
+        timer: 1 + Math.random() * 2,
+        phase: Math.random() * 10,
+        home: new THREE.Vector3(x, 0, z),
+        life: 40 + Math.random() * 15,
+      };
+      this.group.add(group);
+      this.npcs.push(npc);
     }
   }
 

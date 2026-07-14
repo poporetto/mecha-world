@@ -117,6 +117,29 @@ class Sfx {
     src.start(t);
   }
 
+  zap(vol = 1): void {
+    if (!this.ctx || vol <= 0.04) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const o = ctx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(2400, t);
+    o.frequency.exponentialRampToValueAtTime(120, t + 0.22);
+    const g = ctx.createGain();
+    this.env(g, t, 0.35 * vol, 0.24);
+    o.connect(g).connect(this.master);
+    o.start(t);
+    o.stop(t + 0.26);
+    const src = ctx.createBufferSource();
+    src.buffer = this.noiseBuffer(0.2);
+    const f = ctx.createBiquadFilter();
+    f.type = 'highpass';
+    f.frequency.value = 2000;
+    const g2 = ctx.createGain();
+    this.env(g2, t, 0.25 * vol, 0.18);
+    src.connect(f).connect(g2).connect(this.master);
+    src.start(t);
+  }
+
   roar(): void {
     if (!this.ctx) return;
     const ctx = this.ctx, t = ctx.currentTime;
