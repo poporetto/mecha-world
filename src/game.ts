@@ -404,7 +404,7 @@ export class Game {
       const back = this.keys.has('KeyS') || this.keys.has('ArrowDown');
       const fwd = this.keys.has('KeyW') || this.keys.has('ArrowUp');
       const mx = (right ? 1 : 0) - (left ? 1 : 0);
-      const mz = (back ? 1 : 0) - (fwd ? 1 : 0);
+      const mz = (fwd ? 1 : 0) - (back ? 1 : 0);
       this.player.update(dt, mx, mz, this.camYaw, this.keys.has('Space'), this.keys.has('ShiftLeft') || this.keys.has('ShiftRight'));
     } else {
       this.player.update(dt, 0, 0, this.camYaw, false, false);
