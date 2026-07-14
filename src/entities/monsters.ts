@@ -82,10 +82,12 @@ export abstract class Monster {
 
 // ------------------------------------------------------------------- Kaiju
 
+export const MONSTER_SCALE = 1.6;
+
 export class Kaiju extends Monster {
   name = 'GORGOSAUR';
   reward: 'beam' = 'beam';
-  hitRadius = 9;
+  hitRadius = 14;
   private legL: THREE.Mesh;
   private legR: THREE.Mesh;
   private tail: THREE.Group;
@@ -134,6 +136,7 @@ export class Kaiju extends Monster {
       this.group.add(spike);
     }
     this.group.add(body, belly, head, jaw, eyeL, eyeR, this.legL, this.legR, armL, armR, this.tail);
+    this.group.scale.setScalar(MONSTER_SCALE);
     this.group.position.set(x, 0, z);
     this.rememberEmissives();
   }
@@ -160,7 +163,7 @@ export class Kaiju extends Monster {
     this.group.rotation.y = this.heading;
 
     if (dist > 4) {
-      const speed = 3.6;
+      const speed = 4.5;
       this.group.position.x += Math.sin(this.heading) * speed * dt;
       this.group.position.z += Math.cos(this.heading) * speed * dt;
     }
@@ -177,13 +180,13 @@ export class Kaiju extends Monster {
     if (this.stompT <= 0) {
       this.stompT = 1.1;
       const fwd = new THREE.Vector3(Math.sin(this.heading), 0, Math.cos(this.heading));
-      const p = this.group.position.clone().addScaledVector(fwd, 5);
-      p.y = this.group.position.y + 4;
-      ctx.destroyAt(p, 5, 0.5);
+      const p = this.group.position.clone().addScaledVector(fwd, 8);
+      p.y = this.group.position.y + 6;
+      ctx.destroyAt(p, 7, 0.5);
       const feet = this.group.position.clone();
-      feet.y += 1;
-      ctx.destroyAt(feet, 3.5, 0.3);
-      if (this.group.position.distanceTo(ctx.playerPos) < 11) {
+      feet.y += 1.5;
+      ctx.destroyAt(feet, 5, 0.3);
+      if (this.group.position.distanceTo(ctx.playerPos) < 16) {
         ctx.damagePlayer(14);
       }
     }
@@ -195,7 +198,7 @@ export class Kaiju extends Monster {
 export class RocketBeast extends Monster {
   name = 'MISSILE MAW';
   reward: 'boots' = 'boots';
-  hitRadius = 7;
+  hitRadius = 11;
   private orbitA = Math.random() * Math.PI * 2;
   private fireT = 3;
   private podL: THREE.Mesh;
@@ -229,6 +232,7 @@ export class RocketBeast extends Monster {
     const jetR = jetL.clone();
     jetR.position.x = 1.6;
     this.group.add(body, head, eye, this.podL, this.podR, tubesL, tubesR, legL, legR, jetL, jetR);
+    this.group.scale.setScalar(MONSTER_SCALE);
     this.group.position.set(x, 0, z);
     this.rememberEmissives();
   }
@@ -245,7 +249,7 @@ export class RocketBeast extends Monster {
     this.group.position.x += (tx - this.group.position.x) * Math.min(1, dt * 0.8);
     this.group.position.z += (tz - this.group.position.z) * Math.min(1, dt * 0.8);
     const gy = ctx.world.groundHeight(this.group.position.x, this.group.position.z, 40);
-    const targetY = gy + 4 + Math.sin(t * 1.3) * 1.5;
+    const targetY = gy + 6 + Math.sin(t * 1.3) * 2;
     this.group.position.y += (targetY - this.group.position.y) * Math.min(1, dt * 2);
 
     // face player
@@ -257,7 +261,7 @@ export class RocketBeast extends Monster {
     if (this.fireT <= 0 && ctx.fireRocket) {
       this.fireT = 3.2;
       const from = this.group.position.clone();
-      from.y += 9.6;
+      from.y += 9.6 * MONSTER_SCALE;
       ctx.fireRocket(from, ctx.playerPos.clone().setY(ctx.playerPos.y + 2));
     }
   }

@@ -6,6 +6,7 @@ import { ChunkManager } from './render/chunkManager';
 import { Player } from './entities/player';
 import { NpcManager } from './entities/npcs';
 import { Kaiju, Monster, MonsterCtx, RocketBeast } from './entities/monsters';
+import { CarManager } from './entities/cars';
 import { Debris } from './fx/debris';
 import { Hud } from './ui/hud';
 
@@ -27,6 +28,7 @@ export class Game {
   private chunks: ChunkManager;
   private player: Player;
   private npcs: NpcManager;
+  private cars: CarManager;
   private debris = new Debris();
   private hud = new Hud();
 
@@ -41,7 +43,6 @@ export class Game {
   private laserCooldown = 0;
   private beamMesh: THREE.Mesh;
   private beamTick = 0;
-  private shake = 0;
 
   private monster: Monster | null = null;
   private bossPhase: 'pre-kaiju' | 'kaiju' | 'pre-rocket' | 'rocket' | 'endless' = 'pre-kaiju';
@@ -57,11 +58,11 @@ export class Game {
 
     this.camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 500);
 
-    // sky, fog, lights — hazy Tokyo afternoon
-    this.scene.background = new THREE.Color(0x9fc8e8);
-    this.scene.fog = new THREE.Fog(0x9fc8e8, 80, 220);
-    const hemi = new THREE.HemisphereLight(0xcfe8ff, 0x54606e, 1.05);
-    const sun = new THREE.DirectionalLight(0xfff2dd, 1.1);
+    // sky, fog, lights — bright anime afternoon
+    this.scene.background = new THREE.Color(0x7ec9f7);
+    this.scene.fog = new THREE.Fog(0x9edcff, 110, 280);
+    const hemi = new THREE.HemisphereLight(0xe6f6ff, 0x7a8a72, 1.25);
+    const sun = new THREE.DirectionalLight(0xfff4dd, 1.35);
     sun.position.set(0.6, 1, 0.35);
     this.scene.add(hemi, sun);
 
@@ -71,7 +72,8 @@ export class Game {
     this.scene.add(this.player.model.group);
 
     this.npcs = new NpcManager(this.world);
-    this.scene.add(this.npcs.group, this.debris.mesh);
+    this.cars = new CarManager(this.world);
+    this.scene.add(this.npcs.group, this.cars.group, this.debris.mesh);
 
     // beam (unlockable): a long emissive box scaled to hit distance
     this.beamMesh = new THREE.Mesh(
@@ -103,6 +105,7 @@ export class Game {
 
   private bindInput(): void {
     window.addEventListener('keydown', (e) => {
+      if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
       this.keys.add(e.code);
       if (e.code === 'KeyF') this.fireLaser();
     });
@@ -112,10 +115,8 @@ export class Game {
     });
     this.renderer.domElement.addEventListener('mousedown', (e) => {
       if (!this.started) return;
-      if (!this.locked) {
-        this.renderer.domElement.requestPointerLock();
-        return;
-      }
+      // attacks always fire — even while re-acquiring pointer lock
+      if (!this.locked) this.renderer.domElement.requestPointerLock();
       this.mouseDown[e.button] = true;
       if (e.button === 0) this.swingSaber();
       if (e.button === 2) this.fireLaser();
@@ -144,10 +145,10 @@ export class Game {
     this.player.yaw = this.camYaw + Math.PI; // face where the camera looks
     setTimeout(() => {
       const dir = this.aimDir();
-      const p = this.player.pos.clone().addScaledVector(dir, 4.5);
-      p.y += 2.5;
-      this.destroyAt(p, 3.4, 0.25);
-      this.hitMonster(p, 6, 10);
+      const p = this.player.pos.clone().addScaledVector(dir, 7);
+      p.y += 4.2;
+      this.destroyAt(p, 4.6, 0.25);
+      this.hitMonster(p, 9, 12);
     }, 180);
   }
 
@@ -157,8 +158,8 @@ export class Game {
     this.player.yaw = this.camYaw + Math.PI;
     const dir = this.aimDir();
     const from = this.player.pos.clone();
-    from.y += 3;
-    from.addScaledVector(dir, 2);
+    from.y += 5;
+    from.addScaledVector(dir, 3);
     const mesh = new THREE.Mesh(
       new THREE.BoxGeometry(0.25, 0.25, 1.6),
       new THREE.MeshBasicMaterial({ color: 0x39e6ff })
@@ -189,7 +190,7 @@ export class Game {
     this.player.yaw = this.camYaw + Math.PI;
     const dir = this.aimDir();
     const from = this.player.pos.clone();
-    from.y += 3.2;
+    from.y += 5.4;
     const hit = this.world.raycast(from.x, from.y, from.z, dir.x, dir.y, dir.z, 90);
     const dist = hit ? hit.dist : 90;
     this.beamMesh.position.copy(from).addScaledVector(dir, dist / 2);
@@ -211,7 +212,7 @@ export class Game {
     const m = this.monster;
     if (!m || m.dying) return false;
     _v.copy(m.group.position);
-    _v.y += 7;
+    _v.y += 11;
     if (_v.distanceTo(p) < radius + m.hitRadius) {
       m.takeDamage(dmg);
       this.debris.burst(p, [15], 6);
@@ -224,7 +225,7 @@ export class Game {
     const m = this.monster;
     if (!m || m.dying) return;
     _v.copy(m.group.position);
-    _v.y += 7;
+    _v.y += 11;
     const toM = _v.clone().sub(from);
     const along = toM.dot(dir);
     if (along < 0 || along > maxDist) return;
@@ -232,14 +233,14 @@ export class Game {
     if (perp < m.hitRadius) m.takeDamage(dmg);
   }
 
-  private destroyAt(p: THREE.Vector3, r: number, shake: number): void {
+  private destroyAt(p: THREE.Vector3, r: number, _shake: number): void {
     const res = this.world.destroySphere(p.x, p.y, p.z, r);
     if (res.count > 0) {
       this.chunks.markDirty(res.dirty);
       this.debris.burst(p, res.ids, Math.min(26, 6 + res.count / 3));
     }
     this.npcs.scare(p, 34);
-    this.shake = Math.max(this.shake, shake);
+    this.cars.scare(p, 34);
   }
 
   // ------------------------------------------------------------ boss cycle
@@ -318,7 +319,6 @@ export class Game {
   private damagePlayer(amount: number): void {
     this.player.damage(amount);
     this.hud.damageFlash();
-    this.shake = Math.max(this.shake, 0.4);
     if (this.player.hp <= 0) {
       this.player.respawn();
       this.hud.toast('MECHA DOWN', 'Recovered and redeployed at base', 4);
@@ -333,8 +333,12 @@ export class Game {
     this.laserCooldown -= dt;
 
     if (this.started) {
-      const mx = (this.keys.has('KeyD') ? 1 : 0) - (this.keys.has('KeyA') ? 1 : 0);
-      const mz = (this.keys.has('KeyS') ? 1 : 0) - (this.keys.has('KeyW') ? 1 : 0);
+      const right = this.keys.has('KeyD') || this.keys.has('ArrowRight');
+      const left = this.keys.has('KeyA') || this.keys.has('ArrowLeft');
+      const back = this.keys.has('KeyS') || this.keys.has('ArrowDown');
+      const fwd = this.keys.has('KeyW') || this.keys.has('ArrowUp');
+      const mx = (right ? 1 : 0) - (left ? 1 : 0);
+      const mz = (back ? 1 : 0) - (fwd ? 1 : 0);
       this.player.update(dt, mx, mz, this.camYaw, this.keys.has('Space'), this.keys.has('ShiftLeft') || this.keys.has('ShiftRight'));
     } else {
       this.player.update(dt, 0, 0, this.camYaw, false, false);
@@ -346,6 +350,7 @@ export class Game {
     const threats: THREE.Vector3[] = [];
     if (this.monster && !this.monster.dying) threats.push(this.monster.group.position);
     this.npcs.update(dt, this.player.pos, threats, this.time);
+    this.cars.update(dt, this.player.pos);
 
     this.updateBosses(dt);
     this.updateBeam(dt);
@@ -354,7 +359,7 @@ export class Game {
     this.hud.setHP(this.player.hp / this.player.maxHp);
     this.hud.update(dt);
 
-    this.updateCamera(dt);
+    this.updateCamera();
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -369,7 +374,7 @@ export class Game {
       let boom = false;
       if (this.world.solidAt(p.pos.x, p.pos.y, p.pos.z) || p.pos.y < 0.2) boom = true;
       if (p.kind === 'laser' && this.hitMonster(p.pos, 2, 7)) boom = true;
-      if (p.kind === 'rocket' && p.pos.distanceTo(this.player.pos) < 3.5) {
+      if (p.kind === 'rocket' && p.pos.distanceTo(this.player.pos) < 5.5) {
         boom = true;
         this.damagePlayer(16);
       }
@@ -385,10 +390,10 @@ export class Game {
     }
   }
 
-  private updateCamera(dt: number): void {
+  private updateCamera(): void {
     const pivot = this.player.pos.clone();
-    pivot.y += 4.6;
-    const dist = 15;
+    pivot.y += 7.6;
+    const dist = 22;
     const dir = new THREE.Vector3(
       Math.sin(this.camYaw) * Math.cos(this.camPitch),
       Math.sin(this.camPitch),
@@ -396,15 +401,8 @@ export class Game {
     );
     // keep the camera out of buildings
     const hit = this.world.raycast(pivot.x, pivot.y, pivot.z, dir.x, dir.y, dir.z, dist);
-    const d = hit ? Math.max(2.5, hit.dist - 0.8) : dist;
-    const camPos = pivot.clone().addScaledVector(dir, d);
-    if (this.shake > 0.01) {
-      camPos.x += (Math.random() - 0.5) * this.shake;
-      camPos.y += (Math.random() - 0.5) * this.shake;
-      camPos.z += (Math.random() - 0.5) * this.shake;
-      this.shake *= Math.pow(0.02, dt);
-    }
-    this.camera.position.copy(camPos);
+    const d = hit ? Math.max(3.5, hit.dist - 0.8) : dist;
+    this.camera.position.copy(pivot).addScaledVector(dir, d);
     this.camera.lookAt(pivot);
   }
 }

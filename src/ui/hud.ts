@@ -64,7 +64,7 @@ export class Hud {
       <div class="toast" id="toast"><h1 id="toast-h"></h1><p id="toast-p"></p></div>
       <div class="cross"></div>
       <div class="vig" id="vig"></div>
-      <div class="hint">WASD move · SHIFT boost · SPACE jump<br/>mouse look · click canvas to lock cursor</div>
+      <div class="hint">ARROWS / WASD move · SHIFT boost · SPACE jump<br/>mouse look · click canvas to lock cursor</div>
     `;
     this.hpFill = document.getElementById('hpfill')!;
     this.bossWrap = document.getElementById('boss')!;
@@ -85,7 +85,7 @@ export class Hud {
       <h1>MECHA CITY</h1>
       <h2>NEO TOKYO · INFINITE VOXEL FRONTIER</h2>
       <div class="keys">
-        <b>WASD</b> move &nbsp; <b>SHIFT</b> boost &nbsp; <b>SPACE</b> jump<br/>
+        <b>ARROW KEYS / WASD</b> move &nbsp; <b>SHIFT</b> boost &nbsp; <b>SPACE</b> jump<br/>
         <b>LEFT CLICK</b> light saber &nbsp; <b>RIGHT CLICK / F</b> laser cannon<br/>
         Everything breaks. Citizens can't be hurt — but they will run.<br/>
         Hunt the monsters. Every boss you defeat teaches you a new power.

@@ -148,7 +148,7 @@ function lotParams(lotX: number, lotZ: number): LotParams {
   const wall = glassy ? B.Window : walls[Math.floor(h2 * 4) % 4];
   const inset = Math.floor(hash2(lotX + 17, lotZ - 61) * 3);
   let neon = 0;
-  if (district > 0.55 && h2 > 0.4) neon = h1 > 0.5 ? B.NeonPink : B.NeonCyan;
+  if (district > 0.48 && h2 > 0.2) neon = h1 > 0.5 ? B.NeonPink : B.NeonCyan;
   return { height, wall, glassy, inset, neon };
 }
 
@@ -261,4 +261,14 @@ export function generateChunkData(cx: number, cz: number): Uint8Array {
 export function isOpenStreet(x: number, z: number): boolean {
   const k = columnInfo(x, z).kind;
   return k === ColKind.Road || k === ColKind.Sidewalk || k === ColKind.Park;
+}
+
+// Road orientation for traffic: 0 = not a road, 1 = runs along z (north-south),
+// 2 = runs along x (east-west), 3 = intersection.
+export function roadInfo(x: number, z: number): 0 | 1 | 2 | 3 {
+  if (columnInfo(x, z).kind !== ColKind.Road) return 0;
+  const nsRoad = mod(x, CELL) < ROAD_W;
+  const ewRoad = mod(z, CELL) < ROAD_W;
+  if (nsRoad && ewRoad) return 3;
+  return nsRoad ? 1 : 2;
 }

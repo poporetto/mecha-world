@@ -4,13 +4,13 @@ import * as THREE from 'three';
 import { World } from '../core/world';
 import { MechaModel } from './mecha';
 
-const HALF = 0.85; // half-width of collision box
-const HEIGHT = 4.3;
+const HALF = 1.35; // half-width of collision box
+const HEIGHT = 7.2;
 const GRAVITY = 32;
-const JUMP_V = 13;
-const WALK = 10;
-const RUN = 16;
-const FLY_V = 11;
+const JUMP_V = 15;
+const WALK = 12;
+const RUN = 20;
+const FLY_V = 13;
 
 export interface Abilities {
   beam: boolean;
