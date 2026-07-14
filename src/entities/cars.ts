@@ -19,6 +19,8 @@ interface Car {
   baseSpeed: number;
   panicT: number;
   lastCell: string;
+  swerve: number; // current lateral offset
+  swerveTarget: number;
 }
 
 function makeCar(seed: number): THREE.Group {
@@ -74,7 +76,19 @@ export class CarManager {
       }
 
       c.panicT -= dt;
-      const speed = c.panicT > 0 ? c.baseSpeed * 2.2 : c.baseSpeed;
+      let speed = c.panicT > 0 ? c.baseSpeed * 2.2 : c.baseSpeed;
+
+      // don't run over the giant robot: brake behind it, swerve past it
+      const toP = playerPos.clone().sub(c.pos);
+      const aheadDist = toP.x * c.dir.x + toP.z * c.dir.z;
+      const lateral = toP.x * c.dir.z - toP.z * c.dir.x; // signed side offset
+      if (aheadDist > 0 && aheadDist < 14 && Math.abs(lateral) < 4.5) {
+        c.swerveTarget = lateral > 0 ? -3 : 3; // swerve to the free side
+        if (aheadDist < 7) speed = Math.max(0, speed * ((aheadDist - 3) / 4)); // brake
+      } else {
+        c.swerveTarget = 0;
+      }
+      c.swerve += (c.swerveTarget - c.swerve) * Math.min(1, dt * 3);
 
       // occasionally turn at intersections (each intersection decided once)
       const cellKey = Math.floor(c.pos.x / CELL) + ',' + Math.floor(c.pos.z / CELL);
@@ -109,7 +123,10 @@ export class CarManager {
       const gh = this.world.groundHeight(c.pos.x, c.pos.z, 6);
       c.pos.y = gh;
       c.group.position.copy(c.pos);
-      c.group.rotation.y = Math.atan2(c.dir.x, c.dir.z);
+      // swerve is a visual lateral offset perpendicular to travel
+      c.group.position.x += c.dir.z * c.swerve;
+      c.group.position.z += -c.dir.x * c.swerve;
+      c.group.rotation.y = Math.atan2(c.dir.x, c.dir.z) - c.swerve * 0.12;
     }
   }
 
@@ -148,6 +165,8 @@ export class CarManager {
         baseSpeed: 7 + Math.random() * 4,
         panicT: 0,
         lastCell: '',
+        swerve: 0,
+        swerveTarget: 0,
       };
     }
     return null;

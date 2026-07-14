@@ -100,6 +100,73 @@ export class World {
     return { count, ids, dirty, cx: px, cy: py, cz: pz };
   }
 
+  // Structural collapse: after a destruction at (px,py,pz), find connected
+  // groups of blocks near the blast that no longer reach the ground and cut
+  // them loose. Returns their blocks (for a falling mesh) + dirtied chunks.
+  collapseScan(px: number, py: number, pz: number, r: number): { blocks: [number, number, number, number][]; dirty: Set<string> } | null {
+    const BOUND = 30; // horizontal search limit from blast center
+    const COMP_CAP = 5000; // bigger components count as supported (bail)
+    const visited = new Set<string>();
+    const out: [number, number, number, number][] = [];
+    const dirty = new Set<string>();
+
+    const R = Math.ceil(r) + 1;
+    const cx0 = Math.floor(px), cy0 = Math.floor(py), cz0 = Math.floor(pz);
+
+    for (let sy = Math.max(1, cy0 - R); sy <= Math.min(H - 1, cy0 + R + 1); sy++) {
+      for (let sz = cz0 - R; sz <= cz0 + R; sz++) {
+        for (let sx = cx0 - R; sx <= cx0 + R; sx++) {
+          if (!isSolid(this.getBlock(sx, sy, sz))) continue;
+          const skey = sx + ',' + sy + ',' + sz;
+          if (visited.has(skey)) continue;
+
+          // BFS this component
+          const comp: [number, number, number][] = [];
+          const queue: [number, number, number][] = [[sx, sy, sz]];
+          visited.add(skey);
+          let supported = false;
+          while (queue.length > 0) {
+            const [x, y, z] = queue.pop()!;
+            comp.push([x, y, z]);
+            if (comp.length > COMP_CAP) { supported = true; break; }
+            if (y <= 1) { supported = true; } // resting on the ground layer
+            if (Math.abs(x - cx0) > BOUND || Math.abs(z - cz0) > BOUND) {
+              supported = true; // reached search limit — assume anchored
+              continue;
+            }
+            const neighbors: [number, number, number][] = [
+              [x + 1, y, z], [x - 1, y, z], [x, y + 1, z], [x, y - 1, z], [x, y, z + 1], [x, y, z - 1],
+            ];
+            for (const [nx, ny, nz] of neighbors) {
+              if (ny < 1 || ny >= H) continue;
+              const nkey = nx + ',' + ny + ',' + nz;
+              if (visited.has(nkey)) continue;
+              if (!isSolid(this.getBlock(nx, ny, nz))) continue;
+              visited.add(nkey);
+              queue.push([nx, ny, nz]);
+            }
+          }
+
+          if (!supported && comp.length >= 4 && out.length + comp.length <= 6000) {
+            for (const [x, y, z] of comp) {
+              const id = this.getBlock(x, y, z);
+              out.push([x, y, z, id]);
+              this.setBlock(x, y, z, B.Air);
+              const ccx = Math.floor(x / CS), ccz = Math.floor(z / CS);
+              dirty.add(this.key(ccx, ccz));
+              const lx = x - ccx * CS, lz = z - ccz * CS;
+              if (lx === 0) dirty.add(this.key(ccx - 1, ccz));
+              if (lx === CS - 1) dirty.add(this.key(ccx + 1, ccz));
+              if (lz === 0) dirty.add(this.key(ccx, ccz - 1));
+              if (lz === CS - 1) dirty.add(this.key(ccx, ccz + 1));
+            }
+          }
+        }
+      }
+    }
+    return out.length > 0 ? { blocks: out, dirty } : null;
+  }
+
   // Voxel DDA raycast. dir must be normalized.
   raycast(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxDist: number): RayHit | null {
     let x = Math.floor(ox), y = Math.floor(oy), z = Math.floor(oz);

@@ -90,14 +90,17 @@ export class MechaModel {
     eyeR.position.x = 0.11;
     const chin = box(0.16, 0.14, 0.12, RED);
     chin.position.set(0, -0.2, 0.32);
-    const crest = box(0.1, 0.1, 0.1, RED);
-    crest.position.set(0, 0.2, 0.31);
-    const finL = box(0.5, 0.07, 0.1, YELLOW);
-    finL.position.set(-0.22, 0.3, 0.28);
-    finL.rotation.z = 0.45;
-    const finR = finL.clone();
-    finR.position.x = 0.22;
-    finR.rotation.z = -0.45;
+    const crest = box(0.12, 0.12, 0.08, RED);
+    crest.position.set(0, 0.24, 0.32);
+    // V-fin: two blades rising from the center jewel, forming a V
+    const finL = box(0.6, 0.07, 0.1, YELLOW);
+    finL.geometry.translate(-0.3, 0, 0);
+    finL.position.set(0, 0.26, 0.3);
+    finL.rotation.z = -0.55;
+    const finR = box(0.6, 0.07, 0.1, YELLOW);
+    finR.geometry.translate(0.3, 0, 0);
+    finR.position.set(0, 0.26, 0.3);
+    finR.rotation.z = 0.55;
     const earL = box(0.08, 0.2, 0.2, JOINT);
     earL.position.set(-0.34, -0.02, 0.05);
     const earR = earL.clone();
@@ -109,9 +112,12 @@ export class MechaModel {
     this.armR = this.makeArm(1.25, false); // saber arm
     this.torso.add(this.armL, this.armR);
 
-    // pink beam saber (hidden until swing)
+    // saber hilt always in the right fist; pink blade ignites on swing
+    const hilt = box(0.14, 0.55, 0.14, 0x8a8d96);
+    hilt.position.set(0, -2.05, 0.3);
+    this.armR.add(hilt);
     this.saberBlade = box(0.2, 3.4, 0.2, SABER, SABER);
-    this.saberBlade.position.set(0, -2.9, 0);
+    this.saberBlade.position.set(0, -3.9, 0.3);
     this.saberBlade.visible = false;
     this.armR.add(this.saberBlade);
   }
@@ -186,25 +192,27 @@ export class MechaModel {
       this.torso.rotation.y = Math.sin(t * 0.8) * 0.03;
     }
 
-    // saber swing: raise, slash across, recover
+    // saber swing: arm levels out forward, torso whips a horizontal slash
     if (this.swingT >= 0) {
-      this.swingT += dt / 0.42;
+      this.swingT += dt / 0.45;
       const s = this.swingT;
       this.saberBlade.visible = true;
-      if (s < 0.3) {
-        const k = s / 0.3;
-        this.armR.rotation.x = -2.4 * k;
-        this.armR.rotation.z = -0.4 * k;
-      } else if (s < 0.65) {
-        const k = (s - 0.3) / 0.35;
-        this.armR.rotation.x = -2.4 + 3.1 * k;
-        this.armR.rotation.z = -0.4 + 0.9 * k;
-        this.torso.rotation.y = -0.5 * k;
+      this.armR.rotation.z = 0;
+      if (s < 0.25) {
+        // wind up: raise arm to horizontal, twist torso right
+        const k = s / 0.25;
+        this.armR.rotation.x = -1.5 * k;
+        this.torso.rotation.y = 0.9 * k;
+      } else if (s < 0.6) {
+        // slash: sweep torso hard left, blade carves a flat arc
+        const k = (s - 0.25) / 0.35;
+        this.armR.rotation.x = -1.5;
+        this.torso.rotation.y = 0.9 - 2.1 * k;
       } else if (s < 1) {
-        const k = (s - 0.65) / 0.35;
-        this.armR.rotation.x = 0.7 * (1 - k);
-        this.armR.rotation.z = 0.5 * (1 - k);
-        this.torso.rotation.y = -0.5 * (1 - k);
+        // recover
+        const k = (s - 0.6) / 0.4;
+        this.armR.rotation.x = -1.5 * (1 - k);
+        this.torso.rotation.y = -1.2 * (1 - k);
       } else {
         this.swingT = -1;
         this.saberBlade.visible = false;

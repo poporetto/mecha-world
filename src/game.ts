@@ -8,6 +8,9 @@ import { NpcManager } from './entities/npcs';
 import { Kaiju, Monster, MonsterCtx, RocketBeast } from './entities/monsters';
 import { CarManager } from './entities/cars';
 import { Debris } from './fx/debris';
+import { buildFallingChunk, FallingChunk, updateFallingChunk } from './fx/collapse';
+import { Sky } from './fx/sky';
+import { sfx } from './fx/sound';
 import { Hud } from './ui/hud';
 
 interface Projectile {
@@ -43,6 +46,10 @@ export class Game {
   private laserCooldown = 0;
   private beamMesh: THREE.Mesh;
   private beamTick = 0;
+  private beamActive = false;
+  private sky: Sky;
+  private falling: FallingChunk[] = [];
+  private lastBoomSound = 0;
 
   private monster: Monster | null = null;
   private bossPhase: 'pre-kaiju' | 'kaiju' | 'pre-rocket' | 'rocket' | 'endless' = 'pre-kaiju';
@@ -53,7 +60,7 @@ export class Game {
   constructor() {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(window.devicePixelRatio);
     document.body.appendChild(this.renderer.domElement);
 
     this.camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 500);
@@ -65,6 +72,8 @@ export class Game {
     const sun = new THREE.DirectionalLight(0xfff4dd, 1.35);
     sun.position.set(0.6, 1, 0.35);
     this.scene.add(hemi, sun);
+    this.sky = new Sky(sun.position.clone().normalize());
+    this.scene.add(this.sky.group);
 
     this.chunks = new ChunkManager(this.world, this.scene);
     this.player = new Player(this.world);
@@ -94,6 +103,7 @@ export class Game {
 
     this.hud.showStart(() => {
       this.started = true;
+      sfx.ensure();
       this.renderer.domElement.requestPointerLock();
       this.hud.toast('DEPLOYED', 'Explore Neo Tokyo. Something big is coming…', 4);
     });
@@ -143,18 +153,27 @@ export class Game {
   private swingSaber(): void {
     if (!this.player.model.startSwing()) return;
     this.player.yaw = this.camYaw + Math.PI; // face where the camera looks
+    sfx.swing();
     setTimeout(() => {
+      // horizontal slash: carve a flat arc across the aim direction
       const dir = this.aimDir();
-      const p = this.player.pos.clone().addScaledVector(dir, 7);
-      p.y += 4.2;
-      this.destroyAt(p, 4.6, 0.25);
-      this.hitMonster(p, 9, 12);
-    }, 180);
+      for (const ang of [-0.45, 0, 0.45]) {
+        const cos = Math.cos(ang), sin = Math.sin(ang);
+        const d = new THREE.Vector3(dir.x * cos - dir.z * sin, dir.y, dir.x * sin + dir.z * cos);
+        const p = this.player.pos.clone().addScaledVector(d, 7);
+        p.y += 4.2;
+        this.destroyAt(p, 3.6, 0.25);
+      }
+      const pc = this.player.pos.clone().addScaledVector(dir, 7);
+      pc.y += 4.2;
+      this.hitMonster(pc, 9, 12);
+    }, 190);
   }
 
   private fireLaser(): void {
     if (this.laserCooldown > 0 || !this.started) return;
     this.laserCooldown = 0.22;
+    sfx.laser();
     this.player.yaw = this.camYaw + Math.PI;
     const dir = this.aimDir();
     const from = this.player.pos.clone();
@@ -171,6 +190,7 @@ export class Game {
   }
 
   private fireRocket(from: THREE.Vector3, toward: THREE.Vector3): void {
+    sfx.rocket();
     const dir = toward.clone().sub(from).normalize();
     const mesh = new THREE.Mesh(
       new THREE.BoxGeometry(0.5, 0.5, 1.4),
@@ -186,6 +206,11 @@ export class Game {
     const active = this.player.abilities.beam && this.keys.has('KeyE') && this.started;
     this.player.model.aiming = active;
     this.beamMesh.visible = active;
+    if (active !== this.beamActive) {
+      this.beamActive = active;
+      if (active) sfx.beamOn();
+      else sfx.beamOff();
+    }
     if (!active) return;
     this.player.yaw = this.camYaw + Math.PI;
     const dir = this.aimDir();
@@ -238,9 +263,47 @@ export class Game {
     if (res.count > 0) {
       this.chunks.markDirty(res.dirty);
       this.debris.burst(p, res.ids, Math.min(26, 6 + res.count / 3));
+      if (this.time - this.lastBoomSound > 0.09) {
+        this.lastBoomSound = this.time;
+        sfx.explode(Math.min(1, res.count / 60));
+      }
+      this.checkCollapse(p, r);
     }
     this.npcs.scare(p, 34);
     this.cars.scare(p, 34);
+  }
+
+  // Anything the blast disconnected from the ground breaks off and falls.
+  private checkCollapse(p: THREE.Vector3, r: number): void {
+    const cut = this.world.collapseScan(p.x, p.y, p.z, r);
+    if (!cut) return;
+    this.chunks.markDirty(cut.dirty);
+    if (this.falling.length >= 5) {
+      // too many falling pieces already — turn this one straight into rubble
+      this.debris.burst(p, cut.blocks.slice(0, 6).map((b) => b[3]), 30);
+      return;
+    }
+    const groundY = this.world.groundHeight(p.x, p.z, 40);
+    const chunk = buildFallingChunk(cut.blocks, groundY);
+    this.scene.add(chunk.mesh);
+    this.falling.push(chunk);
+  }
+
+  private updateFalling(dt: number): void {
+    for (let i = this.falling.length - 1; i >= 0; i--) {
+      const f = this.falling[i];
+      if (!updateFallingChunk(f, dt)) continue;
+      // impact: the piece shatters into debris and dust
+      const at = f.mesh.position.clone();
+      at.y = f.groundY + 1;
+      this.debris.burst(at, f.sampleIds, Math.min(40, 10 + f.blockCount / 8));
+      sfx.explode(Math.min(1, f.blockCount / 150));
+      this.npcs.scare(at, 40);
+      this.cars.scare(at, 40);
+      this.scene.remove(f.mesh);
+      f.mesh.geometry.dispose();
+      this.falling.splice(i, 1);
+    }
   }
 
   // ------------------------------------------------------------ boss cycle
@@ -299,9 +362,11 @@ export class Game {
     }
     this.scene.add(this.monster.group);
     this.hud.showBoss(this.monster.name);
+    sfx.roar();
   }
 
   private grantReward(reward: 'beam' | 'boots' | 'repair'): void {
+    sfx.jingle();
     if (reward === 'beam') {
       this.player.abilities.beam = true;
       this.hud.unlock('beam', '<b>E (hold)</b> PLASMA BEAM');
@@ -319,6 +384,7 @@ export class Game {
   private damagePlayer(amount: number): void {
     this.player.damage(amount);
     this.hud.damageFlash();
+    sfx.thud();
     if (this.player.hp <= 0) {
       this.player.respawn();
       this.hud.toast('MECHA DOWN', 'Recovered and redeployed at base', 4);
@@ -355,7 +421,9 @@ export class Game {
     this.updateBosses(dt);
     this.updateBeam(dt);
     this.updateProjectiles(dt);
+    this.updateFalling(dt);
     this.debris.update(dt);
+    this.sky.update(dt, this.player.pos, this.camera);
     this.hud.setHP(this.player.hp / this.player.maxHp);
     this.hud.update(dt);
 
