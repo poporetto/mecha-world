@@ -87,7 +87,7 @@ export class Hud {
     const el = document.createElement('div');
     el.className = 'start';
     const keys = isTouch
-      ? `<b>LEFT SIDE</b> joystick to move &nbsp; <b>RIGHT SIDE</b> drag to look around<br/>
+      ? `<b>D-PAD / LEFT SIDE</b> move &nbsp; <b>RIGHT SIDE</b> drag to look around<br/>
          <b>SABER / LASER</b> attack &nbsp; <b>JUMP (hold)</b> fly with rocket boots<br/>`
       : `<b>ARROW KEYS / WASD</b> move &nbsp; <b>SHIFT</b> boost &nbsp; <b>SPACE</b> jump<br/>
          <b>LEFT CLICK</b> light saber &nbsp; <b>RIGHT CLICK / F</b> laser cannon<br/>`;

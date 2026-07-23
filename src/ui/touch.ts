@@ -181,8 +181,9 @@ export class TouchControls {
           }
           this.setKnob(dx, dy);
           // dead zone so a resting thumb doesn't creep
-          this.moveX = Math.abs(dx) > 8 ? dx / STICK_RADIUS : 0;
-          this.moveZ = Math.abs(dy) > 8 ? -dy / STICK_RADIUS : 0;
+          this.stickX = Math.abs(dx) > 8 ? dx / STICK_RADIUS : 0;
+          this.stickZ = Math.abs(dy) > 8 ? -dy / STICK_RADIUS : 0;
+          this.combine();
         } else if (t.identifier === this.lookId) {
           this.cb.onLook(t.clientX - this.lookLast.x, t.clientY - this.lookLast.y);
           this.lookLast = { x: t.clientX, y: t.clientY };
@@ -193,8 +194,9 @@ export class TouchControls {
       for (const t of Array.from(e.changedTouches)) {
         if (t.identifier === this.moveId) {
           this.moveId = null;
-          this.moveX = 0;
-          this.moveZ = 0;
+          this.stickX = 0;
+          this.stickZ = 0;
+          this.combine();
           this.stickBase.style.display = 'none';
           this.stickKnob.style.display = 'none';
         } else if (t.identifier === this.lookId) {

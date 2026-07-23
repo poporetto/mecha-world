@@ -48,6 +48,14 @@ export class MechaModel {
     pelvis.position.y = 2.0;
     const crotch = box(0.45, 0.5, 0.5, RED);
     crotch.position.set(0, 1.95, 0.28);
+    // yellow V mark on the front skirt, the RX-78 waist emblem
+    const vMarkL = box(0.3, 0.08, 0.06, YELLOW);
+    vMarkL.position.set(-0.12, 2.06, 0.52);
+    vMarkL.rotation.z = -0.5;
+    const vMarkR = vMarkL.clone();
+    vMarkR.position.x = 0.12;
+    vMarkR.rotation.z = 0.5;
+    g.add(vMarkL, vMarkR);
     const skirtF = box(0.95, 0.5, 0.14, WHITE);
     skirtF.position.set(0, 1.78, 0.46);
     skirtF.rotation.x = 0.18;
@@ -79,23 +87,23 @@ export class MechaModel {
     ventR.position.x = 0.42;
     const cockpit = box(0.3, 0.3, 0.14, RED);
     cockpit.position.set(0, 0.72, 0.56);
-    // yellow V emblem under the chest vents
-    const embL = box(0.4, 0.09, 0.1, YELLOW);
-    embL.position.set(-0.16, 0.55, 0.55);
-    embL.rotation.z = -0.5;
-    const embR = embL.clone();
-    embR.position.x = 0.16;
-    embR.rotation.z = 0.5;
     // white collar plates flanking the neck
     const collarL = box(0.35, 0.18, 0.7, WHITE);
     collarL.position.set(-0.55, 1.78, 0.05);
     const collarR = collarL.clone();
     collarR.position.x = 0.55;
-    this.torso.add(embL, embR, collarL, collarR);
+    this.torso.add(collarL, collarR);
 
     // backpack with twin thrusters
-    const backpack = box(1.15, 0.95, 0.5, WHITE);
+    const backpack = box(1.15, 0.95, 0.5, RED);
     backpack.position.set(0, 1.0, -0.72);
+    // twin beam-saber hilts racked on top of the backpack
+    const hiltRackL = box(0.13, 0.6, 0.13, 0x8a8d96);
+    hiltRackL.position.set(-0.4, 1.7, -0.75);
+    hiltRackL.rotation.x = -0.15;
+    const hiltRackR = hiltRackL.clone();
+    hiltRackR.position.x = 0.4;
+    this.torso.add(hiltRackL, hiltRackR);
     this.thrusterL = box(0.28, 0.55, 0.28, 0xffb054, 0xff8a2f);
     this.thrusterL.position.set(-0.34, 0.45, -0.78);
     this.thrusterL.visible = false;
@@ -173,7 +181,10 @@ export class MechaModel {
     ankle.position.y = -2.14;
     const foot = box(0.62, 0.28, 1.05, RED);
     foot.position.set(0, -2.0, 0.18);
-    leg.add(thigh, knee, shin, ankle, foot);
+    // white ankle guard plate over the red foot, RX-78 style
+    const ankleGuard = box(0.66, 0.22, 0.5, WHITE);
+    ankleGuard.position.set(0, -1.86, 0.35);
+    leg.add(thigh, knee, shin, ankle, foot, ankleGuard);
     return leg;
   }
 
@@ -195,6 +206,9 @@ export class MechaModel {
       body.position.set(0, -1.95, 0.1);
       const scope = box(0.14, 0.2, 0.5, JOINT);
       scope.position.set(0, -1.7, 0.35);
+      const sensor = box(0.1, 0.12, 0.1, YELLOW, YELLOW);
+      sensor.position.set(0, -1.7, 0.62);
+      arm.add(sensor);
       const muzzle = box(0.16, 0.35, 0.16, 0x39e6ff, 0x39e6ff);
       muzzle.position.set(0, -2.45, 0.1);
       arm.add(body, scope, muzzle);
