@@ -92,8 +92,8 @@ export class Kaiju extends Monster {
   name = 'GORGOSAUR';
   reward: Reward = 'beam';
   hitRadius = 19;
-  private legL: THREE.Mesh;
-  private legR: THREE.Mesh;
+  private legL: THREE.Group;
+  private legR: THREE.Group;
   private tail: THREE.Group;
   private heading = 0;
   private stompT = 0;
@@ -102,44 +102,116 @@ export class Kaiju extends Monster {
 
   constructor(x: number, z: number) {
     super(140);
-    const BODY = 0x50614a;
-    const BELLY = 0x8a9478;
-    const SPIKE = 0xd8e6ee;
+    const BODY = 0x49534a; // charcoal green hide
+    const BELLY = 0xb3ae95; // pale segmented underside
+    const PLATE = 0xdfe9f0; // bone dorsal plates
+    const CLAW = 0xe8e4d6;
 
-    const body = box(5, 4.5, 8, BODY);
-    body.position.set(0, 7, 0);
-    const belly = box(4.2, 3, 6.5, BELLY);
-    belly.position.set(0, 6, 0.5);
-    const head = box(2.8, 2.6, 4, BODY);
-    head.position.set(0, 10.5, 4.8);
-    const jaw = box(2.2, 0.9, 3, BELLY);
-    jaw.position.set(0, 9.2, 5.2);
-    const eyeL = box(0.5, 0.5, 0.5, 0xffa020, 0xffa020);
-    eyeL.position.set(-1.1, 11, 6.4);
-    const eyeR = eyeL.clone();
-    eyeR.position.x = 1.1;
-    this.legL = box(1.8, 6, 2.4, BODY);
-    this.legL.position.set(-2, 3, -1);
-    this.legR = this.legL.clone();
-    this.legR.position.x = 2;
-    const armL = box(1, 2.6, 1, BODY);
-    armL.position.set(-2.6, 8, 2.5);
-    const armR = armL.clone();
-    armR.position.x = 2.6;
-
-    this.tail = new THREE.Group();
-    for (let i = 0; i < 4; i++) {
-      const seg = box(2.2 - i * 0.4, 2.2 - i * 0.4, 3, BODY);
-      seg.position.set(0, 6.5 - i * 0.7, -5.5 - i * 2.6);
-      this.tail.add(seg);
-    }
+    // torso: broad chest over a heavier gut, leaning slightly forward
+    const chest = box(4.8, 4.2, 5.2, BODY);
+    chest.position.set(0, 8.6, 0.8);
+    const gut = box(4.4, 3.6, 4.8, BODY);
+    gut.position.set(0, 6.2, -0.4);
+    // stacked belly plates climbing the front
     for (let i = 0; i < 5; i++) {
-      const spike = box(0.7, 1.6 + (i === 2 ? 1 : 0), 0.9, SPIKE);
-      spike.position.set(0, 9.8 + (i === 2 ? 0.5 : 0), 2.5 - i * 1.8);
-      spike.rotation.x = 0.3;
-      this.group.add(spike);
+      const seg = box(3.1 - i * 0.2, 0.8, 0.6, BELLY);
+      seg.position.set(0, 5.2 + i * 1.05, 1.8 + i * 0.35);
+      this.group.add(seg);
     }
-    this.group.add(body, belly, head, jaw, eyeL, eyeR, this.legL, this.legR, armL, armR, this.tail);
+
+    // neck, skull with heavy brow, snout, hinged jaw
+    const neck = box(2.3, 2.4, 2.4, BODY);
+    neck.position.set(0, 11.2, 2.6);
+    const skull = box(2.7, 2.2, 3.4, BODY);
+    skull.position.set(0, 12.4, 4.4);
+    const brow = box(2.9, 0.7, 1.5, BODY);
+    brow.position.set(0, 13.4, 4.7);
+    const snout = box(1.9, 1.1, 2.4, BODY);
+    snout.position.set(0, 12.0, 6.4);
+    const jaw = box(1.7, 0.8, 2.8, BELLY);
+    jaw.position.set(0, 11.0, 5.9);
+    jaw.rotation.x = 0.22;
+    const eyeL = box(0.45, 0.4, 0.4, 0xffa020, 0xffa020);
+    eyeL.position.set(-1.05, 12.9, 5.5);
+    const eyeR = eyeL.clone();
+    eyeR.position.x = 1.05;
+    this.group.add(neck, skull, brow, snout, jaw, eyeL, eyeR);
+    // teeth along the snout edge
+    for (let i = 0; i < 4; i++) {
+      const tooth = box(0.24, 0.45, 0.24, CLAW);
+      tooth.position.set(-0.62 + i * 0.41, 11.35, 7.35);
+      this.group.add(tooth);
+    }
+
+    // three jagged rows of dorsal plates running down the spine
+    for (let i = 0; i < 7; i++) {
+      const h = 1.2 + Math.sin(i * 1.7) * 0.5 + (i === 3 ? 1.1 : 0);
+      const mid = box(0.5, h, 1.1, PLATE);
+      mid.position.set(0, 11.4 - i * 0.55 + h * 0.4, 2.6 - i * 1.7);
+      mid.rotation.x = 0.35;
+      this.group.add(mid);
+      if (i < 6) {
+        const sideL = box(0.4, h * 0.55, 0.8, PLATE);
+        sideL.position.set(-1.25, 10.9 - i * 0.55, 1.8 - i * 1.7);
+        sideL.rotation.x = 0.35;
+        const sideR = sideL.clone();
+        sideR.position.x = 1.25;
+        this.group.add(sideL, sideR);
+      }
+    }
+
+    // small clawed arms held in front of the chest
+    for (const side of [-1, 1]) {
+      const upper = box(1.0, 2.2, 1.0, BODY);
+      upper.position.set(side * 2.7, 8.6, 2.2);
+      upper.rotation.x = -0.5;
+      const fore = box(0.85, 1.6, 0.85, BODY);
+      fore.position.set(side * 2.7, 7.3, 3.1);
+      this.group.add(upper, fore);
+      for (let c = 0; c < 3; c++) {
+        const claw = box(0.2, 0.55, 0.2, CLAW);
+        claw.position.set(side * 2.7 - 0.25 + c * 0.25, 6.4, 3.3);
+        this.group.add(claw);
+      }
+    }
+
+    // legs: hip-pivoted groups with thigh, shin, foot, toe claws
+    const makeLeg = (side: number): THREE.Group => {
+      const leg = new THREE.Group();
+      leg.position.set(side * 2.2, 6.4, -0.8);
+      const thigh = box(2.3, 3.2, 3.0, BODY);
+      thigh.position.y = -1.2;
+      const shin = box(1.8, 2.8, 2.3, BODY);
+      shin.position.set(0, -3.4, 0.2);
+      const foot = box(2.2, 1.1, 3.1, BODY);
+      foot.position.set(0, -5.0, 0.7);
+      leg.add(thigh, shin, foot);
+      for (let c = 0; c < 3; c++) {
+        const claw = box(0.4, 0.5, 0.8, CLAW);
+        claw.position.set(-0.7 + c * 0.7, -5.2, 2.4);
+        leg.add(claw);
+      }
+      return leg;
+    };
+    this.legL = makeLeg(-1);
+    this.legR = makeLeg(1);
+
+    // long thick tail with bone spikes on top, drooping toward the tip
+    this.tail = new THREE.Group();
+    for (let i = 0; i < 6; i++) {
+      const s = 2.4 - i * 0.33;
+      const seg = box(s, s, 3, BODY);
+      seg.position.set(0, 6.0 - i * 0.85, -4.8 - i * 2.5);
+      this.tail.add(seg);
+      if (i < 5) {
+        const spike = box(0.4, 0.9 - i * 0.12, 0.7, PLATE);
+        spike.position.set(0, 6.0 - i * 0.85 + s * 0.62, -4.8 - i * 2.5);
+        spike.rotation.x = 0.4;
+        this.tail.add(spike);
+      }
+    }
+
+    this.group.add(chest, gut, this.legL, this.legR, this.tail);
     this.group.scale.setScalar(MONSTER_SCALE);
     this.group.position.set(x, 0, z);
     this.rememberEmissives();

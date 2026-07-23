@@ -34,6 +34,8 @@ export class MechaModel {
 
   swingT = -1; // 0..1 while swinging
   aiming = false;
+  private muzzle!: THREE.Mesh;
+  private aimT = 0; // rifle raised briefly after each shot
 
   constructor() {
     const g = this.group;
@@ -123,8 +125,24 @@ export class MechaModel {
     eyeR.position.x = 0.11;
     const chin = box(0.16, 0.14, 0.12, RED);
     chin.position.set(0, -0.2, 0.32);
+    // white cheek guards flanking the dark visor
+    const cheekL = box(0.1, 0.3, 0.2, WHITE);
+    cheekL.position.set(-0.26, -0.06, 0.26);
+    const cheekR = cheekL.clone();
+    cheekR.position.x = 0.26;
+    // grey mouth mask with twin vent slits under the visor
+    const mask = box(0.24, 0.12, 0.1, 0xc9ccd4);
+    mask.position.set(0, -0.21, 0.31);
+    const slitL = box(0.05, 0.06, 0.04, DARK);
+    slitL.position.set(-0.06, -0.21, 0.36);
+    const slitR = slitL.clone();
+    slitR.position.x = 0.06;
     const crest = box(0.12, 0.12, 0.08, RED);
     crest.position.set(0, 0.24, 0.32);
+    // red rear sensor camera on the back of the helmet
+    const rearCam = box(0.2, 0.1, 0.06, RED);
+    rearCam.position.set(0, 0.1, -0.3);
+    head.add(cheekL, cheekR, mask, slitL, slitR, rearCam);
     // V-fin: two blades rising from the center jewel, forming a V
     const finL = box(0.6, 0.07, 0.1, YELLOW);
     finL.geometry.translate(-0.3, 0, 0);
@@ -193,8 +211,12 @@ export class MechaModel {
     arm.position.set(x, 1.35, 0);
     const pauldron = box(0.72, 0.55, 0.8, WHITE);
     pauldron.position.y = 0.08;
-    const upper = box(0.42, 0.75, 0.46, JOINT);
+    // RX-78 upper arms are white with dark joint rings
+    const upper = box(0.42, 0.75, 0.46, WHITE);
     upper.position.y = -0.52;
+    const shoulderRing = box(0.46, 0.16, 0.5, JOINT);
+    shoulderRing.position.y = -0.18;
+    arm.add(shoulderRing);
     const elbow = box(0.36, 0.2, 0.4, DARK);
     elbow.position.y = -0.95;
     const fore = box(0.5, 0.85, 0.54, WHITE);
@@ -209,9 +231,9 @@ export class MechaModel {
       const sensor = box(0.1, 0.12, 0.1, YELLOW, YELLOW);
       sensor.position.set(0, -1.7, 0.62);
       arm.add(sensor);
-      const muzzle = box(0.16, 0.35, 0.16, 0x39e6ff, 0x39e6ff);
-      muzzle.position.set(0, -2.45, 0.1);
-      arm.add(body, scope, muzzle);
+      this.muzzle = box(0.16, 0.35, 0.16, 0xffb0e8, 0xffb0e8);
+      this.muzzle.position.set(0, -2.45, 0.1);
+      arm.add(body, scope, this.muzzle);
       // shield strapped to the outside of the rifle arm
       const shield = box(0.14, 1.9, 1.05, RED);
       shield.position.set(-0.42, -1.35, 0);
@@ -289,11 +311,22 @@ export class MechaModel {
         this.armR.rotation.set(0, 0, 0);
         this.torso.rotation.y = 0;
       }
-    } else if (this.aiming) {
-      this.armL.rotation.x = -Math.PI / 2;
     } else if (grounded && walk > 0.05) {
       this.armR.rotation.x = Math.sin(t * 8) * 0.4 * walk;
     }
+
+    // rifle arm levels at the target while beaming or just after a shot
+    this.aimT -= dt;
+    if (this.aiming || this.aimT > 0) this.armL.rotation.x = -Math.PI / 2;
+  }
+
+  // Raise the rifle for a shot and report the muzzle's world position.
+  // Forces a matrix update so the very first shot spawns at the muzzle.
+  fireRifle(out: THREE.Vector3): void {
+    this.aimT = 0.3;
+    this.armL.rotation.x = -Math.PI / 2;
+    this.group.updateMatrixWorld(true);
+    this.muzzle.getWorldPosition(out);
   }
 
   startSwing(): boolean {

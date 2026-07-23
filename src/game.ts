@@ -145,7 +145,7 @@ export class Game {
     window.addEventListener('keydown', (e) => {
       if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
       this.keys.add(e.code);
-      if (e.code === 'KeyF') this.fireLaser();
+      if (e.code === 'KeyR' || e.code === 'KeyF') this.fireLaser();
       if (e.code === 'KeyQ') this.novaPulse();
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
@@ -228,13 +228,15 @@ export class Game {
     this.laserCooldown = 0.22;
     sfx.laser();
     this.player.yaw = this.camYaw + Math.PI;
+    this.player.model.group.rotation.y = this.player.yaw; // face target this frame
     const dir = this.aimDir();
-    const from = this.player.pos.clone();
-    from.y += 6.6;
-    from.addScaledVector(dir, 3.8);
+    // bolt leaves the beam rifle's muzzle, arm raised in a firing pose
+    const from = new THREE.Vector3();
+    this.player.model.fireRifle(from);
+    from.addScaledVector(dir, 1.2);
     const mesh = new THREE.Mesh(
-      new THREE.BoxGeometry(0.25, 0.25, 1.6),
-      new THREE.MeshBasicMaterial({ color: 0x39e6ff })
+      new THREE.BoxGeometry(0.3, 0.3, 2.2),
+      new THREE.MeshBasicMaterial({ color: 0xffb0e8 })
     );
     mesh.position.copy(from);
     mesh.lookAt(from.clone().add(dir));

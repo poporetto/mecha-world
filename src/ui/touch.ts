@@ -80,7 +80,7 @@ export class TouchControls {
         <div class="tc-btn hidden" id="tc-nova">NOVA</div>
         <div class="tc-btn hidden" id="tc-beam">BEAM</div>
         <div class="tc-btn" id="tc-boost">BOOST</div>
-        <div class="tc-btn" id="tc-laser">LASER</div>
+        <div class="tc-btn" id="tc-laser">RIFLE</div>
         <div class="tc-btn" id="tc-jump">JUMP</div>
         <div class="tc-btn big" id="tc-saber">SABER</div>
       </div>
