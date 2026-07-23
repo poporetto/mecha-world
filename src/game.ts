@@ -5,7 +5,7 @@ import { World } from './core/world';
 import { ChunkManager } from './render/chunkManager';
 import { Player } from './entities/player';
 import { NpcManager } from './entities/npcs';
-import { IronColossus, Kaiju, Monster, MonsterCtx, Reward, RocketBeast, VoltSerpent } from './entities/monsters';
+import { CrimsonMantis, IronColossus, Kaiju, Monster, MonsterCtx, Reward, RocketBeast, SkyReaver, VoltSerpent } from './entities/monsters';
 import { CarManager } from './entities/cars';
 import { RepairManager } from './core/repair';
 import { Debris } from './fx/debris';
@@ -14,6 +14,7 @@ import { Explosions } from './fx/explosions';
 import { Sky } from './fx/sky';
 import { sfx } from './fx/sound';
 import { Hud } from './ui/hud';
+import { isTouchDevice, TouchControls } from './ui/touch';
 
 interface Projectile {
   pos: THREE.Vector3;
@@ -36,6 +37,7 @@ export class Game {
   private cars: CarManager;
   private debris = new Debris();
   private hud = new Hud();
+  private touch: TouchControls | null = null;
 
   private keys = new Set<string>();
   private mouseDown = [false, false, false];
@@ -71,7 +73,8 @@ export class Game {
   constructor() {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(window.devicePixelRatio);
+    // cap DPR: phones report 3+ which tanks the frame rate on a full-screen voxel scene
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     document.body.appendChild(this.renderer.domElement);
 
     this.camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 500);
@@ -106,6 +109,17 @@ export class Game {
     this.scene.add(this.beamMesh);
 
     this.bindInput();
+    if (isTouchDevice()) {
+      this.touch = new TouchControls(document.getElementById('hud')!, {
+        onSaber: () => { if (this.started) this.swingSaber(); },
+        onLaser: () => this.fireLaser(),
+        onNova: () => this.novaPulse(),
+        onLook: (dx, dy) => {
+          this.camYaw -= dx * 0.006;
+          this.camPitch = Math.max(-0.5, Math.min(1.2, this.camPitch + dy * 0.005));
+        },
+      });
+    }
     window.addEventListener('resize', () => {
       this.camera.aspect = window.innerWidth / window.innerHeight;
       this.camera.updateProjectionMatrix();
@@ -117,9 +131,10 @@ export class Game {
     this.hud.showStart(() => {
       this.started = true;
       sfx.ensure();
-      this.renderer.domElement.requestPointerLock();
+      sfx.startMusic();
+      if (!this.touch) this.renderer.domElement.requestPointerLock();
       this.hud.toast('DEPLOYED', 'Explore Neo Tokyo. Something big is coming…', 4);
-    });
+    }, this.touch !== null);
 
     this.renderer.setAnimationLoop(() => this.frame());
   }
@@ -297,7 +312,7 @@ export class Game {
   }
 
   private updateBeam(dt: number): void {
-    const active = this.player.abilities.beam && this.keys.has('KeyE') && this.started;
+    const active = this.player.abilities.beam && (this.keys.has('KeyE') || this.touch?.beam === true) && this.started;
     this.player.model.aiming = active;
     this.beamMesh.visible = active;
     if (active !== this.beamActive) {
@@ -439,6 +454,7 @@ export class Game {
         if (this.monster instanceof VoltSerpent) this.monster.removeSegmentsFrom(this.scene);
         this.monster = null;
         this.bossTimer = 25;
+        sfx.setMusicIntensity(0);
       }
       return;
     }
@@ -456,6 +472,8 @@ export class Game {
       { make: (x2, z2) => new RocketBeast(x2, z2), toast: ['⚠ AIRBORNE THREAT ⚠', 'MISSILE MAW inbound. Defeat it to earn ROCKET BOOTS.'] },
       { make: (x2, z2) => new VoltSerpent(x2, z2), toast: ['⚠ SEISMIC WEAVE ⚠', 'VOLT SERPENT surfacing. Defeat it to learn the NOVA PULSE.'] },
       { make: (x2, z2) => new IronColossus(x2, z2), toast: ['⚠ HEAVY FOOTFALLS ⚠', 'IRON COLOSSUS approaching. Defeat it to earn the AEGIS SHIELD.'] },
+      { make: (x2, z2) => new SkyReaver(x2, z2), toast: ['⚠ SHADOW OVERHEAD ⚠', 'SKY REAVER circling above. Watch for its strafing dives.'] },
+      { make: (x2, z2) => new CrimsonMantis(x2, z2), toast: ['⚠ RAPID MOVEMENT ⚠', 'CRIMSON MANTIS closing fast. Keep your distance from its scythes.'] },
     ];
 
     if (this.bossIndex < campaign.length) {
@@ -464,7 +482,7 @@ export class Game {
       this.hud.toast(entry.toast[0], entry.toast[1], 5);
     } else {
       // endless mode: any boss, scaled up each power level; reward = repairs + power
-      const pool = [Kaiju, RocketBeast, VoltSerpent, IronColossus];
+      const pool = [Kaiju, RocketBeast, VoltSerpent, IronColossus, SkyReaver, CrimsonMantis];
       const M = pool[Math.floor(Math.random() * pool.length)];
       const m = new M(x, z);
       m.maxHp = m.hp = Math.round(m.maxHp * (1.3 + this.powerLevel * 0.2));
@@ -476,12 +494,14 @@ export class Game {
     this.scene.add(this.monster.group);
     this.hud.showBoss(this.monster.name);
     sfx.roar();
+    sfx.setMusicIntensity(1);
   }
 
   private grantReward(reward: Reward): void {
     sfx.jingle();
     if (reward === 'beam') {
       this.player.abilities.beam = true;
+      this.touch?.unlock('beam');
       this.hud.unlock('beam', '<b>E (hold)</b> PLASMA BEAM');
       this.hud.toast('BEAM UNLOCKED', 'Hold E to fire the plasma beam', 5);
     } else if (reward === 'boots') {
@@ -490,6 +510,7 @@ export class Game {
       this.hud.toast('ROCKET BOOTS UNLOCKED', 'Hold SPACE in the air to fly', 5);
     } else if (reward === 'nova') {
       this.player.abilities.nova = true;
+      this.touch?.unlock('nova');
       this.hud.unlock('nova', '<b>Q</b> NOVA PULSE');
       this.hud.toast('NOVA PULSE UNLOCKED', 'Press Q for a devastating shockwave', 5);
     } else if (reward === 'shield') {
@@ -535,9 +556,17 @@ export class Game {
       const left = this.keys.has('KeyA') || this.keys.has('ArrowLeft');
       const back = this.keys.has('KeyS') || this.keys.has('ArrowDown');
       const fwd = this.keys.has('KeyW') || this.keys.has('ArrowUp');
-      const mx = (right ? 1 : 0) - (left ? 1 : 0);
-      const mz = (fwd ? 1 : 0) - (back ? 1 : 0);
-      this.player.update(dt, mx, mz, this.camYaw, this.keys.has('Space'), this.keys.has('ShiftLeft') || this.keys.has('ShiftRight'));
+      let mx = (right ? 1 : 0) - (left ? 1 : 0);
+      let mz = (fwd ? 1 : 0) - (back ? 1 : 0);
+      let jump = this.keys.has('Space');
+      let boost = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
+      if (this.touch) {
+        mx += this.touch.moveX;
+        mz += this.touch.moveZ;
+        jump = jump || this.touch.jump;
+        boost = boost || this.touch.boost;
+      }
+      this.player.update(dt, mx, mz, this.camYaw, jump, boost);
     } else {
       this.player.update(dt, 0, 0, this.camYaw, false, false);
     }

@@ -79,6 +79,19 @@ export class MechaModel {
     ventR.position.x = 0.42;
     const cockpit = box(0.3, 0.3, 0.14, RED);
     cockpit.position.set(0, 0.72, 0.56);
+    // yellow V emblem under the chest vents
+    const embL = box(0.4, 0.09, 0.1, YELLOW);
+    embL.position.set(-0.16, 0.55, 0.55);
+    embL.rotation.z = -0.5;
+    const embR = embL.clone();
+    embR.position.x = 0.16;
+    embR.rotation.z = 0.5;
+    // white collar plates flanking the neck
+    const collarL = box(0.35, 0.18, 0.7, WHITE);
+    collarL.position.set(-0.55, 1.78, 0.05);
+    const collarR = collarL.clone();
+    collarR.position.x = 0.55;
+    this.torso.add(embL, embR, collarL, collarR);
 
     // backpack with twin thrusters
     const backpack = box(1.15, 0.95, 0.5, WHITE);
@@ -117,7 +130,11 @@ export class MechaModel {
     earL.position.set(-0.34, -0.02, 0.05);
     const earR = earL.clone();
     earR.position.x = 0.34;
-    head.add(helmet, face, eyeL, eyeR, chin, crest, finL, finR, earL, earR);
+    // thin comms antenna off the left ear
+    const antenna = box(0.04, 0.5, 0.04, JOINT);
+    antenna.position.set(-0.36, 0.35, 0.05);
+    antenna.rotation.z = 0.15;
+    head.add(helmet, face, eyeL, eyeR, chin, crest, finL, finR, earL, earR, antenna);
     this.torso.add(head);
 
     this.armL = this.makeArm(-1.25, true); // rifle arm
@@ -131,6 +148,12 @@ export class MechaModel {
     this.saberBlade = box(0.2, 3.4, 0.2, SABER, SABER);
     this.saberBlade.position.set(0, -3.9, 0.3);
     this.saberBlade.visible = false;
+    // soft additive glow sleeve around the blade
+    const glow = new THREE.Mesh(
+      new THREE.BoxGeometry(0.42, 3.5, 0.42),
+      new THREE.MeshBasicMaterial({ color: SABER, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false })
+    );
+    this.saberBlade.add(glow);
     this.armR.add(this.saberBlade);
   }
 
@@ -198,7 +221,15 @@ export class MechaModel {
     this.thrusterR.visible = on;
   }
 
+  private flickerThrusters(t: number): void {
+    if (!this.thrusterL.visible) return;
+    const s = 0.85 + Math.abs(Math.sin(t * 31)) * 0.5;
+    this.thrusterL.scale.set(1, s, 1);
+    this.thrusterR.scale.set(1, 1.35 - (s - 0.85), 1);
+  }
+
   animate(t: number, speed: number, grounded: boolean, dt: number): void {
+    this.flickerThrusters(t);
     const walk = Math.min(1, speed / 9);
     const ph = t * 8;
     if (grounded && walk > 0.05) {

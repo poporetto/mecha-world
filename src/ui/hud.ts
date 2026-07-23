@@ -83,19 +83,23 @@ export class Hud {
     };
   }
 
-  showStart(onStart: () => void): void {
+  showStart(onStart: () => void, isTouch = false): void {
     const el = document.createElement('div');
     el.className = 'start';
+    const keys = isTouch
+      ? `<b>LEFT SIDE</b> joystick to move &nbsp; <b>RIGHT SIDE</b> drag to look around<br/>
+         <b>SABER / LASER</b> attack &nbsp; <b>JUMP (hold)</b> fly with rocket boots<br/>`
+      : `<b>ARROW KEYS / WASD</b> move &nbsp; <b>SHIFT</b> boost &nbsp; <b>SPACE</b> jump<br/>
+         <b>LEFT CLICK</b> light saber &nbsp; <b>RIGHT CLICK / F</b> laser cannon<br/>`;
     el.innerHTML = `
       <h1>MECHA CITY</h1>
       <h2>NEO TOKYO · INFINITE VOXEL FRONTIER</h2>
       <div class="keys">
-        <b>ARROW KEYS / WASD</b> move &nbsp; <b>SHIFT</b> boost &nbsp; <b>SPACE</b> jump<br/>
-        <b>LEFT CLICK</b> light saber &nbsp; <b>RIGHT CLICK / F</b> laser cannon<br/>
+        ${keys}
         Everything breaks. Citizens can't be hurt — but they will run.<br/>
         Hunt the monsters. Every boss you defeat teaches you a new power.
       </div>
-      <div class="go">CLICK TO DEPLOY</div>
+      <div class="go">${isTouch ? 'TAP' : 'CLICK'} TO DEPLOY</div>
     `;
     el.addEventListener('click', () => {
       el.remove();

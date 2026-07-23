@@ -488,3 +488,230 @@ export class IronColossus extends Monster {
     this.armR.rotation.x *= 1 - Math.min(1, dt * 2);
   }
 }
+
+// -------------------------------------------------------------- Sky Reaver
+
+// Flying manta that circles high, then folds its wings and dives straight
+// through the player's position, carving a trench where it strafes.
+export class SkyReaver extends Monster {
+  name = 'SKY REAVER';
+  reward: Reward = 'repair';
+  hitRadius = 14;
+  private wingL: THREE.Mesh;
+  private wingR: THREE.Mesh;
+  private orbitA = Math.random() * Math.PI * 2;
+  private diveT = 6;
+  private diving = false;
+  private diveDir = new THREE.Vector3();
+  private diveLife = 0;
+  private strafeT = 0;
+
+  constructor(x: number, z: number) {
+    super(190);
+    const HULL = 0x4a8a96; // teal
+    const BELLY = 0xbfd8d2;
+
+    const body = box(3.2, 1.6, 6.5, HULL);
+    body.position.y = 8;
+    const belly = box(2.6, 0.8, 5.5, BELLY);
+    belly.position.y = 7.2;
+    const head = box(1.8, 1.2, 2.2, HULL);
+    head.position.set(0, 8.2, 4);
+    const eye = box(1.4, 0.35, 0.3, 0xffe14f, 0xffe14f);
+    eye.position.set(0, 8.4, 5.1);
+    this.wingL = box(7, 0.4, 4, HULL);
+    this.wingL.geometry.translate(-3.5, 0, 0);
+    this.wingL.position.set(-1.4, 8.2, 0);
+    this.wingR = box(7, 0.4, 4, HULL);
+    this.wingR.geometry.translate(3.5, 0, 0);
+    this.wingR.position.set(1.4, 8.2, 0);
+    const tail = box(0.8, 0.5, 4, HULL);
+    tail.position.set(0, 8, -5);
+    const finT = box(0.4, 1.8, 1.6, BELLY);
+    finT.position.set(0, 9, -5.5);
+    this.group.add(body, belly, head, eye, this.wingL, this.wingR, tail, finT);
+    this.group.scale.setScalar(MONSTER_SCALE);
+    this.group.position.set(x, 26, z);
+    this.rememberEmissives();
+  }
+
+  update(dt: number, t: number, ctx: MonsterCtx): void {
+    this.updateFlash(dt);
+    if (this.updateDeath(dt)) return;
+
+    if (this.diving) {
+      this.diveLife -= dt;
+      this.group.position.addScaledVector(this.diveDir, 34 * dt);
+      // wings swept back during the dive
+      this.wingL.rotation.z = 0.85;
+      this.wingR.rotation.z = -0.85;
+      this.strafeT -= dt;
+      if (this.strafeT <= 0) {
+        this.strafeT = 0.22;
+        const p = this.group.position.clone();
+        p.y = Math.max(2, p.y - 4);
+        ctx.destroyAt(p, 4.5, 0.3);
+        if (this.group.position.distanceTo(ctx.playerPos) < 16) ctx.damagePlayer(10);
+      }
+      const gy = ctx.world.groundHeight(this.group.position.x, this.group.position.z, 40);
+      if (this.diveLife <= 0 || this.group.position.y < gy + 6) {
+        this.diving = false;
+        this.diveT = 5 + Math.random() * 3;
+      }
+      return;
+    }
+
+    // high circling
+    this.orbitA += dt * 0.35;
+    const R = 46;
+    const tx = ctx.playerPos.x + Math.sin(this.orbitA) * R;
+    const tz = ctx.playerPos.z + Math.cos(this.orbitA) * R;
+    this.group.position.x += (tx - this.group.position.x) * Math.min(1, dt * 1.2);
+    this.group.position.z += (tz - this.group.position.z) * Math.min(1, dt * 1.2);
+    const gy = ctx.world.groundHeight(this.group.position.x, this.group.position.z, 40);
+    const targetY = gy + 30 + Math.sin(t * 0.9) * 3;
+    this.group.position.y += (targetY - this.group.position.y) * Math.min(1, dt * 1.5);
+
+    const dx = ctx.playerPos.x - this.group.position.x;
+    const dz = ctx.playerPos.z - this.group.position.z;
+    this.group.rotation.y = Math.atan2(dx, dz);
+    // slow wing flaps while circling
+    this.wingL.rotation.z = Math.sin(t * 2.5) * 0.35;
+    this.wingR.rotation.z = -Math.sin(t * 2.5) * 0.35;
+
+    this.diveT -= dt;
+    if (this.diveT <= 0) {
+      this.diving = true;
+      this.diveLife = 3.2;
+      this.diveDir.copy(ctx.playerPos).sub(this.group.position);
+      this.diveDir.y -= 4; // aim slightly below the cockpit
+      this.diveDir.normalize();
+    }
+  }
+}
+
+// ----------------------------------------------------------- Crimson Mantis
+
+// Fast ground predator: sprints at the player, then lunges with scythe arms.
+export class CrimsonMantis extends Monster {
+  name = 'CRIMSON MANTIS';
+  reward: Reward = 'repair';
+  hitRadius = 12;
+  private scytheL: THREE.Group;
+  private scytheR: THREE.Group;
+  private legPhase = 0;
+  private lungeT = 3;
+  private slashT = -1; // 0..1 while slashing
+  private heading = 0;
+
+  constructor(x: number, z: number) {
+    super(170);
+    const SHELL = 0xc0433f; // crimson
+    const PLATE = 0xf0c9b2;
+
+    const thorax = box(2.4, 2.2, 4.5, SHELL);
+    thorax.position.y = 7;
+    const abdomen = box(2, 1.8, 3.5, PLATE);
+    abdomen.position.set(0, 6.6, -3.5);
+    abdomen.rotation.x = -0.25;
+    const neck = box(1.2, 1.2, 1.6, SHELL);
+    neck.position.set(0, 8.2, 2.6);
+    const head = box(1.8, 1.4, 1.6, SHELL);
+    head.position.set(0, 9, 3.6);
+    const eyeL = box(0.55, 0.55, 0.4, 0x8effc0, 0x8effc0);
+    eyeL.position.set(-0.65, 9.2, 4.3);
+    const eyeR = eyeL.clone();
+    eyeR.position.x = 0.65;
+    const antL = box(0.15, 1.6, 0.15, PLATE);
+    antL.position.set(-0.5, 10.2, 3.9);
+    antL.rotation.z = 0.4;
+    const antR = antL.clone();
+    antR.position.x = 0.5;
+    antR.rotation.z = -0.4;
+
+    // scythe arms: upper arm + long curved blade
+    const makeScythe = (side: number): THREE.Group => {
+      const arm = new THREE.Group();
+      arm.position.set(side * 1.4, 8, 2);
+      const upper = box(0.6, 2.2, 0.6, SHELL);
+      upper.position.y = -1;
+      const blade = box(0.35, 3.6, 0.7, PLATE);
+      blade.position.set(0, -2.2, 1);
+      blade.rotation.x = 0.5;
+      const tip = box(0.25, 1.2, 0.4, 0xffffff, 0x662222);
+      tip.position.set(0, -3.8, 2);
+      tip.rotation.x = 0.8;
+      arm.add(upper, blade, tip);
+      return arm;
+    };
+    this.scytheL = makeScythe(-1);
+    this.scytheR = makeScythe(1);
+
+    // four stilt legs
+    for (let i = 0; i < 4; i++) {
+      const leg = box(0.4, 6.5, 0.4, SHELL);
+      leg.position.set(i % 2 === 0 ? -1.2 : 1.2, 3.4, i < 2 ? 1 : -2);
+      leg.rotation.z = (i % 2 === 0 ? 1 : -1) * 0.25;
+      this.group.add(leg);
+    }
+    this.group.add(thorax, abdomen, neck, head, eyeL, eyeR, antL, antR, this.scytheL, this.scytheR);
+    this.group.scale.setScalar(MONSTER_SCALE);
+    this.group.position.set(x, 0, z);
+    this.rememberEmissives();
+  }
+
+  update(dt: number, t: number, ctx: MonsterCtx): void {
+    this.updateFlash(dt);
+    if (this.updateDeath(dt)) return;
+
+    const dx = ctx.playerPos.x - this.group.position.x;
+    const dz = ctx.playerPos.z - this.group.position.z;
+    const dist = Math.hypot(dx, dz);
+    const desired = Math.atan2(dx, dz);
+    let dd = desired - this.heading;
+    while (dd > Math.PI) dd -= Math.PI * 2;
+    while (dd < -Math.PI) dd += Math.PI * 2;
+    this.heading += dd * Math.min(1, dt * 3);
+    this.group.rotation.y = this.heading;
+
+    // sprint in, keep a slight standoff
+    if (dist > 16) {
+      const speed = 11;
+      this.group.position.x += Math.sin(this.heading) * speed * dt;
+      this.group.position.z += Math.cos(this.heading) * speed * dt;
+      this.legPhase += dt * 10;
+    }
+    const gy = ctx.world.groundHeight(this.group.position.x, this.group.position.z, 20);
+    this.group.position.y += ((gy > 14 ? 0 : gy) - this.group.position.y) * Math.min(1, dt * 4);
+
+    // idle sway + raised scythes
+    const sway = Math.sin(t * 3) * 0.1;
+    this.group.rotation.z = sway * 0.3;
+
+    // slash attack when close
+    if (this.slashT >= 0) {
+      this.slashT += dt / 0.5;
+      const s = Math.min(1, this.slashT);
+      const swing = Math.sin(s * Math.PI) * 2.2;
+      this.scytheL.rotation.x = -0.6 - swing;
+      this.scytheR.rotation.x = -0.6 - swing;
+      if (s > 0.45 && s < 0.6) {
+        const p = this.group.position.clone();
+        const fwd = new THREE.Vector3(Math.sin(this.heading), 0, Math.cos(this.heading));
+        p.addScaledVector(fwd, 14);
+        p.y += 6;
+        ctx.destroyAt(p, 4, 0.25);
+        if (dist < 26) ctx.damagePlayer(13);
+      }
+      if (this.slashT >= 1) this.slashT = -1;
+    } else {
+      this.scytheL.rotation.x = -0.6 + Math.sin(t * 2) * 0.1;
+      this.scytheR.rotation.x = -0.6 - Math.sin(t * 2) * 0.1;
+      this.lungeT -= dt;
+      if (this.lungeT <= 0 && dist < 30) {
+        this.lungeT = 2.2;
+        this.slashT = 0;
+      }
+    }
+  }
+}
