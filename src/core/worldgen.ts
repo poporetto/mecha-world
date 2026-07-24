@@ -78,10 +78,42 @@ function buildTorii(dx: number, dz: number, set: (y: number, id: number) => void
   }
 }
 
+// Five-tier red pagoda on a stone base (Senso-ji / Toji homage)
+function buildTemple(dx: number, dz: number, set: (y: number, id: number) => void) {
+  const ax = Math.abs(dx), az = Math.abs(dz);
+  // stone podium
+  if (ax <= 9 && az <= 9) set(1, B.Sidewalk);
+  if (ax <= 8 && az <= 8) set(2, B.Wood);
+  const tiers = 5;
+  let y = 3;
+  for (let t = 0; t < tiers; t++) {
+    const body = 5 - t * 0.6;
+    const eave = body + 1.6;
+    const bh = 3; // body height per tier
+    // wooden body: red pillars + white walls
+    for (let by = 0; by < bh; by++) {
+      if (ax <= body && az <= body) {
+        const onEdge = ax >= body - 1 || az >= body - 1;
+        set(y + by, onEdge ? B.Red : B.White);
+      }
+    }
+    y += bh;
+    // flared terracotta roof (one flat overhanging slab + upturned rim)
+    if (ax <= eave && az <= eave) set(y, B.TempleRoof);
+    if ((ax <= eave && az <= eave) && (ax >= eave - 1 || az >= eave - 1)) set(y + 1, B.TempleRoof);
+    y += 1;
+  }
+  // golden finial spire
+  if (dx === 0 && dz === 0) {
+    for (let i = 0; i < 6; i++) set(y + i, B.Gold);
+  }
+}
+
 export const LANDMARKS: Landmark[] = [
   { x: 55, z: -45, r: 17, build: buildTower },
   { x: -70, z: -100, r: 15, build: buildSpire },
   { x: 6, z: 58, r: 16, build: buildTorii },
+  { x: -40, z: 70, r: 13, build: buildTemple },
 ];
 
 // ------------------------------------------------------------- column logic
@@ -145,8 +177,9 @@ function lotParams(lotX: number, lotZ: number): LotParams {
   } else {
     height = 4 + Math.floor(h1 * 7); // low-rise sprawl
   }
-  const walls = [B.WallGray, B.WallTan, B.WallBrick, B.WallGray];
-  const wall = glassy ? B.Window : walls[Math.floor(h2 * 4) % 4];
+  // mostly white towers with the occasional warm or blush facade
+  const walls = [B.WallGray, B.WallGray, B.White, B.WallTan, B.WallGray, B.WallBrick];
+  const wall = glassy ? B.Window : walls[Math.floor(h2 * 6) % 6];
   const inset = Math.floor(hash2(lotX + 17, lotZ - 61) * 3);
   let neon = 0;
   if (district > 0.48 && h2 > 0.2) neon = h1 > 0.5 ? B.NeonPink : B.NeonCyan;
@@ -169,6 +202,11 @@ function treeHeight(x: number, z: number): number {
   return 4 + Math.floor(hash2(x - 555, z + 777) * 3);
 }
 
+// Some park/riverbank trees bloom as cherry blossom instead of green.
+function isSakura(x: number, z: number): boolean {
+  return hash2(x + 313, z - 131) < 0.4;
+}
+
 // ------------------------------------------------------------ chunk builder
 
 export function generateChunkData(cx: number, cz: number): Uint8Array {
@@ -183,6 +221,26 @@ export function generateChunkData(cx: number, cz: number): Uint8Array {
       const z = cz * CS + lz;
       const info = columnInfo(x, z);
       const setY = (y: number, id: number) => set(lx, y, lz, id);
+
+      // a road crossing the river becomes a vermilion bridge deck
+      const onRoadLine = mod(x, CELL) < ROAD_W || mod(z, CELL) < ROAD_W;
+      const overWater = info.kind === ColKind.Water || info.kind === ColKind.Bank;
+      if (overWater && onRoadLine) {
+        const DECK = 3;
+        if (info.kind === ColKind.Water) setY(0, B.Water);
+        else setY(0, B.Sand);
+        // support pillars down into the water
+        if (info.kind === ColKind.Water && mod(x, 4) === 0 && mod(z, 4) === 0) {
+          for (let y = 1; y < DECK; y++) setY(y, B.BridgeDeck);
+        }
+        setY(DECK, B.BridgeDeck);
+        // railings along the deck edges
+        const lxm = mod(x, CELL), lzm = mod(z, CELL);
+        const nsBridge = lxm < ROAD_W;
+        const edge = nsBridge ? (lxm === 0 || lxm === ROAD_W - 1) : (lzm === 0 || lzm === ROAD_W - 1);
+        if (edge) { setY(DECK + 1, B.BridgeDeck); setY(DECK + 2, B.Red); }
+        continue;
+      }
 
       switch (info.kind) {
         case ColKind.Water:
@@ -286,16 +344,19 @@ export function generateChunkData(cx: number, cz: number): Uint8Array {
         for (let ax = x - 2; ax <= x + 2; ax++) {
           if (!isTreeAnchor(ax, az)) continue;
           const th = treeHeight(ax, az);
+          const sakura = isSakura(ax, az);
+          const trunkId = sakura ? B.SakuraTrunk : B.Trunk;
+          const leafId = sakura ? B.Sakura : B.Leaves;
           const dx = Math.abs(x - ax), dz2 = Math.abs(z - az);
           if (dx === 0 && dz2 === 0) {
-            for (let y = 1; y < th; y++) setY(y, B.Trunk);
+            for (let y = 1; y < th; y++) setY(y, trunkId);
           }
           if (!(dx === 2 && dz2 === 2)) {
             for (let y = th - 1; y <= th + 1; y++) {
-              if (data[(Math.min(y, H - 1) * CS + lz) * CS + lx] === B.Air) setY(y, B.Leaves);
+              if (data[(Math.min(y, H - 1) * CS + lz) * CS + lx] === B.Air) setY(y, leafId);
             }
           }
-          if (dx <= 1 && dz2 <= 1 && !(dx === 1 && dz2 === 1)) setY(th + 2, B.Leaves);
+          if (dx <= 1 && dz2 <= 1 && !(dx === 1 && dz2 === 1)) setY(th + 2, leafId);
         }
       }
     }
