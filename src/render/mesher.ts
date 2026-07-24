@@ -47,7 +47,9 @@ export function buildChunkGeometry(world: World, cx: number, cz: number): THREE.
           }
           const visible = id === B.Water
             ? nid === B.Air
-            : (nid === B.Air || nid === B.Water);
+            : id === B.Puddle
+            ? nid === B.Air // puddles only show faces against open air
+            : (nid === B.Air || nid === B.Water || nid === B.Puddle);
           if (!visible) continue;
 
           const base = positions.length / 3;

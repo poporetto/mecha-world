@@ -55,6 +55,18 @@ export class World {
     c[(y * CS + lz) * CS + lx] = id;
   }
 
+  // Chunk keys a block edit dirties (its own chunk + any bordering neighbor).
+  dirtyKeysFor(x: number, z: number): string[] {
+    const cx = Math.floor(x / CS), cz = Math.floor(z / CS);
+    const keys = [this.key(cx, cz)];
+    const lx = x - cx * CS, lz = z - cz * CS;
+    if (lx === 0) keys.push(this.key(cx - 1, cz));
+    if (lx === CS - 1) keys.push(this.key(cx + 1, cz));
+    if (lz === 0) keys.push(this.key(cx, cz - 1));
+    if (lz === CS - 1) keys.push(this.key(cx, cz + 1));
+    return keys;
+  }
+
   solidAt(x: number, y: number, z: number): boolean {
     return isSolid(this.getBlock(Math.floor(x), Math.floor(y), Math.floor(z)));
   }

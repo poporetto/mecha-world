@@ -5,7 +5,9 @@ import { World } from './core/world';
 import { ChunkManager } from './render/chunkManager';
 import { Player } from './entities/player';
 import { NpcManager } from './entities/npcs';
-import { CrimsonMantis, DeepMaw, IronColossus, Kaiju, MagmaGolem, Monster, MonsterCtx, Reward, RocketBeast, SkyReaver, VoltSerpent } from './entities/monsters';
+import { CinderWyrm, CrimsonMantis, DeepMaw, IronColossus, Kaiju, MagmaGolem, Monster, MonsterCtx, Reward, RocketBeast, SkyReaver, TideLeviathan, VoltSerpent } from './entities/monsters';
+import { FireManager } from './fx/fire';
+import { FloodManager } from './fx/flood';
 import { CarManager } from './entities/cars';
 import { RepairManager } from './core/repair';
 import { Debris } from './fx/debris';
@@ -58,6 +60,8 @@ export class Game {
   private falling: FallingChunk[] = [];
   private lastBoomSound = 0;
   private explosions = new Explosions();
+  private fire = new FireManager();
+  private flood = new FloodManager();
   private repair: RepairManager;
   private hemi: THREE.HemisphereLight;
   private sun: THREE.DirectionalLight;
@@ -103,7 +107,7 @@ export class Game {
     this.npcs = new NpcManager(this.world);
     this.cars = new CarManager(this.world);
     this.repair = new RepairManager(this.world);
-    this.scene.add(this.npcs.group, this.cars.group, this.debris.mesh, this.explosions.group);
+    this.scene.add(this.npcs.group, this.cars.group, this.debris.mesh, this.explosions.group, this.fire.group);
 
 
     // beam (unlockable): a long emissive box scaled to hit distance
@@ -540,6 +544,11 @@ export class Game {
         fireRocket: (f, t) => this.fireRocket(f, t),
         throwBoulder: (f, t) => this.throwBoulder(f, t),
         zapAt: (p) => this.zapAt(p),
+        igniteAt: (p, r) => { this.fire.igniteSphere(this.world, p.x, p.y, p.z, r); },
+        floodAt: (p, r) => {
+          const dirty = this.flood.floodSphere(this.world, p.x, p.z, r);
+          if (dirty.size) this.chunks.markDirty(dirty);
+        },
       };
       this.monster.update(dt, this.time, ctx);
       this.hud.setBossHP(this.monster.hp / this.monster.maxHp);
@@ -579,6 +588,8 @@ export class Game {
       { make: (x2, z2) => new CrimsonMantis(x2, z2), toast: ['⚠ RAPID MOVEMENT ⚠', 'CRIMSON MANTIS closing fast. Keep your distance from its scythes.'] },
       { make: (x2, z2) => new MagmaGolem(x2, z2), toast: ['⚠ MOLTEN MASS ⚠', 'MAGMA GOLEM erupting. Dodge its ground slams.'] },
       { make: (x2, z2) => new DeepMaw(x2, z2), toast: ['⚠ TREMORS ⚠', 'DEEP MAW burrowing below. It strikes from underground — keep moving.'] },
+      { make: (x2, z2) => new CinderWyrm(x2, z2), toast: ['⚠ FIRESTORM ⚠', 'CINDER WYRM torching the district. Put it down before the city burns.'] },
+      { make: (x2, z2) => new TideLeviathan(x2, z2), toast: ['⚠ FLOOD WARNING ⚠', 'TIDE LEVIATHAN surfacing. Its aqua blaster drowns the streets.'] },
     ];
 
     if (this.bossIndex < campaign.length) {
@@ -587,7 +598,7 @@ export class Game {
       this.hud.toast(entry.toast[0], entry.toast[1], 5);
     } else {
       // endless mode: any boss, scaled up each power level; reward = repairs + power
-      const pool = [Kaiju, RocketBeast, VoltSerpent, IronColossus, SkyReaver, CrimsonMantis, MagmaGolem, DeepMaw];
+      const pool = [Kaiju, RocketBeast, VoltSerpent, IronColossus, SkyReaver, CrimsonMantis, MagmaGolem, DeepMaw, CinderWyrm, TideLeviathan];
       const M = pool[Math.floor(Math.random() * pool.length)];
       const m = new M(x, z);
       m.maxHp = m.hp = Math.round(m.maxHp * (1.3 + this.powerLevel * 0.2));
@@ -708,6 +719,9 @@ export class Game {
     this.updateFalling(dt);
     this.debris.update(dt);
     this.explosions.update(dt);
+    this.updateFire(dt);
+    const fl = this.flood.update(dt, this.world);
+    if (fl) this.chunks.markDirty(fl.dirty);
 
     // townspeople rebuild the city while things are quiet
     const rep = this.repair.update(dt, this.time, this.player.pos.x, this.player.pos.z);
@@ -733,6 +747,27 @@ export class Game {
 
     this.updateCamera();
     this.renderer.render(this.scene, this.camera);
+  }
+
+  // burn tick: consumed blocks puff to debris + dirty their chunks; a fire
+  // that eats through a building's base can undermine it into a collapse
+  private updateFire(dt: number): void {
+    const res = this.fire.update(dt, this.world);
+    if (!res) return;
+    if (res.dirty.size) {
+      this.chunks.markDirty(res.dirty);
+      this.repair.noteDamage(res.dirty, this.time);
+    }
+    let lowest: [number, number, number] | null = null;
+    for (const b of res.destroyed) {
+      if (Math.random() < 0.5) this.debris.burst(new THREE.Vector3(b[0] + 0.5, b[1] + 0.5, b[2] + 0.5), [12], 3);
+      if (!lowest || b[1] < lowest[1]) lowest = b;
+    }
+    // a low burnt-out block may have gutted the foundation
+    if (lowest && lowest[1] < 10) {
+      _v.set(lowest[0] + 0.5, lowest[1] + 0.5, lowest[2] + 0.5);
+      this.checkCollapse(_v, 5);
+    }
   }
 
   private updateProjectiles(dt: number): void {

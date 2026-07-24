@@ -32,6 +32,7 @@ export const enum B {
   Gold = 28,
   BridgeDeck = 29,
   Lantern = 30,
+  Puddle = 31,
 }
 
 export const BLOCK_COLORS: number[] = [];
@@ -67,7 +68,19 @@ BLOCK_COLORS[B.TempleRoof] = 0xd98a72; // terracotta tile
 BLOCK_COLORS[B.Gold] = 0xf3cf7a;
 BLOCK_COLORS[B.BridgeDeck] = 0xe08a7a; // vermilion bridge
 BLOCK_COLORS[B.Lantern] = 0xffd9a8;
+BLOCK_COLORS[B.Puddle] = 0x86c5e8; // shallow water left by the aqua blaster
 
 export function isSolid(id: number): boolean {
-  return id !== B.Air && id !== B.Water;
+  return id !== B.Air && id !== B.Water && id !== B.Puddle;
+}
+
+// Blocks that catch fire — building materials and vegetation, not stone/roads.
+const FLAMMABLE = new Set<number>([
+  B.WallGray, B.WallTan, B.WallBrick, B.Window, B.WindowLit, B.Roof,
+  B.Trunk, B.Leaves, B.Sakura, B.SakuraTrunk, B.Wood, B.TempleRoof,
+  B.Red, B.White, B.Yellow,
+]);
+
+export function isFlammable(id: number): boolean {
+  return FLAMMABLE.has(id);
 }

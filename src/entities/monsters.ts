@@ -13,6 +13,8 @@ export interface MonsterCtx {
   fireRocket?: (from: THREE.Vector3, toward: THREE.Vector3) => void;
   throwBoulder?: (from: THREE.Vector3, toward: THREE.Vector3) => void;
   zapAt?: (p: THREE.Vector3) => void;
+  igniteAt?: (p: THREE.Vector3, r: number) => void; // flamethrower
+  floodAt?: (p: THREE.Vector3, r: number) => void; // aqua blaster
 }
 
 function box(w: number, h: number, d: number, color: number, emissive = 0): THREE.Mesh {
@@ -995,6 +997,209 @@ export class DeepMaw extends Monster {
       if (this.phaseT <= 0) {
         this.submerged = true;
         this.phaseT = 2 + Math.random() * 1.5;
+      }
+    }
+  }
+}
+
+// --------------------------------------------------------------- Cinder Wyrm
+
+// Fire drake: circles low and breathes a flamethrower cone that sets buildings
+// ablaze and scorches the player. The fire keeps spreading after it moves on.
+export class CinderWyrm extends Monster {
+  name = 'CINDER WYRM';
+  reward: Reward = 'repair';
+  hitRadius = 13;
+  private wingL: THREE.Mesh;
+  private wingR: THREE.Mesh;
+  private maw: THREE.Mesh;
+  private orbitA = Math.random() * Math.PI * 2;
+  private breathT = 3;
+  private breathing = 0; // seconds left in a breath
+
+  constructor(x: number, z: number) {
+    super(185);
+    const SCALE = 0x8c2f24; // dark ember red
+    const UNDER = 0xf0a24a; // glowing underscale
+    const HORN = 0x3a2420;
+
+    const body = box(3, 2.6, 6.5, SCALE);
+    body.position.y = 8;
+    const neck = box(1.8, 1.8, 2.4, SCALE);
+    neck.position.set(0, 8.8, 4);
+    const head = box(2.2, 1.8, 2.6, SCALE);
+    head.position.set(0, 9.2, 6);
+    this.maw = box(1.8, 0.9, 1.4, 0xffc65a, 0xff7a2f);
+    this.maw.position.set(0, 8.7, 7.2);
+    const eyeL = box(0.4, 0.4, 0.3, 0xffe14f, 0xffe14f);
+    eyeL.position.set(-0.7, 9.6, 6.9);
+    const eyeR = eyeL.clone();
+    eyeR.position.x = 0.7;
+    const hornL = box(0.35, 1.4, 0.35, HORN);
+    hornL.position.set(-0.7, 10.4, 5.4);
+    hornL.rotation.z = 0.35;
+    const hornR = hornL.clone();
+    hornR.position.x = 0.7;
+    hornR.rotation.z = -0.35;
+    const belly = box(2.2, 0.6, 5.5, UNDER, 0xff8a2f);
+    belly.position.set(0, 6.7, 0.4);
+    this.wingL = box(7, 0.3, 4.5, SCALE);
+    this.wingL.geometry.translate(-3.5, 0, 0);
+    this.wingL.position.set(-1.3, 9, 0);
+    this.wingR = box(7, 0.3, 4.5, SCALE);
+    this.wingR.geometry.translate(3.5, 0, 0);
+    this.wingR.position.set(1.3, 9, 0);
+    const tail = box(1.2, 1.2, 5, SCALE);
+    tail.position.set(0, 7.8, -5.5);
+    const tailTip = box(1.6, 0.4, 1.6, UNDER, 0xff8a2f);
+    tailTip.position.set(0, 7.8, -8);
+    this.group.add(body, neck, head, this.maw, eyeL, eyeR, hornL, hornR, belly, this.wingL, this.wingR, tail, tailTip);
+    this.group.scale.setScalar(MONSTER_SCALE);
+    this.group.position.set(x, 22, z);
+    this.rememberEmissives();
+  }
+
+  update(dt: number, t: number, ctx: MonsterCtx): void {
+    this.updateFlash(dt);
+    if (this.updateDeath(dt)) return;
+
+    // circle the player at mid altitude
+    this.orbitA += dt * 0.3;
+    const R = 40;
+    const tx = ctx.playerPos.x + Math.sin(this.orbitA) * R;
+    const tz = ctx.playerPos.z + Math.cos(this.orbitA) * R;
+    this.group.position.x += (tx - this.group.position.x) * Math.min(1, dt * 1.1);
+    this.group.position.z += (tz - this.group.position.z) * Math.min(1, dt * 1.1);
+    const gy = ctx.world.groundHeight(this.group.position.x, this.group.position.z, 40);
+    const targetY = gy + 20 + Math.sin(t * 0.8) * 3;
+    this.group.position.y += (targetY - this.group.position.y) * Math.min(1, dt * 1.5);
+
+    const dx = ctx.playerPos.x - this.group.position.x;
+    const dz = ctx.playerPos.z - this.group.position.z;
+    this.group.rotation.y = Math.atan2(dx, dz);
+    this.wingL.rotation.z = Math.sin(t * 3) * 0.4;
+    this.wingR.rotation.z = -Math.sin(t * 3) * 0.4;
+
+    // flamethrower: sweep a line of fire from the maw toward the player
+    this.breathT -= dt;
+    if (this.breathT <= 0 && this.breathing <= 0) {
+      this.breathing = 1.6;
+      this.breathT = 5 + Math.random() * 2;
+    }
+    (this.maw.material as THREE.MeshLambertMaterial).emissiveIntensity = this.breathing > 0 ? 1.4 : 1;
+    if (this.breathing > 0) {
+      this.breathing -= dt;
+      const from = this.group.position.clone();
+      from.y += 8;
+      const dir = ctx.playerPos.clone().setY(ctx.playerPos.y + 4).sub(from).normalize();
+      // spray flame along the breath line
+      for (let d = 8; d <= 46; d += 6) {
+        const p = from.clone().addScaledVector(dir, d);
+        if (ctx.igniteAt) ctx.igniteAt(p, 4);
+        if (ctx.destroyAt && Math.random() < 0.15) ctx.destroyAt(p, 2, 0.1);
+      }
+      const tip = from.clone().addScaledVector(dir, from.distanceTo(ctx.playerPos));
+      if (tip.distanceTo(ctx.playerPos) < 12) ctx.damagePlayer(14 * dt);
+    }
+  }
+}
+
+// ------------------------------------------------------------ Tide Leviathan
+
+// Water titan: wades toward the player and fires its aqua blaster in bursts,
+// which blows chunks out of buildings and leaves spreading floodwater behind.
+export class TideLeviathan extends Monster {
+  name = 'TIDE LEVIATHAN';
+  reward: Reward = 'repair';
+  hitRadius = 16;
+  private finL: THREE.Mesh;
+  private finR: THREE.Mesh;
+  private cannon: THREE.Mesh;
+  private heading = 0;
+  private fireT = 2.5;
+  private burst = 0;
+
+  constructor(x: number, z: number) {
+    super(230);
+    const HIDE = 0x2f6f8c; // deep teal
+    const BELLY = 0xbfe6ee;
+    const FIN = 0x4fa8c4;
+
+    const torso = box(5, 5.5, 5, HIDE);
+    torso.position.y = 9;
+    const belly = box(3.6, 3.6, 4, BELLY);
+    belly.position.set(0, 7.5, 1.4);
+    const head = box(3, 2.6, 3, HIDE);
+    head.position.set(0, 13, 1.2);
+    const jaw = box(2.6, 0.9, 2.6, BELLY);
+    jaw.position.set(0, 11.6, 1.8);
+    const eyeL = box(0.5, 0.5, 0.4, 0x9ffcff, 0x9ffcff);
+    eyeL.position.set(-0.9, 13.4, 2.5);
+    const eyeR = eyeL.clone();
+    eyeR.position.x = 0.9;
+    const crest = box(0.4, 2.2, 2.6, FIN);
+    crest.position.set(0, 14.6, 0.6);
+    this.finL = box(0.5, 3.5, 3, FIN);
+    this.finL.position.set(-2.8, 9.5, 0);
+    this.finL.rotation.z = 0.4;
+    this.finR = this.finL.clone();
+    this.finR.position.x = 2.8;
+    this.finR.rotation.z = -0.4;
+    // aqua cannon mounted on the right arm
+    const arm = box(1.8, 4.5, 1.8, HIDE);
+    arm.position.set(3.2, 8, 1.5);
+    this.cannon = box(1.6, 1.6, 3.2, 0x9ffcff, 0x2f9fd0);
+    this.cannon.position.set(3.2, 6.5, 3.4);
+    const legL = box(2, 5.5, 2.4, HIDE);
+    legL.position.set(-1.6, 4, 0);
+    const legR = legL.clone();
+    legR.position.x = 1.6;
+    this.group.add(torso, belly, head, jaw, eyeL, eyeR, crest, this.finL, this.finR, arm, this.cannon, legL, legR);
+    this.group.scale.setScalar(MONSTER_SCALE);
+    this.group.position.set(x, 0, z);
+    this.rememberEmissives();
+  }
+
+  update(dt: number, t: number, ctx: MonsterCtx): void {
+    this.updateFlash(dt);
+    if (this.updateDeath(dt)) return;
+
+    const dx = ctx.playerPos.x - this.group.position.x;
+    const dz = ctx.playerPos.z - this.group.position.z;
+    const dist = Math.hypot(dx, dz);
+    const desired = Math.atan2(dx, dz);
+    let dd = desired - this.heading;
+    while (dd > Math.PI) dd -= Math.PI * 2;
+    while (dd < -Math.PI) dd += Math.PI * 2;
+    this.heading += dd * Math.min(1, dt * 1.3);
+    this.group.rotation.y = this.heading;
+
+    if (dist > 30) {
+      const speed = 4;
+      this.group.position.x += Math.sin(this.heading) * speed * dt;
+      this.group.position.z += Math.cos(this.heading) * speed * dt;
+    }
+    const gy = ctx.world.groundHeight(this.group.position.x, this.group.position.z, 20);
+    this.group.position.y += ((gy > 14 ? 0 : gy) - this.group.position.y) * Math.min(1, dt * 2.5);
+    this.finL.rotation.x = Math.sin(t * 2) * 0.2;
+    this.finR.rotation.x = -Math.sin(t * 2) * 0.2;
+
+    // aqua blaster: a rapid burst of water shots that flood where they land
+    this.fireT -= dt;
+    if (this.fireT <= 0 && this.burst <= 0) {
+      this.burst = 1.2;
+      this.fireT = 4.5;
+    }
+    (this.cannon.material as THREE.MeshLambertMaterial).emissiveIntensity = this.burst > 0 ? 1.5 : 1;
+    if (this.burst > 0) {
+      this.burst -= dt;
+      if (Math.random() < 0.4) {
+        const target = ctx.playerPos.clone();
+        target.x += (Math.random() - 0.5) * 24;
+        target.z += (Math.random() - 0.5) * 24;
+        if (ctx.floodAt) ctx.floodAt(target, 5);
+        ctx.destroyAt(target.clone().setY(gy + 4), 3.5, 0.2);
+        if (target.distanceTo(ctx.playerPos) < 12) ctx.damagePlayer(10);
       }
     }
   }
