@@ -77,6 +77,12 @@ export class Game {
   private monster: Monster | null = null;
   private bossIndex = 0; // progression through the campaign bosses
   private bossTimer = 14;
+  private wave = 0;
+  private score = 0;
+  private combo = 1;
+  private comboTimer = 0;
+  private shake = 0; // camera shake magnitude, decays
+  private slowmo = 0; // seconds of slow-motion remaining
   private clock = new THREE.Clock();
   private time = 0;
 
@@ -141,8 +147,11 @@ export class Game {
 
     this.hud.bindWeaponWheel((w) => this.selectWeapon(w));
 
-    // DEBUG: start with every ability/weapon unlocked for testing
-    this.unlockEverything();
+    // ?debug (or ?all) unlocks every ability/weapon up front for testing;
+    // real players keep the defeat-a-boss-to-unlock progression
+    const params = new URLSearchParams(location.search);
+    if (params.has('debug') || params.has('all')) this.unlockEverything();
+    else this.selectWeapon('saber');
 
     this.hud.showStart(() => {
       this.started = true;
@@ -454,6 +463,8 @@ export class Game {
     if (_v.distanceTo(p) < radius + m.hitRadius) {
       m.takeDamage(dmg);
       this.debris.burst(p, [15], 6);
+      this.addScore(Math.round(dmg * 2), true);
+      this.hud.popDamage(dmg);
       return true;
     }
     return false;
@@ -468,12 +479,31 @@ export class Game {
     const along = toM.dot(dir);
     if (along < 0 || along > maxDist) return;
     const perp = toM.sub(dir.clone().multiplyScalar(along)).length();
-    if (perp < m.hitRadius) m.takeDamage(dmg);
+    if (perp < m.hitRadius) {
+      m.takeDamage(dmg);
+      this.addScore(Math.round(dmg * 2), true);
+      this.hud.popDamage(dmg);
+    }
   }
 
-  private destroyAt(p: THREE.Vector3, r: number, _shake: number): void {
+  // Award points with the current combo multiplier and refresh the combo.
+  private addScore(base: number, bumpCombo = false): void {
+    if (bumpCombo) {
+      this.combo = Math.min(9, this.combo + 1);
+      this.comboTimer = 3.5;
+    } else if (this.comboTimer <= 0) {
+      this.combo = 1;
+    }
+    this.score += Math.round(base * this.combo);
+    this.hud.setScore(this.score, this.combo);
+  }
+
+  private destroyAt(p: THREE.Vector3, r: number, shake: number): void {
     const res = this.world.destroySphere(p.x, p.y, p.z, r);
     if (res.count > 0) {
+      this.score += res.count; // raw points for rubble, no combo bump
+      this.hud.setScore(this.score, this.combo);
+      if (shake > 0.25) this.shake = Math.max(this.shake, Math.min(1.4, shake));
       this.chunks.markDirty(res.dirty);
       this.repair.noteDamage(res.dirty, this.time);
       this.debris.burst(p, res.ids, Math.min(26, 6 + res.count / 3));
@@ -558,6 +588,11 @@ export class Game {
         if ((this.monster as any)._rewarded !== true) {
           (this.monster as any)._rewarded = true;
           this.hud.hideBoss();
+          // big kill bonus (scaled by wave), a slow-mo beat and a heavy shake
+          this.addScore(1000 + this.wave * 250, true);
+          this.slowmo = 1.1;
+          this.shake = 1.4;
+          this.explosions.boom(this.monster.group.position.clone().setY(this.monster.group.position.y + 14), 16);
           this.grantReward(this.monster.reward);
         }
       }
@@ -592,19 +627,21 @@ export class Game {
       { make: (x2, z2) => new TideLeviathan(x2, z2), toast: ['⚠ FLOOD WARNING ⚠', 'TIDE LEVIATHAN surfacing. Its aqua blaster drowns the streets.'] },
     ];
 
+    this.wave++;
+    this.hud.setWave(this.wave);
     if (this.bossIndex < campaign.length) {
       const entry = campaign[this.bossIndex++];
       this.monster = entry.make(x, z);
       this.hud.toast(entry.toast[0], entry.toast[1], 5);
     } else {
-      // endless mode: any boss, scaled up each power level; reward = repairs + power
+      // endless mode: any boss, scaled up each wave; reward = repairs + power
       const pool = [Kaiju, RocketBeast, VoltSerpent, IronColossus, SkyReaver, CrimsonMantis, MagmaGolem, DeepMaw, CinderWyrm, TideLeviathan];
       const M = pool[Math.floor(Math.random() * pool.length)];
       const m = new M(x, z);
-      m.maxHp = m.hp = Math.round(m.maxHp * (1.3 + this.powerLevel * 0.2));
+      m.maxHp = m.hp = Math.round(m.maxHp * (1.3 + this.powerLevel * 0.2 + (this.wave - campaign.length) * 0.15));
       m.reward = 'repair';
       this.monster = m;
-      this.hud.toast('⚠ NEW CONTACT ⚠', m.name + ' detected. Defeat it for repairs and a power boost.', 4);
+      this.hud.toast('⚠ WAVE ' + this.wave + ' ⚠', m.name + ' detected. Defeat it for repairs and a power boost.', 4);
     }
     if (this.monster instanceof VoltSerpent) this.monster.addSegmentsTo(this.scene);
     this.scene.add(this.monster.group);
@@ -677,12 +714,22 @@ export class Game {
   // ------------------------------------------------------------------ frame
 
   private frame(): void {
-    const dt = Math.min(0.05, this.clock.getDelta());
+    const rawDt = Math.min(0.05, this.clock.getDelta());
+    // slow-motion scales the whole simulation; its own timer uses raw time
+    if (this.slowmo > 0) this.slowmo -= rawDt;
+    const dt = this.slowmo > 0 ? rawDt * 0.35 : rawDt;
+
     this.time += dt;
     this.laserCooldown -= dt;
     this.novaCooldown -= dt;
     this.missileCooldown -= dt;
     if (this.charging) this.chargeT += dt;
+    // combo decay + camera-shake decay run on real time
+    this.shake = Math.max(0, this.shake - rawDt * 2.2);
+    if (this.comboTimer > 0) {
+      this.comboTimer -= rawDt;
+      if (this.comboTimer <= 0 && this.combo > 1) { this.combo = 1; this.hud.setScore(this.score, this.combo); }
+    }
 
     if (this.started) {
       // A is the attack button now, so left-strafe is ArrowLeft (or Q-less); D/right still work
@@ -832,6 +879,13 @@ export class Game {
     const hit = this.world.raycast(pivot.x, pivot.y, pivot.z, dir.x, dir.y, dir.z, dist);
     const d = hit ? Math.max(3.5, hit.dist - 0.8) : dist;
     this.camera.position.copy(pivot).addScaledVector(dir, d);
+    // additive shake — jitter the final camera position, never the input yaw/pitch
+    if (this.shake > 0.01) {
+      const s = this.shake * 1.6;
+      this.camera.position.x += (Math.random() - 0.5) * s;
+      this.camera.position.y += (Math.random() - 0.5) * s;
+      this.camera.position.z += (Math.random() - 0.5) * s;
+    }
     this.camera.lookAt(pivot);
   }
 }

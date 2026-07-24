@@ -170,10 +170,10 @@ function lotParams(lotX: number, lotZ: number): LotParams {
   let glassy = false;
   if (district > 0.62) {
     height = 26 + Math.floor(h1 * 30); // downtown towers
-    glassy = h2 < 0.75;
+    glassy = h2 < 0.3; // fewer all-glass facades — mostly white towers
   } else if (district > 0.47) {
     height = 10 + Math.floor(h1 * 16);
-    glassy = h2 < 0.3;
+    glassy = h2 < 0.12;
   } else {
     height = 4 + Math.floor(h1 * 7); // low-rise sprawl
   }

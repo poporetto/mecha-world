@@ -48,6 +48,16 @@ export class Hud {
         @keyframes pulse { 50% { box-shadow:0 0 22px #39e6e088; } }
         .hint { position:absolute; right:24px; bottom:20px; color:#8fb4d8aa; font-size:11px; letter-spacing:1px;
                 text-align:right; line-height:1.7; text-shadow:0 1px 2px #000; }
+        .scorebox { position:absolute; left:24px; top:60px; }
+        .score-wave { color:#ffd0a0; font-size:12px; letter-spacing:3px; text-shadow:0 1px 3px #000; }
+        .score-val { color:#fff; font-size:32px; font-weight:700; letter-spacing:2px; line-height:1.1;
+                     text-shadow:0 0 12px #39e6e0aa, 0 2px 4px #000; font-variant-numeric:tabular-nums; }
+        .score-combo { color:#ffcf4f; font-size:20px; font-weight:700; letter-spacing:1px; height:24px;
+                       text-shadow:0 0 12px #ff8a2f, 0 2px 3px #000; transition:transform .1s; }
+        .dmgpop { position:absolute; left:50%; top:38%; transform:translateX(-50%); color:#fff3a0;
+                  font-size:30px; font-weight:800; text-shadow:0 0 10px #ff8a2f,0 2px 4px #000; opacity:0;
+                  pointer-events:none; }
+        @keyframes dmgpop { 0%{opacity:1;transform:translate(-50%,0) scale(1.1)} 100%{opacity:0;transform:translate(-50%,-40px) scale(.8)} }
         .wbtn { position:absolute; right:24px; top:60px; width:74px; height:74px; border-radius:50%;
                 background:#0a1626cc; border:2px solid #7fdcff88; color:#eaf6ff; font-size:11px; letter-spacing:1px;
                 display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
@@ -70,6 +80,12 @@ export class Hud {
         <div class="hud-label">MECHA INTEGRITY</div>
         <div class="hud-track"><div class="hud-fill" id="hpfill" style="width:100%"></div></div>
       </div>
+      <div class="scorebox">
+        <div class="score-wave" id="score-wave">WAVE 0</div>
+        <div class="score-val" id="score-val">0</div>
+        <div class="score-combo" id="score-combo"></div>
+      </div>
+      <div class="dmgpop" id="dmgpop"></div>
       <div class="boss" id="boss">
         <div class="boss-name" id="bossname"></div>
         <div class="boss-track"><div class="boss-fill" id="bossfill" style="width:100%"></div></div>
@@ -134,6 +150,26 @@ export class Hud {
 
   toggleWheel(): void {
     this.wheel.classList.toggle('open');
+  }
+
+  setScore(score: number, combo: number): void {
+    document.getElementById('score-val')!.textContent = score.toLocaleString();
+    const c = document.getElementById('score-combo')!;
+    c.textContent = combo > 1 ? '×' + combo + ' COMBO' : '';
+    c.style.transform = combo > 1 ? 'scale(1.15)' : 'scale(1)';
+    setTimeout(() => (c.style.transform = 'scale(1)'), 90);
+  }
+
+  setWave(wave: number): void {
+    document.getElementById('score-wave')!.textContent = 'WAVE ' + wave;
+  }
+
+  popDamage(dmg: number): void {
+    const el = document.getElementById('dmgpop')!;
+    el.textContent = '-' + Math.round(dmg);
+    el.style.animation = 'none';
+    void el.offsetWidth; // restart the animation
+    el.style.animation = 'dmgpop .6s ease-out';
   }
 
   setWeapon(w: 'saber' | 'rifle' | 'missiles'): void {
