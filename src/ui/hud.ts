@@ -10,6 +10,8 @@ export class Hud {
   private vignette!: HTMLElement;
   private chips: Record<string, HTMLElement> = {};
   private toastTimer = 0;
+  private wheel!: HTMLElement;
+  private onSelectWeapon: (w: 'saber' | 'rifle' | 'missiles') => void = () => {};
 
   constructor() {
     this.root = document.getElementById('hud')!;
@@ -46,6 +48,23 @@ export class Hud {
         @keyframes pulse { 50% { box-shadow:0 0 22px #39e6e088; } }
         .hint { position:absolute; right:24px; bottom:20px; color:#8fb4d8aa; font-size:11px; letter-spacing:1px;
                 text-align:right; line-height:1.7; text-shadow:0 1px 2px #000; }
+        .wbtn { position:absolute; right:24px; top:60px; width:74px; height:74px; border-radius:50%;
+                background:#0a1626cc; border:2px solid #7fdcff88; color:#eaf6ff; font-size:11px; letter-spacing:1px;
+                display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
+                pointer-events:auto; cursor:pointer; text-shadow:0 1px 2px #000; }
+        .wbtn b { color:#7fdcff; font-size:12px; }
+        .wheel { position:absolute; inset:0; display:none; align-items:center; justify-content:center;
+                 background:#04060cbb; pointer-events:auto; z-index:20; }
+        .wheel.open { display:flex; }
+        .wheel-ring { position:relative; width:320px; height:320px; }
+        .wseg { position:absolute; width:120px; height:120px; margin:-60px; left:50%; top:50%; border-radius:50%;
+                background:#0e1c30ee; border:2px solid #3a5a7a; color:#eaf6ff; cursor:pointer;
+                display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px;
+                font-size:13px; letter-spacing:2px; transition:transform .1s, border-color .1s; }
+        .wseg:hover, .wseg.sel { border-color:#39e6e0; transform:scale(1.08); box-shadow:0 0 22px #39e6e055; }
+        .wseg .ico { font-size:30px; }
+        .wheel-title { position:absolute; left:50%; top:calc(50% + 180px); transform:translateX(-50%);
+                       color:#bfe9ff; font-size:13px; letter-spacing:4px; text-shadow:0 1px 3px #000; }
       </style>
       <div class="hud-bar">
         <div class="hud-label">MECHA INTEGRITY</div>
@@ -56,9 +75,7 @@ export class Hud {
         <div class="boss-track"><div class="boss-fill" id="bossfill" style="width:100%"></div></div>
       </div>
       <div class="chips">
-        <div class="chip" id="chip-saber"><b>LMB</b> SABER</div>
-        <div class="chip" id="chip-laser"><b>R (hold) / RMB</b> BEAM RIFLE</div>
-        <div class="chip" id="chip-missile"><b>T</b> MISSILES</div>
+        <div class="chip" id="chip-weapon"><b>A</b> ATTACK · <b>1/2/3</b> or WHEEL to switch</div>
         <div class="chip locked" id="chip-beam"><b>E</b> BEAM — defeat the kaiju</div>
         <div class="chip locked" id="chip-boots"><b>SPACE(hold)</b> ROCKET BOOTS — defeat Missile Maw</div>
         <div class="chip locked" id="chip-nova"><b>Q</b> NOVA — ???</div>
@@ -67,6 +84,15 @@ export class Hud {
       </div>
       <div class="toast" id="toast"><h1 id="toast-h"></h1><p id="toast-p"></p></div>
       <div class="cross"></div>
+      <div class="wbtn" id="wbtn"><b id="wbtn-ico">⚔</b><span id="wbtn-name">SABER</span></div>
+      <div class="wheel" id="wheel">
+        <div class="wheel-ring">
+          <div class="wseg" id="w-saber" style="transform:translate(0,-110px)"><span class="ico">⚔</span>SABER</div>
+          <div class="wseg" id="w-rifle" style="transform:translate(95px,55px)"><span class="ico">🔫</span>RIFLE</div>
+          <div class="wseg" id="w-missiles" style="transform:translate(-95px,55px)"><span class="ico">🚀</span>MISSILES</div>
+        </div>
+        <div class="wheel-title">SELECT WEAPON</div>
+      </div>
       <div class="vig" id="vig"></div>
       <div class="hint">ARROWS / WASD move · SHIFT boost · SPACE jump<br/>drag mouse to rotate camera · click to attack + mouse-look</div>
     `;
@@ -82,6 +108,45 @@ export class Hud {
       nova: document.getElementById('chip-nova')!,
       shield: document.getElementById('chip-shield')!,
     };
+    this.wheel = document.getElementById('wheel')!;
+
+    // wheel button toggles the radial; each segment picks a weapon + closes
+    document.getElementById('wbtn')!.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.wheel.classList.toggle('open');
+    });
+    const pick = (id: string, w: 'saber' | 'rifle' | 'missiles') => {
+      document.getElementById(id)!.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.onSelectWeapon(w);
+        this.wheel.classList.remove('open');
+      });
+    };
+    pick('w-saber', 'saber');
+    pick('w-rifle', 'rifle');
+    pick('w-missiles', 'missiles');
+    this.wheel.addEventListener('click', () => this.wheel.classList.remove('open'));
+  }
+
+  bindWeaponWheel(cb: (w: 'saber' | 'rifle' | 'missiles') => void): void {
+    this.onSelectWeapon = cb;
+  }
+
+  toggleWheel(): void {
+    this.wheel.classList.toggle('open');
+  }
+
+  setWeapon(w: 'saber' | 'rifle' | 'missiles'): void {
+    const meta = {
+      saber: ['⚔', 'SABER'],
+      rifle: ['🔫', 'RIFLE'],
+      missiles: ['🚀', 'MISSILES'],
+    }[w];
+    document.getElementById('wbtn-ico')!.textContent = meta[0];
+    document.getElementById('wbtn-name')!.textContent = meta[1];
+    for (const k of ['saber', 'rifle', 'missiles']) {
+      document.getElementById('w-' + k)!.classList.toggle('sel', k === w);
+    }
   }
 
   showStart(onStart: () => void, isTouch = false): void {

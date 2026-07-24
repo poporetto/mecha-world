@@ -7,10 +7,10 @@ export function isTouchDevice(): boolean {
 }
 
 export interface TouchCallbacks {
-  onSaber: () => void;
-  onLaser: () => void;
-  onMissile: () => void;
+  onAttackDown: () => void;
+  onAttackUp: () => void;
   onNova: () => void;
+  onWheel: () => void;
   onLook: (dx: number, dy: number) => void;
 }
 
@@ -80,11 +80,10 @@ export class TouchControls {
       <div class="tc-btns">
         <div class="tc-btn hidden" id="tc-nova">NOVA</div>
         <div class="tc-btn hidden" id="tc-beam">BEAM</div>
+        <div class="tc-btn" id="tc-wheel">⚔<br/>WEAPON</div>
         <div class="tc-btn" id="tc-boost">BOOST</div>
-        <div class="tc-btn" id="tc-laser">RIFLE</div>
-        <div class="tc-btn" id="tc-missile">MISSILE</div>
         <div class="tc-btn" id="tc-jump">JUMP</div>
-        <div class="tc-btn big" id="tc-saber">SABER</div>
+        <div class="tc-btn big" id="tc-attack">ATTACK</div>
       </div>
     `;
     this.layer.className = 'tc-layer';
@@ -102,6 +101,12 @@ export class TouchControls {
 
   unlock(key: 'beam' | 'nova'): void {
     (key === 'beam' ? this.beamBtn : this.novaBtn).classList.remove('hidden');
+  }
+
+  setWeapon(w: 'saber' | 'rifle' | 'missiles'): void {
+    const label = { saber: '⚔<br/>SABER', rifle: '🔫<br/>RIFLE', missiles: '🚀<br/>FIRE' }[w];
+    const atk = this.layer.querySelector('#tc-attack') as HTMLElement | null;
+    if (atk) atk.innerHTML = label;
   }
 
   // hold buttons set a flag while pressed; tap buttons fire a callback
@@ -133,10 +138,22 @@ export class TouchControls {
         setTimeout(() => el.classList.remove('held'), 120);
       });
     };
-    tap('tc-saber', () => this.cb.onSaber());
-    tap('tc-laser', () => this.cb.onLaser());
-    tap('tc-missile', () => this.cb.onMissile());
+    tap('tc-wheel', () => this.cb.onWheel());
     tap('tc-nova', () => this.cb.onNova());
+    // attack button: press fires / starts charge, release ends charge
+    const atk = this.layer.querySelector('#tc-attack')! as HTMLElement;
+    atk.addEventListener('touchstart', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      atk.classList.add('held');
+      this.cb.onAttackDown();
+    });
+    const atkUp = (e: Event) => {
+      e.preventDefault(); e.stopPropagation();
+      atk.classList.remove('held');
+      this.cb.onAttackUp();
+    };
+    atk.addEventListener('touchend', atkUp);
+    atk.addEventListener('touchcancel', atkUp);
     hold('tc-jump', (v) => (this.jump = v));
     hold('tc-boost', (v) => (this.boost = v));
     hold('tc-beam', (v) => (this.beam = v));

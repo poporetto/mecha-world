@@ -67,6 +67,8 @@ export class Game {
   private charging = false;
   private power = 1;
   private powerLevel = 1;
+  private weapons = ['saber', 'rifle', 'missiles'] as const;
+  private selectedWeapon: 'saber' | 'rifle' | 'missiles' = 'saber';
 
   private monster: Monster | null = null;
   private bossIndex = 0; // progression through the campaign bosses
@@ -115,10 +117,10 @@ export class Game {
     this.bindInput();
     if (isTouchDevice()) {
       this.touch = new TouchControls(document.getElementById('hud')!, {
-        onSaber: () => { if (this.started) this.swingSaber(); },
-        onLaser: () => this.fireLaser(),
-        onMissile: () => this.fireMissiles(),
+        onAttackDown: () => this.attackDown(),
+        onAttackUp: () => this.attackUp(),
         onNova: () => this.novaPulse(),
+        onWheel: () => this.hud.toggleWheel(),
         onLook: (dx, dy) => {
           this.camYaw -= dx * 0.006;
           this.camPitch = Math.max(-0.5, Math.min(1.2, this.camPitch + dy * 0.005));
@@ -132,6 +134,11 @@ export class Game {
     });
 
     (window as any).__game = this; // debug handle
+
+    this.hud.bindWeaponWheel((w) => this.selectWeapon(w));
+
+    // DEBUG: start with every ability/weapon unlocked for testing
+    this.unlockEverything();
 
     this.hud.showStart(() => {
       this.started = true;
@@ -153,12 +160,19 @@ export class Game {
       if (e.code === 'KeyF') this.fireLaser();
       if (e.code === 'KeyT') this.fireMissiles();
       if (e.code === 'KeyQ') this.novaPulse();
+      // A: main attack — fires the selected weapon (hold to charge the rifle)
+      if (e.code === 'KeyA' && !e.repeat) this.attackDown();
+      // number keys pick a weapon directly
+      if (e.code === 'Digit1') this.selectWeapon('saber');
+      if (e.code === 'Digit2') this.selectWeapon('rifle');
+      if (e.code === 'Digit3') this.selectWeapon('missiles');
       // R: begin charging (release fires); e.repeat guards the auto-repeat
       if (e.code === 'KeyR' && !e.repeat && this.started) { this.charging = true; this.chargeT = 0; }
     });
     window.addEventListener('keyup', (e) => {
       this.keys.delete(e.code);
       if (e.code === 'KeyR' && this.charging) this.releaseCharge();
+      if (e.code === 'KeyA') this.attackUp();
     });
     document.addEventListener('pointerlockchange', () => {
       this.locked = document.pointerLockElement === this.renderer.domElement;
@@ -167,8 +181,8 @@ export class Game {
       if (!this.started) return;
       this.mouseDown[e.button] = true;
       if (this.locked) {
-        // pointer locked: instant attacks, mouse-look already active
-        if (e.button === 0) this.swingSaber();
+        // pointer locked: LMB fires the selected weapon, RMB the beam rifle
+        if (e.button === 0) this.attackDown();
         if (e.button === 2) this.fireLaser();
       } else {
         // unlocked: could be a click (attack) or a drag (rotate camera)
@@ -177,11 +191,12 @@ export class Game {
     });
     window.addEventListener('mouseup', (e) => {
       this.mouseDown[e.button] = false;
+      if (this.locked && e.button === 0) this.attackUp(); // release charged rifle
       if (this.drag && e.button === this.drag.button) {
         if (!this.drag.moved && this.started) {
           // plain click: attack and (re)acquire pointer lock for mouse-look
           this.renderer.domElement.requestPointerLock();
-          if (e.button === 0) this.swingSaber();
+          if (e.button === 0) { this.attackDown(); this.attackUp(); }
           if (e.button === 2) this.fireLaser();
         }
         this.drag = null;
@@ -253,6 +268,26 @@ export class Game {
     mesh.lookAt(from.clone().add(dir));
     this.scene.add(mesh);
     this.projectiles.push({ pos: from, vel: dir.multiplyScalar(70), life: 2.5, kind: 'laser', mesh });
+  }
+
+  // ---- weapon selection + unified attack button (A / on-screen ATTACK) ----
+
+  selectWeapon(w: 'saber' | 'rifle' | 'missiles'): void {
+    this.selectedWeapon = w;
+    this.hud.setWeapon(w);
+    this.touch?.setWeapon(w);
+  }
+
+  // main attack pressed: melee/missiles fire at once; rifle starts charging
+  private attackDown(): void {
+    if (!this.started) return;
+    if (this.selectedWeapon === 'saber') this.swingSaber();
+    else if (this.selectedWeapon === 'missiles') this.fireMissiles();
+    else { this.charging = true; this.chargeT = 0; }
+  }
+
+  private attackUp(): void {
+    if (this.selectedWeapon === 'rifle' && this.charging) this.releaseCharge();
   }
 
   // Homing micro-missile volley: four rockets that fan out then curve onto
@@ -567,6 +602,21 @@ export class Game {
     sfx.setMusicIntensity(1);
   }
 
+  // DEBUG helper: hand the player every ability + weapon up front
+  private unlockEverything(): void {
+    this.player.abilities.beam = true;
+    this.player.abilities.boots = true;
+    this.player.abilities.nova = true;
+    this.player.abilities.shield = true;
+    this.hud.unlock('beam', '<b>E (hold)</b> PLASMA BEAM');
+    this.hud.unlock('boots', '<b>SPACE (hold)</b> ROCKET BOOTS');
+    this.hud.unlock('nova', '<b>Q</b> NOVA PULSE');
+    this.hud.unlock('shield', 'AEGIS SHIELD 50%');
+    this.touch?.unlock('beam');
+    this.touch?.unlock('nova');
+    this.selectWeapon('saber');
+  }
+
   private grantReward(reward: Reward): void {
     sfx.jingle();
     if (reward === 'beam') {
@@ -624,8 +674,9 @@ export class Game {
     if (this.charging) this.chargeT += dt;
 
     if (this.started) {
+      // A is the attack button now, so left-strafe is ArrowLeft (or Q-less); D/right still work
       const right = this.keys.has('KeyD') || this.keys.has('ArrowRight');
-      const left = this.keys.has('KeyA') || this.keys.has('ArrowLeft');
+      const left = this.keys.has('ArrowLeft');
       const back = this.keys.has('KeyS') || this.keys.has('ArrowDown');
       const fwd = this.keys.has('KeyW') || this.keys.has('ArrowUp');
       let mx = (right ? 1 : 0) - (left ? 1 : 0);
