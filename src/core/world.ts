@@ -167,6 +167,77 @@ export class World {
     return out.length > 0 ? { blocks: out, dirty } : null;
   }
 
+  // Foundation collapse: flood the whole connected structure touched by the
+  // blast and compare its ground footings to how many vertical columns it has.
+  // A sound building foots nearly every column on the ground; once the base is
+  // gutted most columns hang in the air, so the whole thing topples even if a
+  // stray corner still stands. Bounded by a box + block cap around the blast.
+  foundationScan(px: number, pz: number, bandTop: number): { blocks: [number, number, number, number][]; dirty: Set<string> } | null {
+    const BOUND = 26; // horizontal reach — one building, not the block
+    const CAP = 20000;
+    const cx = Math.floor(px), cz = Math.floor(pz);
+    const seedTop = Math.min(H - 1, Math.max(4, Math.round(bandTop)) + 2);
+
+    // seed from solid blocks standing just above the blast band
+    const visited = new Set<string>();
+    const queue: [number, number, number][] = [];
+    for (let dx = -6; dx <= 6; dx++) {
+      for (let dz = -6; dz <= 6; dz++) {
+        for (let dy = 0; dy <= 4; dy++) {
+          const x = cx + dx, y = seedTop + dy, z = cz + dz;
+          if (y >= H || !isSolid(this.getBlock(x, y, z))) continue;
+          const k = x + ',' + y + ',' + z;
+          if (!visited.has(k)) { visited.add(k); queue.push([x, y, z]); }
+        }
+      }
+    }
+    if (queue.length === 0) return null;
+
+    // flood the full connected component (up, down, sideways) within bounds
+    const comp: [number, number, number][] = [];
+    const columns = new Set<number>(); // distinct (x,z)
+    let footings = 0; // columns resting on the ground layer
+    let anchored = false;
+    while (queue.length > 0) {
+      const [x, y, z] = queue.pop()!;
+      comp.push([x, y, z]);
+      if (comp.length > CAP) { anchored = true; break; }
+      columns.add(x * 8192 + z);
+      if (y <= 2) footings++;
+      if (Math.abs(x - cx) > BOUND || Math.abs(z - cz) > BOUND) { anchored = true; continue; }
+      const nb: [number, number, number][] = [
+        [x + 1, y, z], [x - 1, y, z], [x, y + 1, z], [x, y - 1, z], [x, y, z + 1], [x, y, z - 1],
+      ];
+      for (const [nx, ny, nz] of nb) {
+        if (ny < 1 || ny >= H) continue;
+        const nk = nx + ',' + ny + ',' + nz;
+        if (visited.has(nk) || !isSolid(this.getBlock(nx, ny, nz))) continue;
+        visited.add(nk);
+        queue.push([nx, ny, nz]);
+      }
+    }
+    // stable if it runs off to a neighbor, or still foots most of its columns
+    if (anchored || comp.length < 12) return null;
+    if (footings > columns.size * 0.45) return null;
+
+    // critically undermined — the whole component comes down
+    const out: [number, number, number, number][] = [];
+    const dirty = new Set<string>();
+    for (const [x, y, z] of comp) {
+      const id = this.getBlock(x, y, z);
+      out.push([x, y, z, id]);
+      this.setBlock(x, y, z, B.Air);
+      const ccx = Math.floor(x / CS), ccz = Math.floor(z / CS);
+      dirty.add(this.key(ccx, ccz));
+      const lx = x - ccx * CS, lz = z - ccz * CS;
+      if (lx === 0) dirty.add(this.key(ccx - 1, ccz));
+      if (lx === CS - 1) dirty.add(this.key(ccx + 1, ccz));
+      if (lz === 0) dirty.add(this.key(ccx, ccz - 1));
+      if (lz === CS - 1) dirty.add(this.key(ccx, ccz + 1));
+    }
+    return { blocks: out, dirty };
+  }
+
   // Voxel DDA raycast. dir must be normalized.
   raycast(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxDist: number): RayHit | null {
     let x = Math.floor(ox), y = Math.floor(oy), z = Math.floor(oz);

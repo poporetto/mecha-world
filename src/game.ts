@@ -393,11 +393,14 @@ export class Game {
     // the flood fill can walk a whole building — don't run it every beam tick
     if (this.time - this.lastCollapseScan < 0.25) return;
     this.lastCollapseScan = this.time;
-    const cut = this.world.collapseScan(p.x, p.y, p.z, r);
+    // fully-disconnected chunks first, then foundation failure (a gutted base
+    // topples the tower even if a stray column still stands)
+    let cut = this.world.collapseScan(p.x, p.y, p.z, r);
+    if (!cut && p.y < 16) cut = this.world.foundationScan(p.x, p.z, p.y + r);
     if (!cut) return;
     this.chunks.markDirty(cut.dirty);
     this.repair.noteDamage(cut.dirty, this.time);
-    if (this.falling.length >= 5) {
+    if (this.falling.length >= 7) {
       // too many falling pieces already — turn this one straight into rubble
       this.debris.burst(p, cut.blocks.slice(0, 6).map((b) => b[3]), 30);
       return;

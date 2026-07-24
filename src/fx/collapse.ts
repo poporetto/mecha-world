@@ -21,6 +21,10 @@ export interface FallingChunk {
   mesh: THREE.Mesh;
   vel: number;
   spin: number;
+  tipAxis: THREE.Vector3; // horizontal axis the piece topples around
+  tipRate: number; // radians/sec of toppling
+  tip: number; // accumulated tip angle
+  yaw: number; // accumulated vertical spin
   bottomY: number; // world y of the lowest block at spawn
   groundY: number; // where it lands
   blockCount: number;
@@ -70,10 +74,23 @@ export function buildFallingChunk(blocks: [number, number, number, number][], gr
 
   const mesh = new THREE.Mesh(geo, material);
   mesh.position.set(ox, minY, oz);
+
+  // Tall slender pieces topple; squat rubble just tumbles a little. Pick a
+  // random horizontal axis and a tip rate that scales with how top-heavy it is.
+  const spanX = maxX - minX + 1, spanZ = maxZ - minZ + 1;
+  const tall = blocks.length / Math.max(1, spanX * spanZ); // ~stack height
+  const a = Math.random() * Math.PI * 2;
+  const tipAxis = new THREE.Vector3(Math.cos(a), 0, Math.sin(a));
+  const tipRate = Math.min(2.2, 0.3 + tall * 0.06) * (Math.random() < 0.5 ? 1 : -1);
+
   return {
     mesh,
     vel: 0,
-    spin: (Math.random() - 0.5) * 0.35,
+    spin: (Math.random() - 0.5) * 0.25,
+    tipAxis,
+    tipRate,
+    tip: 0,
+    yaw: 0,
     bottomY: minY,
     groundY,
     blockCount: blocks.length,
@@ -81,11 +98,20 @@ export function buildFallingChunk(blocks: [number, number, number, number][], gr
   };
 }
 
+const _q = new THREE.Quaternion();
+const _qy = new THREE.Quaternion();
+const _up = new THREE.Vector3(0, 1, 0);
+
 // Returns true when the chunk has landed (caller removes it + spawns dust).
 export function updateFallingChunk(f: FallingChunk, dt: number): boolean {
-  f.vel += 22 * dt;
+  f.vel += 24 * dt;
   f.mesh.position.y -= f.vel * dt;
-  f.mesh.rotation.z += f.spin * dt;
-  f.mesh.rotation.x += f.spin * 0.6 * dt;
+  // topple about a fixed horizontal axis, plus a little spin about vertical
+  const dir = Math.sign(f.tipRate);
+  f.tip = dir * Math.min(Math.PI / 2, Math.abs(f.tip) + Math.abs(f.tipRate) * dt);
+  f.yaw += f.spin * dt;
+  _qy.setFromAxisAngle(_up, f.yaw);
+  _q.setFromAxisAngle(f.tipAxis, f.tip);
+  f.mesh.quaternion.copy(_qy).multiply(_q);
   return f.mesh.position.y <= f.groundY;
 }
