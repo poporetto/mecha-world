@@ -21,15 +21,24 @@ interface Puff {
   gray: number;
 }
 
+interface Ring {
+  mesh: THREE.Mesh;
+  life: number;
+  maxLife: number;
+  size: number;
+}
+
 const dummy = new THREE.Object3D();
 const tmpColor = new THREE.Color();
 const flashGeo = new THREE.SphereGeometry(1, 12, 10);
+const ringGeo = new THREE.RingGeometry(0.82, 1, 32);
 
 export class Explosions {
   group = new THREE.Group();
   private flashes: Flash[] = [];
   private smoke: THREE.InstancedMesh;
   private puffs: Puff[] = [];
+  private rings: Ring[] = [];
 
   constructor() {
     const geo = new THREE.BoxGeometry(1, 1, 1);
@@ -56,6 +65,20 @@ export class Explosions {
     mesh.scale.setScalar(radius * 0.3);
     this.group.add(mesh);
     this.flashes.push({ mesh, life: 0.28, maxLife: 0.28, size: radius });
+
+    // ground shockwave ring for sizeable blasts
+    if (radius >= 5) {
+      const rmat = new THREE.MeshBasicMaterial({
+        color: 0xffe0a8, transparent: true, opacity: 0.8,
+        blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+      });
+      const ring = new THREE.Mesh(ringGeo, rmat);
+      ring.position.set(p.x, p.y - radius * 0.4, p.z);
+      ring.rotation.x = -Math.PI / 2;
+      ring.scale.setScalar(radius * 0.5);
+      this.group.add(ring);
+      this.rings.push({ mesh: ring, life: 0.5, maxLife: 0.5, size: radius });
+    }
 
     // smoke plume
     const n = Math.min(14, 5 + Math.floor(radius * 2));
@@ -87,6 +110,20 @@ export class Explosions {
       const k = 1 - f.life / f.maxLife;
       f.mesh.scale.setScalar(f.size * (0.3 + k * 1.4));
       (f.mesh.material as THREE.MeshBasicMaterial).opacity = 0.95 * (1 - k);
+    }
+
+    for (let i = this.rings.length - 1; i >= 0; i--) {
+      const r = this.rings[i];
+      r.life -= dt;
+      if (r.life <= 0) {
+        this.group.remove(r.mesh);
+        (r.mesh.material as THREE.Material).dispose();
+        this.rings.splice(i, 1);
+        continue;
+      }
+      const k = 1 - r.life / r.maxLife;
+      r.mesh.scale.setScalar(r.size * (0.5 + k * 2.6));
+      (r.mesh.material as THREE.MeshBasicMaterial).opacity = 0.8 * (1 - k);
     }
 
     for (let i = this.puffs.length - 1; i >= 0; i--) {

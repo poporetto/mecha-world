@@ -29,6 +29,8 @@ export class Player {
   maxHp = 100;
   abilities: Abilities = { beam: false, boots: false, nova: false, shield: false };
   private animT = 0;
+  private dashVel = new THREE.Vector3();
+  private dashTime = 0;
 
   constructor(private world: World) {}
 
@@ -56,6 +58,13 @@ export class Player {
     }
     this.vel.x = vx;
     this.vel.z = vz;
+    // dash impulse decays over its short lifetime, layered on top of input
+    if (this.dashTime > 0) {
+      this.dashTime -= dt;
+      this.vel.x += this.dashVel.x;
+      this.vel.z += this.dashVel.z;
+      this.dashVel.multiplyScalar(Math.max(0, 1 - dt * 4));
+    }
 
     if (this.abilities.boots && jump && !this.grounded) {
       this.vel.y = Math.min(this.vel.y + 80 * dt, FLY_V);
@@ -134,6 +143,14 @@ export class Player {
       if (axis === 0) this.vel.x = 0;
       else this.vel.z = 0;
     }
+  }
+
+  // Evasive burst: a decaying horizontal impulse layered on normal movement.
+  dash(dir: THREE.Vector3): void {
+    this.dashVel.set(dir.x, 0, dir.z).normalize().multiplyScalar(52);
+    this.dashTime = 0.28;
+    if (this.grounded) this.vel.y = 6;
+    this.yaw = Math.atan2(dir.x, dir.z);
   }
 
   damage(amount: number): void {

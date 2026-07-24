@@ -110,7 +110,7 @@ export class Hud {
         <div class="wheel-title">SELECT WEAPON</div>
       </div>
       <div class="vig" id="vig"></div>
-      <div class="hint">ARROWS / WASD move · SHIFT boost · SPACE jump<br/>drag mouse to rotate camera · click to attack + mouse-look</div>
+      <div class="hint">ARROWS / WASD move · SHIFT boost · SPACE jump · C dash<br/>A / click attack · L or middle-click lock-on · drag to rotate camera</div>
     `;
     this.hpFill = document.getElementById('hpfill')!;
     this.bossWrap = document.getElementById('boss')!;
@@ -162,6 +162,13 @@ export class Hud {
 
   setWave(wave: number): void {
     document.getElementById('score-wave')!.textContent = 'WAVE ' + wave;
+  }
+
+  setLockOn(on: boolean): void {
+    const c = document.querySelector('.cross') as HTMLElement;
+    c.style.background = on ? '#ff5a7a' : '#7fdcffcc';
+    c.style.boxShadow = on ? '0 0 10px #ff5a7a, 0 0 0 8px #ff5a7a33' : '0 0 6px #39e6e0';
+    c.style.transform = on ? 'scale(1.6)' : 'scale(1)';
   }
 
   popDamage(dmg: number): void {

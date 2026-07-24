@@ -83,6 +83,10 @@ export class Game {
   private comboTimer = 0;
   private shake = 0; // camera shake magnitude, decays
   private slowmo = 0; // seconds of slow-motion remaining
+  private lockOn = false; // lock-on targets the boss
+  private dashT = 0; // dash cooldown
+  private comboWindow = 0; // time left to chain the next saber hit
+  private comboStep = 0; // 0..2 in the saber combo
   private clock = new THREE.Clock();
   private time = 0;
 
@@ -173,6 +177,8 @@ export class Game {
       if (e.code === 'KeyF') this.fireLaser();
       if (e.code === 'KeyT') this.fireMissiles();
       if (e.code === 'KeyQ') this.novaPulse();
+      if (e.code === 'KeyC' && !e.repeat) this.dash();
+      if ((e.code === 'KeyL' || e.code === 'Tab') && !e.repeat) { e.preventDefault(); this.toggleLockOn(); }
       // A: main attack — fires the selected weapon (hold to charge the rifle)
       if (e.code === 'KeyA' && !e.repeat) this.attackDown();
       // number keys pick a weapon directly
@@ -193,6 +199,7 @@ export class Game {
     this.renderer.domElement.addEventListener('mousedown', (e) => {
       if (!this.started) return;
       this.mouseDown[e.button] = true;
+      if (e.button === 1) { this.toggleLockOn(); return; } // middle-click locks on
       if (this.locked) {
         // pointer locked: LMB fires the selected weapon, RMB the beam rifle
         if (e.button === 0) this.attackDown();
@@ -235,6 +242,14 @@ export class Game {
   // ----------------------------------------------------------------- combat
 
   private aimDir(): THREE.Vector3 {
+    // lock-on: every weapon routes through here, so they all track the boss
+    if (this.lockOn && this.monster && !this.monster.dying) {
+      _v.copy(this.monster.group.position);
+      _v.y += 14;
+      const from = this.player.pos.clone();
+      from.y += 6.6;
+      return _v.sub(from).normalize();
+    }
     return new THREE.Vector3(
       -Math.sin(this.camYaw) * Math.cos(this.camPitch),
       -Math.sin(this.camPitch) * 0.6 + 0.05,
@@ -242,23 +257,69 @@ export class Game {
     ).normalize();
   }
 
+  private toggleLockOn(): void {
+    // can only lock while a live boss exists
+    if (!this.lockOn && (!this.monster || this.monster.dying)) return;
+    this.lockOn = !this.lockOn;
+    this.hud.setLockOn(this.lockOn);
+  }
+
+  // Quick evasive dash in the current movement (or facing) direction.
+  private dash(): void {
+    if (this.dashT > 0 || !this.started) return;
+    this.dashT = 0.9;
+    const right = this.keys.has('KeyD') || this.keys.has('ArrowRight');
+    const left = this.keys.has('ArrowLeft');
+    const back = this.keys.has('KeyS') || this.keys.has('ArrowDown');
+    const fwd = this.keys.has('KeyW') || this.keys.has('ArrowUp');
+    let mx = (right ? 1 : 0) - (left ? 1 : 0);
+    let mz = (fwd ? 1 : 0) - (back ? 1 : 0);
+    if (this.touch) { mx += this.touch.moveX; mz += this.touch.moveZ; }
+    let dir: THREE.Vector3;
+    if (mx !== 0 || mz !== 0) {
+      const len = Math.hypot(mx, mz), nx = mx / len, nz = mz / len;
+      const sin = Math.sin(this.camYaw), cos = Math.cos(this.camYaw);
+      dir = new THREE.Vector3(nx * cos - nz * sin, 0, nx * -sin - nz * cos);
+    } else {
+      dir = new THREE.Vector3(Math.sin(this.player.yaw), 0, Math.cos(this.player.yaw));
+    }
+    this.player.dash(dir);
+    this.explosions.boom(this.player.pos.clone().setY(this.player.pos.y + 3), 3);
+    sfx.rocket(0.6); // whoosh
+  }
+
   private swingSaber(): void {
     if (!this.player.model.startSwing()) return;
-    this.player.yaw = this.camYaw + Math.PI; // face where the camera looks
+    // combo: chaining swings within the window steps 1→2→3, each hitting harder
+    if (this.comboWindow > 0) this.comboStep = (this.comboStep + 1) % 3;
+    else this.comboStep = 0;
+    this.comboWindow = 0.7;
+    const step = this.comboStep;
+    // aim toward the boss when locked on, else where the camera looks
+    if (this.lockOn && this.monster && !this.monster.dying) {
+      const d = this.monster.group.position;
+      this.player.yaw = Math.atan2(d.x - this.player.pos.x, d.z - this.player.pos.z);
+    } else {
+      this.player.yaw = this.camYaw + Math.PI;
+    }
     sfx.swing();
     setTimeout(() => {
-      // horizontal slash: carve a flat arc across the aim direction
       const dir = this.aimDir();
-      for (const ang of [-0.45, 0, 0.45]) {
+      // 3rd hit is a heavier, wider finisher
+      const finisher = step === 2;
+      const arcs = finisher ? [-0.7, -0.35, 0, 0.35, 0.7] : [-0.45, 0, 0.45];
+      const reach = finisher ? 11 : 9;
+      for (const ang of arcs) {
         const cos = Math.cos(ang), sin = Math.sin(ang);
         const d = new THREE.Vector3(dir.x * cos - dir.z * sin, dir.y, dir.x * sin + dir.z * cos);
-        const p = this.player.pos.clone().addScaledVector(d, 9);
+        const p = this.player.pos.clone().addScaledVector(d, reach);
         p.y += 5.6;
-        this.destroyAt(p, 4.4, 0.25);
+        this.destroyAt(p, finisher ? 5.2 : 4.4, finisher ? 0.5 : 0.25);
       }
-      const pc = this.player.pos.clone().addScaledVector(dir, 9);
+      const pc = this.player.pos.clone().addScaledVector(dir, reach);
       pc.y += 5.6;
-      this.hitMonster(pc, 11, 12 * this.power);
+      const dmg = (finisher ? 26 : 12 + step * 4) * this.power;
+      if (this.hitMonster(pc, finisher ? 14 : 11, dmg) && finisher) this.shake = Math.max(this.shake, 0.8);
     }, 190);
   }
 
@@ -723,7 +784,11 @@ export class Game {
     this.laserCooldown -= dt;
     this.novaCooldown -= dt;
     this.missileCooldown -= dt;
+    this.dashT -= dt;
+    this.comboWindow -= dt;
     if (this.charging) this.chargeT += dt;
+    // drop lock-on when the boss is gone
+    if (this.lockOn && (!this.monster || this.monster.dying)) { this.lockOn = false; this.hud.setLockOn(false); }
     // combo decay + camera-shake decay run on real time
     this.shake = Math.max(0, this.shake - rawDt * 2.2);
     if (this.comboTimer > 0) {
