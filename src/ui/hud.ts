@@ -57,7 +57,8 @@ export class Hud {
       </div>
       <div class="chips">
         <div class="chip" id="chip-saber"><b>LMB</b> SABER</div>
-        <div class="chip" id="chip-laser"><b>R / RMB</b> BEAM RIFLE</div>
+        <div class="chip" id="chip-laser"><b>R (hold) / RMB</b> BEAM RIFLE</div>
+        <div class="chip" id="chip-missile"><b>T</b> MISSILES</div>
         <div class="chip locked" id="chip-beam"><b>E</b> BEAM — defeat the kaiju</div>
         <div class="chip locked" id="chip-boots"><b>SPACE(hold)</b> ROCKET BOOTS — defeat Missile Maw</div>
         <div class="chip locked" id="chip-nova"><b>Q</b> NOVA — ???</div>
@@ -90,7 +91,7 @@ export class Hud {
       ? `<b>D-PAD / LEFT SIDE</b> move &nbsp; <b>RIGHT SIDE</b> drag to look around<br/>
          <b>SABER / RIFLE</b> attack &nbsp; <b>JUMP (hold)</b> fly with rocket boots<br/>`
       : `<b>ARROW KEYS / WASD</b> move &nbsp; <b>SHIFT</b> boost &nbsp; <b>SPACE</b> jump<br/>
-         <b>LEFT CLICK</b> beam saber &nbsp; <b>R / RIGHT CLICK</b> beam rifle<br/>`;
+         <b>LEFT CLICK</b> beam saber &nbsp; <b>R (hold)</b> charge rifle &nbsp; <b>T</b> missiles<br/>`;
     el.innerHTML = `
       <h1>MECHA CITY</h1>
       <h2>NEO TOKYO · INFINITE VOXEL FRONTIER</h2>

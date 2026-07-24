@@ -5,7 +5,7 @@ import { World } from './core/world';
 import { ChunkManager } from './render/chunkManager';
 import { Player } from './entities/player';
 import { NpcManager } from './entities/npcs';
-import { CrimsonMantis, IronColossus, Kaiju, Monster, MonsterCtx, Reward, RocketBeast, SkyReaver, VoltSerpent } from './entities/monsters';
+import { CrimsonMantis, DeepMaw, IronColossus, Kaiju, MagmaGolem, Monster, MonsterCtx, Reward, RocketBeast, SkyReaver, VoltSerpent } from './entities/monsters';
 import { CarManager } from './entities/cars';
 import { RepairManager } from './core/repair';
 import { Debris } from './fx/debris';
@@ -20,8 +20,9 @@ interface Projectile {
   pos: THREE.Vector3;
   vel: THREE.Vector3;
   life: number;
-  kind: 'laser' | 'rocket' | 'boulder';
+  kind: 'laser' | 'rocket' | 'boulder' | 'missile' | 'charge';
   mesh: THREE.Mesh;
+  dmg?: number; // override damage / blast radius for player weapons
 }
 
 const _v = new THREE.Vector3();
@@ -61,6 +62,9 @@ export class Game {
   private hemi: THREE.HemisphereLight;
   private sun: THREE.DirectionalLight;
   private novaCooldown = 0;
+  private missileCooldown = 0;
+  private chargeT = 0; // how long R has been held
+  private charging = false;
   private power = 1;
   private powerLevel = 1;
 
@@ -113,6 +117,7 @@ export class Game {
       this.touch = new TouchControls(document.getElementById('hud')!, {
         onSaber: () => { if (this.started) this.swingSaber(); },
         onLaser: () => this.fireLaser(),
+        onMissile: () => this.fireMissiles(),
         onNova: () => this.novaPulse(),
         onLook: (dx, dy) => {
           this.camYaw -= dx * 0.006;
@@ -145,10 +150,16 @@ export class Game {
     window.addEventListener('keydown', (e) => {
       if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
       this.keys.add(e.code);
-      if (e.code === 'KeyR' || e.code === 'KeyF') this.fireLaser();
+      if (e.code === 'KeyF') this.fireLaser();
+      if (e.code === 'KeyT') this.fireMissiles();
       if (e.code === 'KeyQ') this.novaPulse();
+      // R: begin charging (release fires); e.repeat guards the auto-repeat
+      if (e.code === 'KeyR' && !e.repeat && this.started) { this.charging = true; this.chargeT = 0; }
     });
-    window.addEventListener('keyup', (e) => this.keys.delete(e.code));
+    window.addEventListener('keyup', (e) => {
+      this.keys.delete(e.code);
+      if (e.code === 'KeyR' && this.charging) this.releaseCharge();
+    });
     document.addEventListener('pointerlockchange', () => {
       this.locked = document.pointerLockElement === this.renderer.domElement;
     });
@@ -242,6 +253,58 @@ export class Game {
     mesh.lookAt(from.clone().add(dir));
     this.scene.add(mesh);
     this.projectiles.push({ pos: from, vel: dir.multiplyScalar(70), life: 2.5, kind: 'laser', mesh });
+  }
+
+  // Homing micro-missile volley: four rockets that fan out then curve onto
+  // the locked boss (or fly straight if there's none). Default weapon on T.
+  private fireMissiles(): void {
+    if (this.missileCooldown > 0 || !this.started) return;
+    this.missileCooldown = 1.4;
+    sfx.rocket(1);
+    this.player.yaw = this.camYaw + Math.PI;
+    this.player.model.group.rotation.y = this.player.yaw;
+    const dir = this.aimDir();
+    const base = this.player.pos.clone();
+    base.y += 7;
+    for (let i = 0; i < 4; i++) {
+      const spread = (i - 1.5) * 0.28;
+      const cos = Math.cos(spread), sin = Math.sin(spread);
+      const d = new THREE.Vector3(dir.x * cos - dir.z * sin, dir.y + 0.15, dir.x * sin + dir.z * cos).normalize();
+      const from = base.clone().addScaledVector(d, 4);
+      const mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(0.35, 0.35, 1.2),
+        new THREE.MeshBasicMaterial({ color: 0xfff0a0 })
+      );
+      mesh.position.copy(from);
+      mesh.lookAt(from.clone().add(d));
+      this.scene.add(mesh);
+      this.projectiles.push({ pos: from, vel: d.multiplyScalar(34), life: 3, kind: 'missile', mesh, dmg: 9 * this.power });
+    }
+  }
+
+  // Charged rifle: hold R to build up, release for a fat high-damage lance.
+  private releaseCharge(): void {
+    this.charging = false;
+    if (!this.started) return;
+    const c = Math.min(1, this.chargeT / 1.1); // 0..1
+    if (c < 0.25) { this.fireLaser(); return; } // a tap is just a normal shot
+    sfx.laser();
+    this.player.yaw = this.camYaw + Math.PI;
+    this.player.model.group.rotation.y = this.player.yaw;
+    const dir = this.aimDir();
+    const from = new THREE.Vector3();
+    this.player.model.fireRifle(from);
+    from.addScaledVector(dir, 1.5);
+    const size = 0.4 + c * 0.9;
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(size, size, 2.6 + c * 2),
+      new THREE.MeshBasicMaterial({ color: 0xbfe8ff })
+    );
+    mesh.position.copy(from);
+    mesh.lookAt(from.clone().add(dir));
+    this.scene.add(mesh);
+    this.explosions.boom(from.clone(), 2 + c * 2);
+    this.projectiles.push({ pos: from, vel: dir.multiplyScalar(85), life: 2.5, kind: 'charge', mesh, dmg: (14 + c * 40) * this.power });
   }
 
   private fireRocket(from: THREE.Vector3, toward: THREE.Vector3): void {
@@ -479,6 +542,8 @@ export class Game {
       { make: (x2, z2) => new IronColossus(x2, z2), toast: ['⚠ HEAVY FOOTFALLS ⚠', 'IRON COLOSSUS approaching. Defeat it to earn the AEGIS SHIELD.'] },
       { make: (x2, z2) => new SkyReaver(x2, z2), toast: ['⚠ SHADOW OVERHEAD ⚠', 'SKY REAVER circling above. Watch for its strafing dives.'] },
       { make: (x2, z2) => new CrimsonMantis(x2, z2), toast: ['⚠ RAPID MOVEMENT ⚠', 'CRIMSON MANTIS closing fast. Keep your distance from its scythes.'] },
+      { make: (x2, z2) => new MagmaGolem(x2, z2), toast: ['⚠ MOLTEN MASS ⚠', 'MAGMA GOLEM erupting. Dodge its ground slams.'] },
+      { make: (x2, z2) => new DeepMaw(x2, z2), toast: ['⚠ TREMORS ⚠', 'DEEP MAW burrowing below. It strikes from underground — keep moving.'] },
     ];
 
     if (this.bossIndex < campaign.length) {
@@ -487,7 +552,7 @@ export class Game {
       this.hud.toast(entry.toast[0], entry.toast[1], 5);
     } else {
       // endless mode: any boss, scaled up each power level; reward = repairs + power
-      const pool = [Kaiju, RocketBeast, VoltSerpent, IronColossus, SkyReaver, CrimsonMantis];
+      const pool = [Kaiju, RocketBeast, VoltSerpent, IronColossus, SkyReaver, CrimsonMantis, MagmaGolem, DeepMaw];
       const M = pool[Math.floor(Math.random() * pool.length)];
       const m = new M(x, z);
       m.maxHp = m.hp = Math.round(m.maxHp * (1.3 + this.powerLevel * 0.2));
@@ -555,6 +620,8 @@ export class Game {
     this.time += dt;
     this.laserCooldown -= dt;
     this.novaCooldown -= dt;
+    this.missileCooldown -= dt;
+    if (this.charging) this.chargeT += dt;
 
     if (this.started) {
       const right = this.keys.has('KeyD') || this.keys.has('ArrowRight');
@@ -618,6 +685,7 @@ export class Game {
   }
 
   private updateProjectiles(dt: number): void {
+    const playerShot = (k: Projectile['kind']) => k === 'laser' || k === 'missile' || k === 'charge';
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const p = this.projectiles[i];
       p.life -= dt;
@@ -627,18 +695,34 @@ export class Game {
         p.mesh.rotation.x += dt * 3;
         p.mesh.rotation.z += dt * 2;
       }
+      if (p.kind === 'missile') {
+        // steer toward the boss: bend velocity toward the target each frame
+        const m = this.monster;
+        if (m && !m.dying) {
+          _v.copy(m.group.position); _v.y += 14;
+          _v.sub(p.pos).normalize();
+          const speed = p.vel.length();
+          p.vel.lerp(_v.multiplyScalar(speed), Math.min(1, dt * 2.5));
+          p.vel.setLength(Math.min(52, speed + 40 * dt)); // accelerate
+        }
+        p.mesh.lookAt(p.pos.clone().add(p.vel));
+      }
       p.pos.addScaledVector(p.vel, dt);
       p.mesh.position.copy(p.pos);
 
       let boom = false;
       if (this.world.solidAt(p.pos.x, p.pos.y, p.pos.z) || p.pos.y < 0.2) boom = true;
-      if (p.kind === 'laser' && this.hitMonster(p.pos, 2, 7 * this.power)) boom = true;
-      if (p.kind !== 'laser' && p.pos.distanceTo(this.player.pos) < (p.kind === 'boulder' ? 8 : 7)) {
+      if (playerShot(p.kind)) {
+        const hitR = p.kind === 'charge' ? 4 : 2;
+        if (this.hitMonster(p.pos, hitR, (p.dmg ?? 7) * (p.kind === 'laser' ? this.power : 1))) boom = true;
+      } else if (p.pos.distanceTo(this.player.pos) < (p.kind === 'boulder' ? 8 : 7)) {
+        // only enemy ordnance hurts the player
         boom = true;
         this.damagePlayer(p.kind === 'boulder' ? 22 : 16);
       }
       if (boom) {
-        this.destroyAt(p.pos, p.kind === 'laser' ? 2.4 : p.kind === 'boulder' ? 5 : 3.6, 0.2);
+        const r = p.kind === 'charge' ? 4.5 : p.kind === 'laser' ? 2.4 : p.kind === 'missile' ? 3 : p.kind === 'boulder' ? 5 : 3.6;
+        this.destroyAt(p.pos, r, 0.2);
       }
       if (boom || p.life <= 0) {
         this.scene.remove(p.mesh);

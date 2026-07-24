@@ -9,6 +9,7 @@ export function isTouchDevice(): boolean {
 export interface TouchCallbacks {
   onSaber: () => void;
   onLaser: () => void;
+  onMissile: () => void;
   onNova: () => void;
   onLook: (dx: number, dy: number) => void;
 }
@@ -81,6 +82,7 @@ export class TouchControls {
         <div class="tc-btn hidden" id="tc-beam">BEAM</div>
         <div class="tc-btn" id="tc-boost">BOOST</div>
         <div class="tc-btn" id="tc-laser">RIFLE</div>
+        <div class="tc-btn" id="tc-missile">MISSILE</div>
         <div class="tc-btn" id="tc-jump">JUMP</div>
         <div class="tc-btn big" id="tc-saber">SABER</div>
       </div>
@@ -133,6 +135,7 @@ export class TouchControls {
     };
     tap('tc-saber', () => this.cb.onSaber());
     tap('tc-laser', () => this.cb.onLaser());
+    tap('tc-missile', () => this.cb.onMissile());
     tap('tc-nova', () => this.cb.onNova());
     hold('tc-jump', (v) => (this.jump = v));
     hold('tc-boost', (v) => (this.boost = v));

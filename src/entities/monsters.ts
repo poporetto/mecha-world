@@ -787,3 +787,215 @@ export class CrimsonMantis extends Monster {
     }
   }
 }
+
+// -------------------------------------------------------------- Magma Golem
+
+// Lava-cored brute: lumbers forward, slams the ground to send out a molten
+// shockwave, and pelts the player with lobbed boulders.
+export class MagmaGolem extends Monster {
+  name = 'MAGMA GOLEM';
+  reward: Reward = 'repair';
+  hitRadius = 16;
+  private armL: THREE.Mesh;
+  private armR: THREE.Mesh;
+  private legL: THREE.Mesh;
+  private legR: THREE.Mesh;
+  private core: THREE.Mesh;
+  private slamT = 3;
+  private throwT = 5;
+  private heading = 0;
+
+  constructor(x: number, z: number) {
+    super(240);
+    const ROCK = 0x5a4a44; // dark basalt
+    const CRUST = 0x7a5348;
+    const LAVA = 0xff7a2f;
+
+    const torso = box(6, 5.5, 4, ROCK);
+    torso.position.y = 9;
+    // molten cracks (emissive plates) across the chest
+    const crackL = box(1.2, 3.2, 0.4, LAVA, LAVA);
+    crackL.position.set(-1.4, 9, 2.1);
+    crackL.rotation.z = 0.3;
+    const crackR = box(0.9, 2.4, 0.4, LAVA, LAVA);
+    crackR.position.set(1.5, 8.4, 2.1);
+    crackR.rotation.z = -0.2;
+    this.core = box(1.8, 1.8, 0.6, 0xffd060, 0xffb020);
+    this.core.position.set(0, 9.6, 2.2);
+    const head = box(2.4, 2.0, 2.4, CRUST);
+    head.position.set(0, 12.8, 0.4);
+    const eyeL = box(0.6, 0.5, 0.3, LAVA, LAVA);
+    eyeL.position.set(-0.6, 13, 1.6);
+    const eyeR = eyeL.clone();
+    eyeR.position.x = 0.6;
+    const shoulderL = box(2.6, 2.6, 3.2, CRUST);
+    shoulderL.position.set(-4.2, 11.5, 0);
+    const shoulderR = shoulderL.clone();
+    shoulderR.position.x = 4.2;
+    this.armL = box(2.2, 6.5, 2.4, ROCK);
+    this.armL.position.set(-4.4, 7.5, 0);
+    this.armR = this.armL.clone();
+    this.armR.position.x = 4.4;
+    const fistL = box(3, 2.6, 3, CRUST);
+    fistL.position.set(-4.4, 3.6, 0);
+    const fistR = fistL.clone();
+    fistR.position.x = 4.4;
+    this.legL = box(2.6, 6, 3, ROCK);
+    this.legL.position.set(-1.8, 3, 0);
+    this.legR = this.legL.clone();
+    this.legR.position.x = 1.8;
+    this.group.add(torso, crackL, crackR, this.core, head, eyeL, eyeR, shoulderL, shoulderR,
+      this.armL, this.armR, fistL, fistR, this.legL, this.legR);
+    this.group.scale.setScalar(MONSTER_SCALE);
+    this.group.position.set(x, 0, z);
+    this.rememberEmissives();
+  }
+
+  update(dt: number, t: number, ctx: MonsterCtx): void {
+    this.updateFlash(dt);
+    if (this.updateDeath(dt)) return;
+
+    const dx = ctx.playerPos.x - this.group.position.x;
+    const dz = ctx.playerPos.z - this.group.position.z;
+    const dist = Math.hypot(dx, dz);
+    const desired = Math.atan2(dx, dz);
+    let dd = desired - this.heading;
+    while (dd > Math.PI) dd -= Math.PI * 2;
+    while (dd < -Math.PI) dd += Math.PI * 2;
+    this.heading += dd * Math.min(1, dt * 1.1);
+    this.group.rotation.y = this.heading;
+
+    if (dist > 22) {
+      const speed = 3.4;
+      this.group.position.x += Math.sin(this.heading) * speed * dt;
+      this.group.position.z += Math.cos(this.heading) * speed * dt;
+      this.legL.rotation.x = Math.sin(t * 3) * 0.4;
+      this.legR.rotation.x = -Math.sin(t * 3) * 0.4;
+    }
+    const gy = ctx.world.groundHeight(this.group.position.x, this.group.position.z, 20);
+    this.group.position.y += ((gy > 14 ? 0 : gy) - this.group.position.y) * Math.min(1, dt * 2.5);
+    // core pulses
+    const pulse = 0.7 + Math.sin(t * 4) * 0.3;
+    (this.core.material as THREE.MeshLambertMaterial).emissiveIntensity = pulse;
+
+    // ground slam: both fists down, ring of destruction around the feet
+    this.slamT -= dt;
+    if (this.slamT <= 0 && dist < 40) {
+      this.slamT = 3.5;
+      this.armL.rotation.x = 1.4;
+      this.armR.rotation.x = 1.4;
+      const c = this.group.position.clone();
+      c.y += 2;
+      ctx.destroyAt(c, 8, 0.5);
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2;
+        const p = c.clone();
+        p.x += Math.sin(a) * 14;
+        p.z += Math.cos(a) * 14;
+        ctx.destroyAt(p, 4, 0.3);
+      }
+      if (dist < 30) ctx.damagePlayer(18);
+    }
+    this.armL.rotation.x *= 1 - Math.min(1, dt * 2.5);
+    this.armR.rotation.x *= 1 - Math.min(1, dt * 2.5);
+
+    // lob a molten boulder at range
+    this.throwT -= dt;
+    if (this.throwT <= 0 && ctx.throwBoulder && dist > 24 && dist < 95) {
+      this.throwT = 4.5;
+      const from = this.group.position.clone();
+      from.y += 26;
+      ctx.throwBoulder(from, ctx.playerPos.clone());
+    }
+  }
+}
+
+// ----------------------------------------------------------------- Deep Maw
+
+// Burrowing worm: dives underground (only a dust mound shows), tracks the
+// player, then erupts beneath them before submerging again.
+export class DeepMaw extends Monster {
+  name = 'DEEP MAW';
+  reward: Reward = 'repair';
+  hitRadius = 12;
+  private segs: THREE.Mesh[] = [];
+  private mouth: THREE.Group;
+  private submerged = true;
+  private phaseT = 2.5;
+  private surfaceY = 0;
+
+  constructor(x: number, z: number) {
+    super(180);
+    const HIDE = 0x6a7a5a; // mottled green-brown
+    const RING = 0xcbd8b0;
+    const MAW = 0xd8564e;
+
+    this.mouth = new THREE.Group();
+    // segmented body stacked upward from the mouth base
+    for (let i = 0; i < 6; i++) {
+      const s = 3.2 - i * 0.3;
+      const seg = box(s, 2.2, s, i % 2 === 0 ? HIDE : RING);
+      seg.position.y = 3 + i * 2.1;
+      this.mouth.add(seg);
+      this.segs.push(seg);
+    }
+    // maw: a ring of teeth around a red gullet at the top
+    const gullet = box(2.4, 1.2, 2.4, MAW, 0x551111);
+    gullet.position.y = 16;
+    this.mouth.add(gullet);
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const tooth = box(0.5, 1.6, 0.5, 0xf4f0e0);
+      tooth.position.set(Math.sin(a) * 1.7, 16.6, Math.cos(a) * 1.7);
+      this.mouth.add(tooth);
+    }
+    this.group.add(this.mouth);
+    this.group.scale.setScalar(MONSTER_SCALE);
+    this.group.position.set(x, 0, z);
+    this.rememberEmissives();
+  }
+
+  update(dt: number, t: number, ctx: MonsterCtx): void {
+    this.updateFlash(dt);
+    if (this.updateDeath(dt)) return;
+
+    const gy = ctx.world.groundHeight(this.group.position.x, this.group.position.z, 20);
+    this.surfaceY = gy > 14 ? 0 : gy;
+    this.phaseT -= dt;
+
+    if (this.submerged) {
+      // chase the player from just below ground; body hidden, mound only
+      const dx = ctx.playerPos.x - this.group.position.x;
+      const dz = ctx.playerPos.z - this.group.position.z;
+      const d = Math.hypot(dx, dz);
+      if (d > 2) {
+        const speed = 13;
+        this.group.position.x += (dx / d) * speed * dt;
+        this.group.position.z += (dz / d) * speed * dt;
+      }
+      this.group.position.y = this.surfaceY - 30; // buried
+      // churn a shallow dust mound where it travels
+      if (Math.random() < 0.25) ctx.destroyAt(this.group.position.clone().setY(this.surfaceY + 1), 2.4, 0.15);
+      if (this.phaseT <= 0 && d < 30) {
+        this.submerged = false;
+        this.phaseT = 3.5;
+        // erupt: burst the ground open beneath it
+        ctx.destroyAt(this.group.position.clone().setY(this.surfaceY + 2), 7, 0.5);
+        if (d < 22) ctx.damagePlayer(20);
+      }
+    } else {
+      // surfaced: rear up, then dive back down
+      const targetY = this.surfaceY;
+      this.group.position.y += (targetY - this.group.position.y) * Math.min(1, dt * 6);
+      // writhe
+      for (let i = 0; i < this.segs.length; i++) {
+        this.segs[i].position.x = Math.sin(t * 4 + i * 0.6) * 0.6;
+        this.segs[i].position.z = Math.cos(t * 4 + i * 0.6) * 0.6;
+      }
+      if (this.phaseT <= 0) {
+        this.submerged = true;
+        this.phaseT = 2 + Math.random() * 1.5;
+      }
+    }
+  }
+}
