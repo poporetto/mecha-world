@@ -1,6 +1,8 @@
 // Touch controls for mobile browsers: virtual joystick (left), drag-to-look
 // (right), and action buttons. Instantiated only on coarse-pointer devices.
 
+import { WEAPONS, WeaponId } from './hud';
+
 export function isTouchDevice(): boolean {
   if (new URLSearchParams(location.search).has('touch')) return true; // preview on desktop
   return window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
@@ -10,6 +12,7 @@ export interface TouchCallbacks {
   onAttackDown: () => void;
   onAttackUp: () => void;
   onNova: () => void;
+  onQuake: () => void;
   onWheel: () => void;
   onLook: (dx: number, dy: number) => void;
 }
@@ -32,6 +35,7 @@ export class TouchControls {
   private lookLast = { x: 0, y: 0 };
   private beamBtn: HTMLElement;
   private novaBtn: HTMLElement;
+  private quakeBtn: HTMLElement;
   // D-pad state, combined with the joystick each change
   private stickX = 0;
   private stickZ = 0;
@@ -79,6 +83,7 @@ export class TouchControls {
       </div>
       <div class="tc-btns">
         <div class="tc-btn hidden" id="tc-nova">NOVA</div>
+        <div class="tc-btn hidden" id="tc-quake">QUAKE</div>
         <div class="tc-btn hidden" id="tc-beam">BEAM</div>
         <div class="tc-btn" id="tc-wheel">⚔<br/>WEAPON</div>
         <div class="tc-btn" id="tc-boost">BOOST</div>
@@ -94,19 +99,25 @@ export class TouchControls {
     this.stickKnob = this.layer.querySelector('#tc-knob')!;
     this.beamBtn = this.layer.querySelector('#tc-beam')!;
     this.novaBtn = this.layer.querySelector('#tc-nova')!;
+    this.quakeBtn = this.layer.querySelector('#tc-quake')!;
 
     this.bindButtons();
     this.bindTouches();
   }
 
-  unlock(key: 'beam' | 'nova'): void {
-    (key === 'beam' ? this.beamBtn : this.novaBtn).classList.remove('hidden');
+  unlock(key: 'beam' | 'nova' | 'quake'): void {
+    const btn = key === 'beam' ? this.beamBtn : key === 'nova' ? this.novaBtn : this.quakeBtn;
+    btn?.classList.remove('hidden');
   }
 
-  setWeapon(w: 'saber' | 'rifle' | 'missiles'): void {
-    const label = { saber: '⚔<br/>SABER', rifle: '🔫<br/>RIFLE', missiles: '🚀<br/>FIRE' }[w];
+  // wheel weapons are earned from bosses; nothing to reveal on the pad itself
+  // (the radial wheel handles that) — kept so game.ts can call it uniformly
+  unlockWeapon(_w: WeaponId): void {}
+
+  setWeapon(w: WeaponId): void {
+    const meta = WEAPONS.find((x) => x.id === w)!;
     const atk = this.layer.querySelector('#tc-attack') as HTMLElement | null;
-    if (atk) atk.innerHTML = label;
+    if (atk) atk.innerHTML = meta.icon + '<br/>' + meta.label;
   }
 
   // hold buttons set a flag while pressed; tap buttons fire a callback
@@ -140,6 +151,7 @@ export class TouchControls {
     };
     tap('tc-wheel', () => this.cb.onWheel());
     tap('tc-nova', () => this.cb.onNova());
+    tap('tc-quake', () => this.cb.onQuake());
     // attack button: press fires / starts charge, release ends charge
     const atk = this.layer.querySelector('#tc-attack')! as HTMLElement;
     atk.addEventListener('touchstart', (e) => {

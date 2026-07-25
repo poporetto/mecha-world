@@ -1,5 +1,19 @@
 // DOM overlay HUD: health, boss bar, ability chips, toasts, start screen.
 
+// The weapon roster, shared with game.ts. Order sets both the number-key
+// binding (1..n) and the position around the radial wheel.
+export const WEAPONS = [
+  { id: 'saber', icon: '⚔', label: 'SABER' },
+  { id: 'rifle', icon: '🔫', label: 'RIFLE' },
+  { id: 'missiles', icon: '🚀', label: 'MISSILES' },
+  { id: 'railgun', icon: '⚡', label: 'RAILGUN' },
+  { id: 'vulcan', icon: '💥', label: 'VULCAN' },
+  { id: 'flamer', icon: '🔥', label: 'FLAMER' },
+  { id: 'aqua', icon: '💧', label: 'AQUA' },
+] as const;
+
+export type WeaponId = (typeof WEAPONS)[number]['id'];
+
 export class Hud {
   private root: HTMLElement;
   private hpFill!: HTMLElement;
@@ -11,7 +25,7 @@ export class Hud {
   private chips: Record<string, HTMLElement> = {};
   private toastTimer = 0;
   private wheel!: HTMLElement;
-  private onSelectWeapon: (w: 'saber' | 'rifle' | 'missiles') => void = () => {};
+  private onSelectWeapon: (w: WeaponId) => void = () => {};
 
   constructor() {
     this.root = document.getElementById('hud')!;
@@ -67,12 +81,14 @@ export class Hud {
                  background:#04060cbb; pointer-events:auto; z-index:20; }
         .wheel.open { display:flex; }
         .wheel-ring { position:relative; width:320px; height:320px; }
-        .wseg { position:absolute; width:120px; height:120px; margin:-60px; left:50%; top:50%; border-radius:50%;
+        .wseg { position:absolute; width:96px; height:96px; margin:-48px; left:50%; top:50%; border-radius:50%;
                 background:#0e1c30ee; border:2px solid #3a5a7a; color:#eaf6ff; cursor:pointer;
-                display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px;
-                font-size:13px; letter-spacing:2px; transition:transform .1s, border-color .1s; }
-        .wseg:hover, .wseg.sel { border-color:#39e6e0; transform:scale(1.08); box-shadow:0 0 22px #39e6e055; }
-        .wseg .ico { font-size:30px; }
+                display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
+                font-size:11px; letter-spacing:1px; transition:border-color .1s, box-shadow .1s; }
+        .wseg:hover, .wseg.sel { border-color:#39e6e0; box-shadow:0 0 22px #39e6e055; }
+        /* weapons stay dimmed until their boss is defeated */
+        .wseg.locked { opacity:.28; filter:grayscale(1); pointer-events:none; }
+        .wseg .ico { font-size:26px; }
         .wheel-title { position:absolute; left:50%; top:calc(50% + 180px); transform:translateX(-50%);
                        color:#bfe9ff; font-size:13px; letter-spacing:4px; text-shadow:0 1px 3px #000; }
       </style>
@@ -91,10 +107,12 @@ export class Hud {
         <div class="boss-track"><div class="boss-fill" id="bossfill" style="width:100%"></div></div>
       </div>
       <div class="chips">
-        <div class="chip" id="chip-weapon"><b>A</b> ATTACK · <b>1/2/3</b> or WHEEL to switch</div>
-        <div class="chip locked" id="chip-beam"><b>E</b> BEAM — defeat the kaiju</div>
-        <div class="chip locked" id="chip-boots"><b>SPACE(hold)</b> ROCKET BOOTS — defeat Missile Maw</div>
+        <div class="chip" id="chip-weapon"><b>A</b> ATTACK · <b>1-7</b> or WHEEL to switch</div>
+        <div class="chip" id="chip-boots"><b>SPACE (hold)</b> ROCKET BOOTS</div>
+        <div class="chip locked" id="chip-beam"><b>E</b> BEAM — ???</div>
         <div class="chip locked" id="chip-nova"><b>Q</b> NOVA — ???</div>
+        <div class="chip locked" id="chip-quake"><b>G</b> QUAKE — ???</div>
+        <div class="chip locked" id="chip-blades">TWIN SABERS — ???</div>
         <div class="chip locked" id="chip-shield">SHIELD — ???</div>
         <div class="chip" id="chip-power" style="display:none"></div>
       </div>
@@ -102,11 +120,12 @@ export class Hud {
       <div class="cross"></div>
       <div class="wbtn" id="wbtn"><b id="wbtn-ico">⚔</b><span id="wbtn-name">SABER</span></div>
       <div class="wheel" id="wheel">
-        <div class="wheel-ring">
-          <div class="wseg" id="w-saber" style="transform:translate(0,-110px)"><span class="ico">⚔</span>SABER</div>
-          <div class="wseg" id="w-rifle" style="transform:translate(95px,55px)"><span class="ico">🔫</span>RIFLE</div>
-          <div class="wseg" id="w-missiles" style="transform:translate(-95px,55px)"><span class="ico">🚀</span>MISSILES</div>
-        </div>
+        <div class="wheel-ring">${WEAPONS.map((w, i) => {
+          const a = (i / WEAPONS.length) * Math.PI * 2 - Math.PI / 2;
+          const x = Math.round(Math.cos(a) * 118), y = Math.round(Math.sin(a) * 118);
+          return `<div class="wseg locked" id="w-${w.id}" style="transform:translate(${x}px,${y}px)">
+                    <span class="ico">${w.icon}</span>${w.label}</div>`;
+        }).join('')}</div>
         <div class="wheel-title">SELECT WEAPON</div>
       </div>
       <div class="vig" id="vig"></div>
@@ -123,6 +142,8 @@ export class Hud {
       boots: document.getElementById('chip-boots')!,
       nova: document.getElementById('chip-nova')!,
       shield: document.getElementById('chip-shield')!,
+      quake: document.getElementById('chip-quake')!,
+      blades: document.getElementById('chip-blades')!,
     };
     this.wheel = document.getElementById('wheel')!;
 
@@ -131,21 +152,23 @@ export class Hud {
       e.stopPropagation();
       this.wheel.classList.toggle('open');
     });
-    const pick = (id: string, w: 'saber' | 'rifle' | 'missiles') => {
-      document.getElementById(id)!.addEventListener('click', (e) => {
+    for (const w of WEAPONS) {
+      document.getElementById('w-' + w.id)!.addEventListener('click', (e) => {
         e.stopPropagation();
-        this.onSelectWeapon(w);
+        this.onSelectWeapon(w.id);
         this.wheel.classList.remove('open');
       });
-    };
-    pick('w-saber', 'saber');
-    pick('w-rifle', 'rifle');
-    pick('w-missiles', 'missiles');
+    }
     this.wheel.addEventListener('click', () => this.wheel.classList.remove('open'));
   }
 
-  bindWeaponWheel(cb: (w: 'saber' | 'rifle' | 'missiles') => void): void {
+  bindWeaponWheel(cb: (w: WeaponId) => void): void {
     this.onSelectWeapon = cb;
+  }
+
+  // reveal a weapon in the wheel once its boss has been beaten
+  unlockWeapon(w: WeaponId): void {
+    document.getElementById('w-' + w)!.classList.remove('locked');
   }
 
   toggleWheel(): void {
@@ -179,16 +202,12 @@ export class Hud {
     el.style.animation = 'dmgpop .6s ease-out';
   }
 
-  setWeapon(w: 'saber' | 'rifle' | 'missiles'): void {
-    const meta = {
-      saber: ['⚔', 'SABER'],
-      rifle: ['🔫', 'RIFLE'],
-      missiles: ['🚀', 'MISSILES'],
-    }[w];
-    document.getElementById('wbtn-ico')!.textContent = meta[0];
-    document.getElementById('wbtn-name')!.textContent = meta[1];
-    for (const k of ['saber', 'rifle', 'missiles']) {
-      document.getElementById('w-' + k)!.classList.toggle('sel', k === w);
+  setWeapon(w: WeaponId): void {
+    const meta = WEAPONS.find((x) => x.id === w)!;
+    document.getElementById('wbtn-ico')!.textContent = meta.icon;
+    document.getElementById('wbtn-name')!.textContent = meta.label;
+    for (const x of WEAPONS) {
+      document.getElementById('w-' + x.id)!.classList.toggle('sel', x.id === w);
     }
   }
 
@@ -244,7 +263,7 @@ export class Hud {
     this.toastTimer = seconds;
   }
 
-  unlock(key: 'beam' | 'boots' | 'nova' | 'shield', label: string): void {
+  unlock(key: 'beam' | 'boots' | 'nova' | 'shield' | 'quake' | 'blades', label: string): void {
     const chip = this.chips[key];
     chip.classList.remove('locked');
     chip.innerHTML = label;

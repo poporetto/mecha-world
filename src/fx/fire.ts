@@ -88,6 +88,19 @@ export class FireManager {
     return n;
   }
 
+  // Extinguish fires in a column radius — the player's aqua blaster.
+  douse(px: number, pz: number, r: number): number {
+    let n = 0;
+    const r2 = r * r;
+    for (const [k, f] of this.fires) {
+      const dx = f.x + 0.5 - px, dz = f.z + 0.5 - pz;
+      if (dx * dx + dz * dz > r2) continue;
+      this.fires.delete(k);
+      n++;
+    }
+    return n;
+  }
+
   private exposed(world: World, x: number, y: number, z: number): boolean {
     return !isSolid(world.getBlock(x + 1, y, z)) || !isSolid(world.getBlock(x - 1, y, z))
       || !isSolid(world.getBlock(x, y + 1, z)) || !isSolid(world.getBlock(x, y - 1, z))

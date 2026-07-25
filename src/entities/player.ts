@@ -14,9 +14,12 @@ const FLY_V = 15;
 
 export interface Abilities {
   beam: boolean;
-  boots: boolean;
+  boots: boolean; // rocket boots — on from the start
+  thrust: boolean; // overdrive: faster, higher flight
   nova: boolean;
   shield: boolean;
+  blades: boolean; // twin sabers: faster, harder combo
+  quake: boolean; // ground-slam shockwave
 }
 
 export class Player {
@@ -27,7 +30,11 @@ export class Player {
   grounded = false;
   hp = 100;
   maxHp = 100;
-  abilities: Abilities = { beam: false, boots: false, nova: false, shield: false };
+  // rocket boots ship with the mecha; everything else is earned from bosses
+  abilities: Abilities = {
+    beam: false, boots: true, thrust: false, nova: false,
+    shield: false, blades: false, quake: false,
+  };
   private animT = 0;
   private dashVel = new THREE.Vector3();
   private dashTime = 0;
@@ -42,7 +49,8 @@ export class Player {
 
   update(dt: number, moveX: number, moveZ: number, camYaw: number, jump: boolean, run: boolean): void {
     // desired horizontal velocity in camera space
-    const speed = run ? RUN : WALK;
+    // overdrive also makes the boost sprint noticeably quicker
+    const speed = run ? (this.abilities.thrust ? RUN * 1.45 : RUN) : WALK;
     let vx = 0, vz = 0;
     if (moveX !== 0 || moveZ !== 0) {
       const len = Math.hypot(moveX, moveZ);
@@ -67,7 +75,10 @@ export class Player {
     }
 
     if (this.abilities.boots && jump && !this.grounded) {
-      this.vel.y = Math.min(this.vel.y + 80 * dt, FLY_V);
+      // overdrive thrusters climb harder and top out higher
+      const climb = this.abilities.thrust ? 150 : 80;
+      const top = this.abilities.thrust ? FLY_V * 1.9 : FLY_V;
+      this.vel.y = Math.min(this.vel.y + climb * dt, top);
       this.model.setThrusters(true);
     } else {
       this.model.setThrusters(this.abilities.boots && jump);

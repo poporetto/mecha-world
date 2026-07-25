@@ -3,7 +3,11 @@
 import * as THREE from 'three';
 import { World } from '../core/world';
 
-export type Reward = 'beam' | 'boots' | 'nova' | 'shield' | 'repair';
+// Every boss teaches something distinct: a wheel weapon or a passive/ability.
+export type Reward =
+  | 'beam' | 'thrust' | 'nova' | 'shield' | 'blades' | 'quake' // abilities
+  | 'railgun' | 'vulcan' | 'flamer' | 'aqua' // wheel weapons
+  | 'repair'; // endless mode: repairs + power level
 
 export interface MonsterCtx {
   world: World;
@@ -275,7 +279,7 @@ export class Kaiju extends Monster {
 
 export class RocketBeast extends Monster {
   name = 'MISSILE MAW';
-  reward: Reward = 'boots';
+  reward: Reward = 'thrust';
   hitRadius = 15;
   private orbitA = Math.random() * Math.PI * 2;
   private fireT = 3;
@@ -569,7 +573,7 @@ export class IronColossus extends Monster {
 // through the player's position, carving a trench where it strafes.
 export class SkyReaver extends Monster {
   name = 'SKY REAVER';
-  reward: Reward = 'repair';
+  reward: Reward = 'railgun';
   hitRadius = 14;
   private wingL: THREE.Mesh;
   private wingR: THREE.Mesh;
@@ -669,7 +673,7 @@ export class SkyReaver extends Monster {
 // Fast ground predator: sprints at the player, then lunges with scythe arms.
 export class CrimsonMantis extends Monster {
   name = 'CRIMSON MANTIS';
-  reward: Reward = 'repair';
+  reward: Reward = 'blades';
   hitRadius = 12;
   private scytheL: THREE.Group;
   private scytheR: THREE.Group;
@@ -796,7 +800,7 @@ export class CrimsonMantis extends Monster {
 // shockwave, and pelts the player with lobbed boulders.
 export class MagmaGolem extends Monster {
   name = 'MAGMA GOLEM';
-  reward: Reward = 'repair';
+  reward: Reward = 'quake';
   hitRadius = 16;
   private armL: THREE.Mesh;
   private armR: THREE.Mesh;
@@ -918,7 +922,7 @@ export class MagmaGolem extends Monster {
 // player, then erupts beneath them before submerging again.
 export class DeepMaw extends Monster {
   name = 'DEEP MAW';
-  reward: Reward = 'repair';
+  reward: Reward = 'vulcan';
   hitRadius = 12;
   private segs: THREE.Mesh[] = [];
   private mouth: THREE.Group;
@@ -1008,7 +1012,7 @@ export class DeepMaw extends Monster {
 // ablaze and scorches the player. The fire keeps spreading after it moves on.
 export class CinderWyrm extends Monster {
   name = 'CINDER WYRM';
-  reward: Reward = 'repair';
+  reward: Reward = 'flamer';
   hitRadius = 13;
   private wingL: THREE.Mesh;
   private wingR: THREE.Mesh;
@@ -1110,7 +1114,7 @@ export class CinderWyrm extends Monster {
 // which blows chunks out of buildings and leaves spreading floodwater behind.
 export class TideLeviathan extends Monster {
   name = 'TIDE LEVIATHAN';
-  reward: Reward = 'repair';
+  reward: Reward = 'aqua';
   hitRadius = 16;
   private finL: THREE.Mesh;
   private finR: THREE.Mesh;
