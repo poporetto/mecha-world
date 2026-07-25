@@ -1,5 +1,5 @@
-// The player mecha, styled after the classic RX-78: white armor, blue chest,
-// red abdomen/feet, yellow V-fin, pink beam saber. Scaled up hero-size.
+// Hero mobile suit: a deliberately bold, original super-robot silhouette with
+// white ceramic armour, primary-colour blocks, a V-fin and oversized gear.
 
 import * as THREE from 'three';
 
@@ -13,12 +13,22 @@ const JOINT = 0x3a3d45;
 const DARK = 0x23262b;
 const SABER = 0xff8ad8; // pink beam
 const EYE = 0xf7e06a;
+const STEEL = 0x89919d;
 
 function box(w: number, h: number, d: number, color: number, emissive = 0): THREE.Mesh {
   return new THREE.Mesh(
     new THREE.BoxGeometry(w, h, d),
     new THREE.MeshLambertMaterial({ color, emissive, emissiveIntensity: emissive ? 1 : 0 })
   );
+}
+
+// A small layered plate makes the construction feel manufactured rather than
+// like a single voxel. Keep it boxy so it belongs in the world aesthetic.
+function plate(w: number, h: number, d: number, color = WHITE): THREE.Mesh {
+  const mesh = box(w, h, d, color);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  return mesh;
 }
 
 export class MechaModel {
@@ -46,7 +56,7 @@ export class MechaModel {
     g.add(this.legL, this.legR);
 
     // hip / abdomen with skirt armor plates
-    const pelvis = box(1.25, 0.55, 0.85, WHITE);
+    const pelvis = plate(1.25, 0.55, 0.85, WHITE);
     pelvis.position.y = 2.0;
     const crotch = box(0.45, 0.5, 0.5, RED);
     crotch.position.set(0, 1.95, 0.28);
@@ -71,6 +81,13 @@ export class MechaModel {
     skirtR.position.x = 0.72;
     skirtR.rotation.z = 0.2;
     g.add(pelvis, crotch, skirtF, skirtB, skirtL, skirtR);
+    // Three separated front-apron plates create a more commanding waistline.
+    for (const x of [-0.43, 0, 0.43]) {
+      const apron = plate(x === 0 ? 0.3 : 0.34, 0.48, 0.12, WHITE);
+      apron.position.set(x, 1.7, 0.56);
+      apron.rotation.x = 0.22;
+      g.add(apron);
+    }
 
     this.torso = new THREE.Group();
     this.torso.position.y = 2.25;
@@ -79,7 +96,7 @@ export class MechaModel {
     // chest: blue plate over white core, yellow vents, red abdomen
     const abdomen = box(0.95, 0.5, 0.75, RED);
     abdomen.position.y = 0.25;
-    const chest = box(1.75, 1.05, 1.05, BLUE);
+    const chest = plate(1.75, 1.05, 1.05, BLUE);
     chest.position.y = 1.0;
     const chestTop = box(1.3, 0.35, 1.1, BLUE);
     chestTop.position.set(0, 1.55, 0.05);
@@ -95,6 +112,16 @@ export class MechaModel {
     const collarR = collarL.clone();
     collarR.position.x = 0.55;
     this.torso.add(collarL, collarR);
+    // White pectoral shells and blue centre keel: a recognisable heroic chest.
+    const chestShellL = plate(0.55, 0.62, 0.14, WHITE);
+    chestShellL.position.set(-0.52, 1.1, 0.58);
+    chestShellL.rotation.z = 0.12;
+    const chestShellR = chestShellL.clone();
+    chestShellR.position.x = 0.52;
+    chestShellR.rotation.z = -0.12;
+    const chestKeel = plate(0.22, 0.72, 0.16, BLUE);
+    chestKeel.position.set(0, 1.12, 0.62);
+    this.torso.add(chestShellL, chestShellR, chestKeel);
 
     // backpack with twin thrusters
     const backpack = box(1.15, 0.95, 0.5, RED);
@@ -116,7 +143,7 @@ export class MechaModel {
     // head: white helmet, dark face, yellow eyes, red chin, yellow V-fin
     const head = new THREE.Group();
     head.position.y = 2.05;
-    const helmet = box(0.6, 0.52, 0.58, WHITE);
+    const helmet = plate(0.6, 0.52, 0.58, WHITE);
     const face = box(0.44, 0.3, 0.18, DARK);
     face.position.set(0, -0.06, 0.26);
     const eyeL = box(0.13, 0.09, 0.06, EYE, EYE);
@@ -160,7 +187,11 @@ export class MechaModel {
     const antenna = box(0.04, 0.5, 0.04, JOINT);
     antenna.position.set(-0.36, 0.35, 0.05);
     antenna.rotation.z = 0.15;
-    head.add(helmet, face, eyeL, eyeR, chin, crest, finL, finR, earL, earR, antenna);
+    const forehead = plate(0.32, 0.12, 0.1, WHITE);
+    forehead.position.set(0, 0.2, 0.32);
+    const crown = plate(0.28, 0.1, 0.52, WHITE);
+    crown.position.set(0, 0.32, 0);
+    head.add(helmet, face, eyeL, eyeR, chin, crest, forehead, crown, finL, finR, earL, earR, antenna);
     this.torso.add(head);
 
     this.armL = this.makeArm(-1.25, true); // rifle arm
@@ -186,14 +217,14 @@ export class MechaModel {
   private makeLeg(x: number): THREE.Group {
     const leg = new THREE.Group();
     leg.position.set(x, 2.1, 0);
-    const thigh = box(0.55, 0.95, 0.62, WHITE);
+    const thigh = plate(0.55, 0.95, 0.62, WHITE);
     thigh.position.y = -0.5;
     const knee = box(0.42, 0.28, 0.5, JOINT);
     knee.position.y = -1.05;
     const kneePad = box(0.48, 0.34, 0.16, WHITE);
     kneePad.position.set(0, -1.02, 0.32);
     leg.add(kneePad);
-    const shin = box(0.58, 0.95, 0.66, WHITE);
+    const shin = plate(0.58, 0.95, 0.66, WHITE);
     shin.position.y = -1.62;
     const ankle = box(0.34, 0.2, 0.4, JOINT);
     ankle.position.y = -2.14;
@@ -202,14 +233,23 @@ export class MechaModel {
     // white ankle guard plate over the red foot, RX-78 style
     const ankleGuard = box(0.66, 0.22, 0.5, WHITE);
     ankleGuard.position.set(0, -1.86, 0.35);
-    leg.add(thigh, knee, shin, ankle, foot, ankleGuard);
+    // Raised shin blade, side verniers and split toe cap improve the read at a distance.
+    const shinBlade = plate(0.42, 0.65, 0.12, WHITE);
+    shinBlade.position.set(0, -1.58, 0.39);
+    const calfL = plate(0.1, 0.46, 0.2, STEEL);
+    calfL.position.set(-0.34, -1.55, -0.1);
+    const calfR = calfL.clone();
+    calfR.position.x = 0.34;
+    const toe = plate(0.48, 0.12, 0.32, RED);
+    toe.position.set(0, -2.02, 0.68);
+    leg.add(thigh, knee, shin, ankle, foot, ankleGuard, shinBlade, calfL, calfR, toe);
     return leg;
   }
 
   private makeArm(x: number, rifle: boolean): THREE.Group {
     const arm = new THREE.Group();
     arm.position.set(x, 1.35, 0);
-    const pauldron = box(0.72, 0.55, 0.8, WHITE);
+    const pauldron = plate(0.72, 0.55, 0.8, WHITE);
     pauldron.position.y = 0.08;
     // RX-78 upper arms are white with dark joint rings
     const upper = box(0.42, 0.75, 0.46, WHITE);
@@ -221,10 +261,15 @@ export class MechaModel {
     elbow.position.y = -0.95;
     const fore = box(0.5, 0.85, 0.54, WHITE);
     fore.position.y = -1.42;
-    arm.add(pauldron, upper, elbow, fore);
+    // Add a shoulder cap and edge plate; the asymmetrical loadout remains readable.
+    const shoulderCap = plate(0.84, 0.18, 0.86, WHITE);
+    shoulderCap.position.set(0, 0.37, 0);
+    const foreGuard = plate(0.34, 0.45, 0.12, WHITE);
+    foreGuard.position.set(0, -1.4, 0.34);
+    arm.add(pauldron, shoulderCap, upper, elbow, fore, foreGuard);
     if (rifle) {
       // beam rifle held under the forearm
-      const body = box(0.28, 0.9, 0.34, DARK);
+      const body = box(0.34, 0.9, 0.42, DARK);
       body.position.set(0, -1.95, 0.1);
       const scope = box(0.14, 0.2, 0.5, JOINT);
       scope.position.set(0, -1.7, 0.35);
@@ -234,10 +279,15 @@ export class MechaModel {
       this.muzzle = box(0.16, 0.35, 0.16, 0xffb0e8, 0xffb0e8);
       this.muzzle.position.set(0, -2.45, 0.1);
       arm.add(body, scope, this.muzzle);
+      const barrel = box(0.2, 0.7, 0.2, DARK);
+      barrel.position.set(0, -2.72, 0.1);
+      const rifleStock = box(0.22, 0.36, 0.46, STEEL);
+      rifleStock.position.set(0, -1.55, -0.18);
+      arm.add(barrel, rifleStock);
       // shield strapped to the outside of the rifle arm
-      const shield = box(0.14, 1.9, 1.05, RED);
+      const shield = plate(0.14, 2.15, 1.1, RED);
       shield.position.set(-0.42, -1.35, 0);
-      const shieldTrim = box(0.06, 1.9, 0.2, WHITE);
+      const shieldTrim = box(0.06, 2.15, 0.2, WHITE);
       shieldTrim.position.set(-0.5, -1.35, 0);
       const crossV = box(0.06, 0.85, 0.2, YELLOW);
       crossV.position.set(-0.51, -1.3, 0);
