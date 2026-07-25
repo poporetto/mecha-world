@@ -9,6 +9,7 @@ import { CinderWyrm, CrimsonMantis, DeepMaw, IronColossus, Kaiju, MagmaGolem, Mo
 import { FireManager } from './fx/fire';
 import { FloodManager } from './fx/flood';
 import { CarManager } from './entities/cars';
+import { Plane, PlaneManager } from './entities/planes';
 import { RepairManager } from './core/repair';
 import { Debris } from './fx/debris';
 import { buildFallingChunk, FallingChunk, updateFallingChunk } from './fx/collapse';
@@ -39,6 +40,8 @@ export class Game {
   private npcs: NpcManager;
   private cars: CarManager;
   private debris = new Debris();
+  private planes = new PlaneManager();
+  private ridingPlane: Plane | null = null;
   private hud = new Hud();
   private touch: TouchControls | null = null;
 
@@ -124,6 +127,7 @@ export class Game {
     this.cars = new CarManager(this.world);
     this.repair = new RepairManager(this.world);
     this.scene.add(this.npcs.group, this.cars.group, this.debris.mesh, this.explosions.group, this.fire.group);
+    this.scene.add(this.planes.group);
 
 
     // beam (unlockable): a long emissive box scaled to hit distance
@@ -775,6 +779,33 @@ export class Game {
     }
   }
 
+  // Land on / ride the airliners. Called after the player has moved: if the
+  // mecha is descending onto a deck it snaps on top and rides along; jumping
+  // or walking off the edge releases it.
+  private updatePlaneRiding(jump: boolean): void {
+    const p = this.player;
+    if (this.ridingPlane) {
+      const deck = this.ridingPlane.group.position.y + this.ridingPlane.deckY;
+      const stillOn = this.planes.deckUnder(p.pos.x, p.pos.y, p.pos.z, 2.5) === this.ridingPlane;
+      // jumping or stepping off the wing drops you back into open air
+      if (jump && p.vel.y > 0) { this.ridingPlane = null; return; }
+      if (!stillOn) { this.ridingPlane = null; return; }
+      p.pos.y = deck;
+      p.vel.y = 0;
+      p.grounded = true;
+      return;
+    }
+    // only catch a deck while falling, so you can still fly up past a plane
+    if (p.vel.y > 0) return;
+    const hit = this.planes.deckUnder(p.pos.x, p.pos.y, p.pos.z, 2.5);
+    if (!hit) return;
+    this.ridingPlane = hit;
+    p.pos.y = hit.group.position.y + hit.deckY;
+    p.vel.y = 0;
+    p.grounded = true;
+    this.hud.toast('AIRBORNE', 'Standing on a passing airliner', 2.5);
+  }
+
   // ------------------------------------------------------------ boss cycle
 
   private updateBosses(dt: number): void {
@@ -993,6 +1024,7 @@ export class Game {
       if (this.comboTimer <= 0 && this.combo > 1) { this.combo = 1; this.hud.setScore(this.score, this.combo); }
     }
 
+    let jump = false;
     if (this.started) {
       // A is the attack button now, so left-strafe is ArrowLeft (or Q-less); D/right still work
       const right = this.keys.has('KeyD') || this.keys.has('ArrowRight');
@@ -1001,7 +1033,7 @@ export class Game {
       const fwd = this.keys.has('KeyW') || this.keys.has('ArrowUp');
       let mx = (right ? 1 : 0) - (left ? 1 : 0);
       let mz = (fwd ? 1 : 0) - (back ? 1 : 0);
-      let jump = this.keys.has('Space');
+      jump = this.keys.has('Space');
       let boost = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
       if (this.touch) {
         mx += this.touch.moveX;
@@ -1009,10 +1041,17 @@ export class Game {
         jump = jump || this.touch.jump;
         boost = boost || this.touch.boost;
       }
+      // riding a plane: carry the mecha along with the deck before it moves
+      if (this.ridingPlane) {
+        this.player.pos.x += this.ridingPlane.dx;
+        this.player.pos.z += this.ridingPlane.dz;
+      }
       this.player.update(dt, mx, mz, this.camYaw, jump, boost);
     } else {
       this.player.update(dt, 0, 0, this.camYaw, false, false);
     }
+    this.planes.update(dt, this.player.pos);
+    this.updatePlaneRiding(jump);
 
     this.chunks.update(this.player.pos.x, this.player.pos.z);
 
