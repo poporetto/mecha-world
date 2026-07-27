@@ -51,12 +51,12 @@ export class MechaModel {
     const g = this.group;
     g.scale.setScalar(MECHA_SCALE);
 
-    this.legL = this.makeLeg(-0.58);
-    this.legR = this.makeLeg(0.58);
+    this.legL = this.makeLeg(-0.48);
+    this.legR = this.makeLeg(0.48);
     g.add(this.legL, this.legR);
 
     // hip / abdomen with skirt armor plates
-    const pelvis = plate(1.25, 0.55, 0.85, WHITE);
+    const pelvis = plate(1.02, 0.52, 0.78, WHITE);
     pelvis.position.y = 2.0;
     const crotch = box(0.45, 0.5, 0.5, RED);
     crotch.position.set(0, 1.95, 0.28);
@@ -75,10 +75,10 @@ export class MechaModel {
     skirtB.position.set(0, 1.78, -0.46);
     skirtB.rotation.x = -0.18;
     const skirtL = box(0.16, 0.55, 0.6, WHITE);
-    skirtL.position.set(-0.72, 1.78, 0);
+    skirtL.position.set(-0.62, 1.78, 0);
     skirtL.rotation.z = -0.2;
     const skirtR = skirtL.clone();
-    skirtR.position.x = 0.72;
+    skirtR.position.x = 0.62;
     skirtR.rotation.z = 0.2;
     g.add(pelvis, crotch, skirtF, skirtB, skirtL, skirtR);
     // Three separated front-apron plates create a more commanding waistline.
@@ -144,7 +144,10 @@ export class MechaModel {
     // recessed black mask carrying angled eyes, a slatted mouth vent, cheek
     // ducts, a forehead jewel, and the yellow V-fin antenna above it.
     const head = new THREE.Group();
-    head.position.y = 2.16;
+    head.position.y = 2.34;
+    // Gundam proportion: the head is small but not a pinhead — this brings the
+    // figure to roughly 7.5 heads tall, the classic heroic mobile-suit ratio.
+    head.scale.setScalar(1.52);
 
     // helmet shell + crown ridge running front to back
     const helmet = plate(0.62, 0.46, 0.58, WHITE);
@@ -250,40 +253,46 @@ export class MechaModel {
   private makeLeg(x: number): THREE.Group {
     const leg = new THREE.Group();
     leg.position.set(x, 2.1, 0);
-    const thigh = plate(0.55, 0.95, 0.62, WHITE);
-    thigh.position.y = -0.5;
-    const knee = box(0.42, 0.28, 0.5, JOINT);
-    knee.position.y = -1.05;
-    const kneePad = box(0.48, 0.34, 0.16, WHITE);
-    kneePad.position.set(0, -1.02, 0.32);
+    const thigh = plate(0.5, 1.12, 0.6, WHITE);
+    thigh.position.y = -0.56;
+    const knee = box(0.46, 0.3, 0.54, JOINT);
+    knee.position.y = -1.16;
+    const kneePad = box(0.54, 0.4, 0.18, WHITE);
+    kneePad.position.set(0, -1.14, 0.36);
     leg.add(kneePad);
-    const shin = plate(0.58, 0.95, 0.66, WHITE);
-    shin.position.y = -1.62;
-    const ankle = box(0.34, 0.2, 0.4, JOINT);
-    ankle.position.y = -2.14;
-    const foot = box(0.62, 0.28, 1.05, RED);
-    foot.position.set(0, -2.0, 0.18);
+    const shin = plate(0.64, 1.12, 0.72, WHITE);
+    shin.position.y = -1.78;
+    const ankle = box(0.36, 0.22, 0.42, JOINT);
+    ankle.position.y = -2.4;
+    const foot = box(0.78, 0.34, 1.24, RED);
+    foot.position.set(0, -2.28, 0.2);
     // white ankle guard plate over the red foot, RX-78 style
-    const ankleGuard = box(0.66, 0.22, 0.5, WHITE);
-    ankleGuard.position.set(0, -1.86, 0.35);
+    const ankleGuard = box(0.8, 0.26, 0.56, WHITE);
+    ankleGuard.position.set(0, -2.1, 0.38);
     // Raised shin blade, side verniers and split toe cap improve the read at a distance.
-    const shinBlade = plate(0.42, 0.65, 0.12, WHITE);
-    shinBlade.position.set(0, -1.58, 0.39);
-    const calfL = plate(0.1, 0.46, 0.2, STEEL);
-    calfL.position.set(-0.34, -1.55, -0.1);
+    const shinBlade = plate(0.48, 0.76, 0.14, WHITE);
+    shinBlade.position.set(0, -1.74, 0.43);
+    const calfL = plate(0.11, 0.52, 0.22, STEEL);
+    calfL.position.set(-0.37, -1.72, -0.12);
     const calfR = calfL.clone();
     calfR.position.x = 0.34;
-    const toe = plate(0.48, 0.12, 0.32, RED);
-    toe.position.set(0, -2.02, 0.68);
+    const toe = plate(0.6, 0.14, 0.38, RED);
+    toe.position.set(0, -2.3, 0.82);
     leg.add(thigh, knee, shin, ankle, foot, ankleGuard, shinBlade, calfL, calfR, toe);
     return leg;
   }
 
   private makeArm(x: number, rifle: boolean): THREE.Group {
     const arm = new THREE.Group();
-    arm.position.set(x, 1.35, 0);
-    const pauldron = plate(0.72, 0.55, 0.8, WHITE);
-    pauldron.position.y = 0.08;
+    arm.position.set(x * 1.02, 1.26, 0);
+    // RX-78 shoulders are large squared blocks that flare past the chest
+    const pauldron = plate(0.8, 0.66, 0.84, WHITE);
+    pauldron.position.set(0, 0.1, 0);
+    const pauldronFace = plate(0.14, 0.54, 0.74, WHITE);
+    pauldronFace.position.set(x > 0 ? 0.44 : -0.44, 0.1, 0);
+    const pauldronVent = box(0.09, 0.14, 0.42, YELLOW);
+    pauldronVent.position.set(x > 0 ? 0.5 : -0.5, 0.26, 0);
+    arm.add(pauldronFace, pauldronVent);
     // RX-78 upper arms are white with dark joint rings
     const upper = box(0.42, 0.75, 0.46, WHITE);
     upper.position.y = -0.52;
@@ -295,8 +304,8 @@ export class MechaModel {
     const fore = box(0.5, 0.85, 0.54, WHITE);
     fore.position.y = -1.42;
     // Add a shoulder cap and edge plate; the asymmetrical loadout remains readable.
-    const shoulderCap = plate(0.84, 0.18, 0.86, WHITE);
-    shoulderCap.position.set(0, 0.37, 0);
+    const shoulderCap = plate(0.86, 0.18, 0.88, WHITE);
+    shoulderCap.position.set(0, 0.44, 0);
     const foreGuard = plate(0.34, 0.45, 0.12, WHITE);
     foreGuard.position.set(0, -1.4, 0.34);
     arm.add(pauldron, shoulderCap, upper, elbow, fore, foreGuard);
