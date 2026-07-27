@@ -3,7 +3,7 @@
 
 import * as THREE from 'three';
 
-const MAX_SMOKE = 300;
+const MAX_SMOKE = 800;
 
 interface Flash {
   mesh: THREE.Mesh;
@@ -93,6 +93,23 @@ export class Explosions {
         maxLife: 1.1 + Math.random() * 0.9,
         size: 1.2 + Math.random() * radius * 0.5,
         gray: 0.35 + Math.random() * 0.4,
+      });
+    }
+  }
+
+  /** Smoke without a fireball — used for the trail off a stricken airliner. */
+  smokePuff(p: THREE.Vector3, radius: number, count = 4, dark = false): void {
+    for (let i = 0; i < count; i++) {
+      if (this.puffs.length >= MAX_SMOKE) this.puffs.shift();
+      const a = Math.random() * Math.PI * 2;
+      const r = Math.random() * radius * 0.6;
+      this.puffs.push({
+        pos: new THREE.Vector3(p.x + Math.sin(a) * r, p.y + (Math.random() - 0.5) * radius * 0.4, p.z + Math.cos(a) * r),
+        vel: new THREE.Vector3((Math.random() - 0.5) * 2, 1 + Math.random() * 2.5, (Math.random() - 0.5) * 2),
+        life: 0,
+        maxLife: 2.4 + Math.random() * 2.2,
+        size: 2.4 + Math.random() * radius * 0.8,
+        gray: dark ? 0.06 + Math.random() * 0.1 : 0.35 + Math.random() * 0.4,
       });
     }
   }

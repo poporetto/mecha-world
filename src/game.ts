@@ -835,10 +835,31 @@ export class Game {
     for (const p of downed) {
       this.addScore(400, true);
       this.hud.toast('AIRLINER HIT', 'It is going down — clear the impact zone', 3);
-      this.explosions.boom(p.group.position.clone(), 12);
-      sfx.explode(0.7, 1 - Math.min(1, p.group.position.distanceTo(this.player.pos) / 150));
+      const at = p.group.position.clone();
+      const vol = 1 - Math.min(1, at.distanceTo(this.player.pos) / 150);
+      // engine blows out: fireball, torn hull plating, black smoke
+      this.explosions.boom(at, 13);
+      this.debris.burst(at, [16, 6, 12], 26);
+      this.explosions.smokePuff(at, 9, 10, true);
+      this.shake = Math.max(this.shake, 0.6);
+      sfx.explode(0.7, vol);
       // riding the plane you just shot down? you go with it
       if (this.ridingPlane === p) this.ridingPlane = null;
+    }
+  }
+
+  // Thick black smoke and shedding debris follow a stricken airliner down.
+  private trailCrashingPlanes(dt: number): void {
+    for (const p of this.planes.planes) {
+      if (!p.crashing) continue;
+      p.smokeT -= dt;
+      if (p.smokeT > 0) continue;
+      p.smokeT = 0.05;
+      const at = p.group.position.clone();
+      this.explosions.smokePuff(at, 7, 3, true);
+      // licks of flame around the wreck
+      if (Math.random() < 0.5) this.explosions.boom(at, 3.5);
+      if (Math.random() < 0.3) this.debris.burst(at, [16, 12], 4);
     }
   }
 
@@ -853,8 +874,17 @@ export class Game {
       p.y = this.world.groundHeight(p.x, p.z, 60) + 2;
       this.destroyAt(p, i === 0 ? 13 : 10 - i * 0.7, 0.6);
       this.explosions.boom(p, 12 - i);
+      // rolling black smoke column + scattered wreckage down the furrow
+      this.explosions.smokePuff(p, 12 - i, 12 - i, true);
+      this.debris.burst(p, [16, 6, 12, 20], 30 - i * 2);
       // burning fuel spreads from the wreck
       this.fire.igniteSphere(this.world, p.x, p.y, p.z, 7);
+    }
+    // a tall pall of smoke hangs over the crash site
+    for (let k = 0; k < 6; k++) {
+      const up = c.at.clone();
+      up.y = this.world.groundHeight(up.x, up.z, 60) + 6 + k * 5;
+      this.explosions.smokePuff(up, 10, 6, true);
     }
     this.npcs.scare(c.at, 90);
     this.cars.scare(c.at, 90);
@@ -1183,6 +1213,7 @@ export class Game {
     }
     const crashes = this.planes.update(dt, this.player.pos,
       (x, z) => this.world.groundHeight(x, z, 60));
+    this.trailCrashingPlanes(dt);
     for (const c of crashes) this.planeCrash(c);
     this.updatePlaneRiding(jump);
 
