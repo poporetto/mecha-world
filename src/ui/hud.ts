@@ -39,7 +39,8 @@ export class Hud {
         .boss-name { color:#ffd0d0; font-size:14px; letter-spacing:6px; margin-bottom:5px; text-shadow:0 1px 4px #000; }
         .boss-track { height:12px; background:#0009; border:1px solid #ff5a5a66; border-radius:6px; overflow:hidden; }
         .boss-fill { height:100%; background:linear-gradient(90deg,#ff3b3b,#ff9a3b); transition:width .15s; }
-        .chips { position:absolute; left:24px; bottom:20px; display:flex; gap:8px; }
+        .chips { position:absolute; left:24px; bottom:18px; display:flex; gap:7px; flex-wrap:wrap;
+                 max-width:min(62vw, 760px); }
         .chip { padding:6px 10px; border-radius:6px; font-size:11px; letter-spacing:1px; color:#eaf6ff;
                 background:#0a1626cc; border:1px solid #3a5a7a; text-shadow:0 1px 2px #000; }
         .chip.locked { opacity:.35; filter:grayscale(1); }
@@ -60,8 +61,26 @@ export class Hud {
         .start .go { margin-top:30px; color:#fff; font-size:14px; letter-spacing:4px; border:1px solid #39e6e0;
                      padding:10px 26px; border-radius:4px; animation:pulse 1.6s infinite; }
         @keyframes pulse { 50% { box-shadow:0 0 22px #39e6e088; } }
-        .hint { position:absolute; right:24px; bottom:20px; color:#8fb4d8aa; font-size:11px; letter-spacing:1px;
-                text-align:right; line-height:1.7; text-shadow:0 1px 2px #000; }
+        .hint { position:absolute; right:24px; bottom:18px; width:250px; color:#8fb4d8cc; font-size:10.5px;
+                letter-spacing:.6px; text-align:right; line-height:1.8; text-shadow:0 1px 2px #000; }
+        /* persistent objective, so the player always knows the current goal */
+        .obj { position:absolute; top:76px; left:50%; transform:translateX(-50%); text-align:center;
+               background:#0a1626bb; border:1px solid #7fdcff55; border-radius:20px; padding:6px 18px;
+               color:#eaf6ff; font-size:12px; letter-spacing:2.5px; text-shadow:0 1px 3px #000;
+               white-space:nowrap; }
+        .obj b { color:#ffcf4f; }
+        .pause { position:absolute; inset:0; background:#060a14ee; display:none; flex-direction:column;
+                 align-items:center; justify-content:center; pointer-events:auto; z-index:30; }
+        .pause.open { display:flex; }
+        .pause h1 { color:#fff; font-size:40px; letter-spacing:12px; margin:0 0 4px; text-shadow:0 0 26px #39e6e0; }
+        .pause .stats { color:#9fc4e8; font-size:13px; letter-spacing:3px; margin-bottom:26px; }
+        .pause .stats b { color:#7fdcff; }
+        .pbtn { color:#fff; font-size:14px; letter-spacing:4px; border:1px solid #39e6e0; background:#0a1626;
+                padding:11px 34px; border-radius:4px; margin:6px; cursor:pointer; min-width:220px; text-align:center; }
+        .pbtn:hover { background:#12283f; box-shadow:0 0 18px #39e6e055; }
+        .pkeys { margin-top:24px; color:#8fb4d8; font-size:11.5px; letter-spacing:1px; line-height:2;
+                 text-align:center; max-width:520px; }
+        .pkeys b { color:#7fdcff; }
         .scorebox { position:absolute; left:24px; top:60px; }
         .score-wave { color:#ffd0a0; font-size:12px; letter-spacing:3px; text-shadow:0 1px 3px #000; }
         .score-val { color:#fff; font-size:32px; font-weight:700; letter-spacing:2px; line-height:1.1;
@@ -102,6 +121,7 @@ export class Hud {
         <div class="score-combo" id="score-combo"></div>
       </div>
       <div class="dmgpop" id="dmgpop"></div>
+      <div class="obj" id="obj">OBJECTIVE · <b>Explore Neo Tokyo</b></div>
       <div class="boss" id="boss">
         <div class="boss-name" id="bossname"></div>
         <div class="boss-track"><div class="boss-fill" id="bossfill" style="width:100%"></div></div>
@@ -129,6 +149,17 @@ export class Hud {
         <div class="wheel-title">SELECT WEAPON</div>
       </div>
       <div class="vig" id="vig"></div>
+      <div class="pause" id="pause">
+        <h1>PAUSED</h1>
+        <div class="stats" id="pause-stats"></div>
+        <div class="pbtn" id="p-resume">RESUME</div>
+        <div class="pbtn" id="p-restart">RESTART RUN</div>
+        <div class="pkeys">
+          <b>ARROWS / WASD</b> move &nbsp; <b>SHIFT</b> boost &nbsp; <b>SPACE</b> jump / fly &nbsp; <b>C</b> dash<br/>
+          <b>A</b> or <b>click</b> attack &nbsp; <b>1-7</b> switch weapon &nbsp; <b>E</b> beam &nbsp; <b>Q</b> nova &nbsp; <b>G</b> quake<br/>
+          <b>L</b> or <b>middle-click</b> lock on &nbsp; <b>ESC</b> pause
+        </div>
+      </div>
       <div class="hint">ARROWS / WASD move · SHIFT boost · SPACE jump · C dash<br/>A / click attack · L or middle-click lock-on · drag to rotate camera</div>
     `;
     this.hpFill = document.getElementById('hpfill')!;
@@ -181,6 +212,58 @@ export class Hud {
     c.textContent = combo > 1 ? '×' + combo + ' COMBO' : '';
     c.style.transform = combo > 1 ? 'scale(1.15)' : 'scale(1)';
     setTimeout(() => (c.style.transform = 'scale(1)'), 90);
+  }
+
+  /** Re-lock every earned ability and weapon, for a fresh run. */
+  resetUnlocks(): void {
+    const labels: Record<string, string> = {
+      beam: '<b>E</b> BEAM — ???',
+      nova: '<b>Q</b> NOVA — ???',
+      quake: '<b>G</b> QUAKE — ???',
+      blades: 'TWIN SABERS — ???',
+      shield: 'SHIELD — ???',
+    };
+    for (const k of Object.keys(labels)) {
+      const chip = this.chips[k];
+      if (!chip) continue;
+      chip.classList.add('locked');
+      chip.innerHTML = labels[k];
+      chip.style.borderColor = '';
+    }
+    // boots are standard equipment again, not the overdrive upgrade
+    const boots = this.chips.boots;
+    if (boots) {
+      boots.classList.remove('locked');
+      boots.innerHTML = '<b>SPACE (hold)</b> ROCKET BOOTS';
+      boots.style.borderColor = '';
+    }
+    for (const w of WEAPONS) {
+      const seg = document.getElementById('w-' + w.id)!;
+      const starter = w.id === 'saber' || w.id === 'rifle' || w.id === 'missiles';
+      seg.classList.toggle('locked', !starter);
+    }
+    const pwr = document.getElementById('chip-power')!;
+    pwr.style.display = 'none';
+  }
+
+  /** Show or hide the pause overlay, with a summary of the run so far. */
+  setPaused(on: boolean, stats?: { score: number; wave: number; deaths: number }): void {
+    const el = document.getElementById('pause')!;
+    el.classList.toggle('open', on);
+    if (on && stats) {
+      document.getElementById('pause-stats')!.innerHTML =
+        `SCORE <b>${stats.score.toLocaleString()}</b> &nbsp;·&nbsp; WAVE <b>${stats.wave}</b> &nbsp;·&nbsp; LOSSES <b>${stats.deaths}</b>`;
+    }
+  }
+
+  bindPause(onResume: () => void, onRestart: () => void): void {
+    document.getElementById('p-resume')!.addEventListener('click', onResume);
+    document.getElementById('p-restart')!.addEventListener('click', onRestart);
+  }
+
+  /** The always-visible goal line under the boss bar. */
+  setObjective(text: string): void {
+    document.getElementById('obj')!.innerHTML = 'OBJECTIVE · <b>' + text + '</b>';
   }
 
   setWave(wave: number): void {

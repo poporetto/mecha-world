@@ -87,6 +87,7 @@ export class Game {
   private pickups: { mesh: THREE.Mesh; spin: number; life: number }[] = [];
   private deaths = 0;
   private taughtWeakPoint = false;
+  private paused = false;
 
   private monster: Monster | null = null;
   private bossIndex = 0; // progression through the campaign bosses
@@ -166,12 +167,18 @@ export class Game {
     (window as any).__game = this; // debug handle
 
     this.hud.bindWeaponWheel((w) => this.selectWeapon(w));
+    this.hud.bindPause(() => this.setPaused(false), () => this.restart());
 
     // ?debug (or ?all) unlocks every ability/weapon up front for testing;
     // real players keep the defeat-a-boss-to-unlock progression
     const params = new URLSearchParams(location.search);
-    if (params.has('debug') || params.has('all')) this.unlockEverything();
-    else this.selectWeapon('saber');
+    if (params.has('debug') || params.has('all')) {
+      this.unlockEverything();
+    } else {
+      // reveal the weapons the mecha ships with (the rest stay locked)
+      for (const w of this.unlockedWeapons) this.hud.unlockWeapon(w);
+      this.selectWeapon('saber');
+    }
 
     this.hud.showStart(() => {
       this.started = true;
@@ -204,6 +211,7 @@ export class Game {
         if (n >= 0 && n < WEAPONS.length) this.selectWeapon(WEAPONS[n].id);
       }
       if (e.code === 'KeyG') this.quakeSlam();
+      if (e.code === 'Escape' && this.started) this.setPaused(!this.paused);
       // R: begin charging (release fires); e.repeat guards the auto-repeat
       if (e.code === 'KeyR' && !e.repeat && this.started) { this.charging = true; this.chargeT = 0; }
     });
@@ -895,6 +903,75 @@ export class Game {
     this.hud.toast('AIRLINER DOWN', 'Wreckage burning in the streets', 3.5);
   }
 
+  // ------------------------------------------------------------ pause / run
+
+  private setPaused(on: boolean): void {
+    this.paused = on;
+    this.hud.setPaused(on, { score: this.score, wave: this.wave, deaths: this.deaths });
+    if (on) {
+      this.attackHeld = false;
+      this.charging = false;
+      this.keys.clear(); // don't resume with keys stuck down
+      if (document.pointerLockElement) document.exitPointerLock();
+    } else if (!this.touch) {
+      this.renderer.domElement.requestPointerLock();
+    }
+  }
+
+  /** Reset the run in place — no page reload, world and progress cleared. */
+  private restart(): void {
+    // clear entities
+    if (this.monster) {
+      this.scene.remove(this.monster.group);
+      if (this.monster instanceof VoltSerpent) this.monster.removeSegmentsFrom(this.scene);
+      this.monster = null;
+    }
+    this.hud.hideBoss();
+    for (const p of this.projectiles) {
+      this.scene.remove(p.mesh);
+      p.mesh.geometry.dispose();
+      (p.mesh.material as THREE.Material).dispose();
+    }
+    this.projectiles.length = 0;
+    for (const f of this.falling) { this.scene.remove(f.mesh); f.mesh.geometry.dispose(); }
+    this.falling.length = 0;
+    for (const p of this.pickups) {
+      this.scene.remove(p.mesh);
+      p.mesh.geometry.dispose();
+      (p.mesh.material as THREE.Material).dispose();
+    }
+    this.pickups.length = 0;
+
+    // reset progression
+    this.score = 0;
+    this.combo = 1;
+    this.comboTimer = 0;
+    this.wave = 0;
+    this.deaths = 0;
+    this.bossIndex = 0;
+    this.bossTimer = 14;
+    this.powerLevel = 1;
+    this.power = 1;
+    this.drones.target = 3;
+    this.unlockedWeapons = new Set<WeaponId>(['saber', 'rifle', 'missiles']);
+    this.player.abilities = {
+      beam: false, boots: true, thrust: false, nova: false,
+      shield: false, blades: false, quake: false,
+    };
+    this.player.respawn();
+    this.ridingPlane = null;
+    this.slowmo = 0;
+    this.shake = 0;
+
+    this.hud.resetUnlocks();
+    this.hud.setScore(0, 1);
+    this.hud.setWave(0);
+    this.hud.setObjective('Explore Neo Tokyo — something big is coming');
+    this.selectWeapon('saber');
+    this.setPaused(false);
+    this.hud.toast('REDEPLOYED', 'New run — the city is whole again', 3);
+  }
+
   // ---- repair salvage: the only mid-fight way to get health back --------
 
   private spawnPickup(at: THREE.Vector3): void {
@@ -986,6 +1063,7 @@ export class Game {
         this.monster = null;
         this.bossTimer = 25;
         sfx.setMusicIntensity(0);
+        this.hud.setObjective('Clear the drones — next contact inbound');
       }
       return;
     }
@@ -1032,6 +1110,7 @@ export class Game {
     if (this.monster instanceof VoltSerpent) this.monster.addSegmentsTo(this.scene);
     this.scene.add(this.monster.group);
     this.hud.showBoss(this.monster.name);
+    this.hud.setObjective('Destroy ' + this.monster.name);
     sfx.roar();
     // teach the weak point once, after the boss intro toast has had its time
     if (!this.taughtWeakPoint) {
@@ -1164,6 +1243,10 @@ export class Game {
 
   private frame(): void {
     const rawDt = Math.min(0.05, this.clock.getDelta());
+    if (this.paused) {
+      this.renderer.render(this.scene, this.camera);
+      return;
+    }
     // slow-motion scales the whole simulation; its own timer uses raw time
     if (this.slowmo > 0) this.slowmo -= rawDt;
     const dt = this.slowmo > 0 ? rawDt * 0.35 : rawDt;
