@@ -1349,6 +1349,8 @@ export class Game {
     this.sun.intensity = skyState.sunIntensity;
     this.sun.position.copy(skyState.sunDir);
     this.hemi.intensity = skyState.hemiIntensity;
+    // switch the city lights on as the sun goes down
+    this.chunks.nightAmount.value = Math.max(0, Math.min(1, 1 - skyState.sunIntensity / 0.75));
     this.hud.setHP(this.player.hp / this.player.maxHp);
     this.hud.update(dt);
 

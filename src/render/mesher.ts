@@ -24,6 +24,7 @@ export function buildChunkGeometry(world: World, cx: number, cz: number): THREE.
   const positions: number[] = [];
   const normals: number[] = [];
   const colors: number[] = [];
+  const glows: number[] = []; // 1 for self-lit blocks, so they emit at night
   const indices: number[] = [];
   const ox = cx * CS, oz = cz * CS;
 
@@ -53,15 +54,19 @@ export function buildChunkGeometry(world: World, cx: number, cz: number): THREE.
           if (!visible) continue;
 
           const base = positions.length / 3;
-          const bright = id === B.NeonCyan || id === B.NeonPink || id === B.WindowLit;
+          const bright = id === B.NeonCyan || id === B.NeonPink || id === B.WindowLit
+            || id === B.Lantern || id === B.LightRed || id === B.LightAmber
+            || id === B.LightGreen;
           const jitter = 0.92 + 0.08 * hash3(wx, y, wz);
           col.setHex(BLOCK_COLORS[id]);
           const shade = (bright ? 1.15 : f.s) * jitter;
           const r = Math.min(1, col.r * shade), g = Math.min(1, col.g * shade), b = Math.min(1, col.b * shade);
+          const glow = bright ? 1 : 0;
           for (const v of f.v) {
             positions.push(lx + v[0], y + v[1], lz + v[2]);
             normals.push(f.d[0], f.d[1], f.d[2]);
             colors.push(r, g, b);
+            glows.push(glow);
           }
           indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
         }
@@ -74,6 +79,7 @@ export function buildChunkGeometry(world: World, cx: number, cz: number): THREE.
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
   geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geo.setAttribute('aGlow', new THREE.Float32BufferAttribute(glows, 1));
   geo.setIndex(indices);
   return geo;
 }

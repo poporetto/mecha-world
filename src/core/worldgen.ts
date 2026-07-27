@@ -109,11 +109,94 @@ function buildTemple(dx: number, dz: number, set: (y: number, id: number) => voi
   }
 }
 
+// Hilltop shrine: torii approach, stone steps and a wide-eaved worship hall.
+function buildShrine(dx: number, dz: number, set: (y: number, id: number) => void) {
+  const ax = Math.abs(dx), az = Math.abs(dz);
+  // stone terrace, stepped up toward the hall
+  if (ax <= 11 && az <= 11) set(1, B.Sidewalk);
+  if (ax <= 9 && az <= 9) set(2, B.Sidewalk);
+  // approach torii at the south edge
+  if (dz >= 8 && dz <= 9) {
+    if (dx === -3 || dx === 3) for (let y = 3; y <= 8; y++) set(y, B.Red);
+    if (ax <= 4) set(9, B.Red);
+    if (ax <= 5) set(10, B.Red);
+  }
+  // worship hall: wooden body, red posts, big terracotta roof
+  if (ax <= 6 && az <= 5) {
+    for (let y = 3; y <= 7; y++) {
+      const post = (ax === 6 || az === 5) && mod(dx + dz, 3) === 0;
+      set(y, post ? B.Red : B.Wood);
+    }
+  }
+  if (ax <= 8 && az <= 7) set(8, B.TempleRoof);
+  if (ax <= 7 && az <= 6) set(9, B.TempleRoof);
+  if (ax <= 5 && az <= 4) set(10, B.TempleRoof);
+  // gold ridge ornament
+  if (az <= 1 && ax <= 4) set(11, B.Gold);
+  // stone lanterns flanking the steps
+  if ((dx === -7 || dx === 7) && dz === 6) {
+    for (let y = 3; y <= 4; y++) set(y, B.Sidewalk);
+    set(5, B.Lantern);
+    set(6, B.Sidewalk);
+  }
+}
+
+// Moated castle keep with stacked white tiers (Himeji / Edo castle homage).
+function buildCastle(dx: number, dz: number, set: (y: number, id: number) => void) {
+  const ax = Math.abs(dx), az = Math.abs(dz);
+  // sloped stone base
+  for (let y = 1; y <= 6; y++) {
+    const w = 13 - y;
+    if (ax <= w && az <= w) set(y, B.Sidewalk);
+  }
+  // three white tiers, each with a dark tiled roof
+  let y = 7;
+  for (let t = 0; t < 3; t++) {
+    const body = 8 - t * 2;
+    for (let by = 0; by < 4; by++) {
+      if (ax <= body && az <= body) {
+        const wall = (ax >= body - 1 || az >= body - 1);
+        set(y + by, wall ? B.White : B.WallGray);
+      }
+    }
+    y += 4;
+    const eave = body + 1.5;
+    if (ax <= eave && az <= eave) set(y, B.TempleRoof);
+    y += 1;
+  }
+  // golden roof ornaments
+  if (ax <= 1 && az <= 1) { set(y, B.Gold); set(y + 1, B.Gold); }
+}
+
+// Rainbow-bridge style suspension span with twin towers over the river.
+function buildBayBridge(dx: number, dz: number, set: (y: number, id: number) => void) {
+  const ax = Math.abs(dx);
+  // deck carried across the whole span
+  if (Math.abs(dz) <= 3) {
+    set(9, B.BridgeDeck);
+    if (Math.abs(dz) === 3) set(10, B.White); // railings
+  }
+  // two towers
+  if (ax === 8 && Math.abs(dz) <= 3) {
+    for (let y = 1; y <= 26; y++) set(y, B.White);
+  }
+  // main cables sagging between the towers
+  if (Math.abs(dz) === 3 && ax <= 8) {
+    const sag = Math.round(26 - 12 * (1 - (ax / 8) * (ax / 8)));
+    set(sag, B.Red);
+  }
+}
+
 export const LANDMARKS: Landmark[] = [
   { x: 55, z: -45, r: 17, build: buildTower },
   { x: -70, z: -100, r: 15, build: buildSpire },
   { x: 6, z: 58, r: 16, build: buildTorii },
   { x: -40, z: 70, r: 13, build: buildTemple },
+  { x: 96, z: 74, r: 14, build: buildShrine },
+  { x: -128, z: 24, r: 16, build: buildCastle },
+  { x: 120, z: -166, r: 14, build: buildBayBridge },
+  { x: -152, z: -128, r: 13, build: buildTemple },
+  { x: 150, z: 40, r: 14, build: buildShrine },
 ];
 
 // ------------------------------------------------------------- column logic
@@ -263,14 +346,31 @@ export function generateChunkData(cx: number, cz: number): Uint8Array {
           setY(0, id);
           break;
         }
-        case ColKind.Sidewalk:
+        case ColKind.Sidewalk: {
           setY(0, B.Sidewalk);
-          // streetlamps: slim gray pole with a warm lamp on top
-          if (hash2(x * 7 + 3, z * 7 - 9) < 0.012 && !isTreeAnchor(x, z)) {
-            for (let y = 1; y <= 3; y++) setY(y, B.Roof);
-            setY(4, B.WindowLit);
+          const lxm = mod(x, CELL), lzm = mod(z, CELL);
+          // Streetlamps march along the kerb at a regular spacing so the roads
+          // read as lit at night rather than randomly speckled.
+          const onKerb = lxm === ROAD_W || lzm === ROAD_W;
+          const spaced = mod(x + z * 3, 9) === 0;
+          if (onKerb && spaced && !isTreeAnchor(x, z)) {
+            for (let y = 1; y <= 5; y++) setY(y, B.Pole);
+            setY(6, B.Roof);          // lamp housing
+            setY(7, B.Lantern);       // the glowing head
+          }
+          // Traffic signals on the corner posts at each intersection. Which
+          // lamp is lit alternates by axis so crossing streets disagree.
+          const corner = (lxm === ROAD_W && lzm === ROAD_W);
+          if (corner) {
+            for (let y = 1; y <= 4; y++) setY(y, B.Pole);
+            const greenAxis = mod(Math.floor(x / CELL) + Math.floor(z / CELL), 2) === 0;
+            setY(5, greenAxis ? B.LightGreen : B.LightRed);
+            setY(6, B.LightAmber);
+            setY(7, greenAxis ? B.LightRed : B.LightGreen);
+            setY(8, B.Roof); // hood over the signal head
           }
           break;
+        }
         case ColKind.Landmark: {
           const lm = info.lm!;
           const nearTorii = lm === LANDMARKS[2];

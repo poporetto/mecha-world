@@ -11,7 +11,29 @@ const DROP_R = 6; // beyond this, meshes are disposed
 
 export class ChunkManager {
   private meshes = new Map<string, THREE.Mesh | null>();
-  private material = new THREE.MeshLambertMaterial({ vertexColors: true });
+  /** 0 by day, 1 at night — drives the window/neon glow in the shader. */
+  nightAmount = { value: 0 };
+  private material = this.makeMaterial();
+
+  // Chunk faces marked aGlow (lit windows, neon, lanterns) emit a warm light
+  // once night falls, so the city switches on instead of going flat dark.
+  private makeMaterial(): THREE.MeshLambertMaterial {
+    const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms.uNight = this.nightAmount;
+      shader.vertexShader = 'attribute float aGlow;\nvarying float vGlow;\n' +
+        shader.vertexShader.replace(
+          '#include <begin_vertex>',
+          '#include <begin_vertex>\n  vGlow = aGlow;'
+        );
+      shader.fragmentShader = 'uniform float uNight;\nvarying float vGlow;\n' +
+        shader.fragmentShader.replace(
+          '#include <emissivemap_fragment>',
+          '#include <emissivemap_fragment>\n  totalEmissiveRadiance += vGlow * uNight * vec3(1.0, 0.84, 0.52);'
+        );
+    };
+    return mat;
+  }
   dirty = new Set<string>();
 
   constructor(private world: World, private scene: THREE.Scene) {}

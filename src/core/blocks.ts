@@ -33,6 +33,10 @@ export const enum B {
   BridgeDeck = 29,
   Lantern = 30,
   Puddle = 31,
+  LightRed = 32,
+  LightAmber = 33,
+  LightGreen = 34,
+  Pole = 35,
 }
 
 export const BLOCK_COLORS: number[] = [];
@@ -68,6 +72,10 @@ BLOCK_COLORS[B.TempleRoof] = 0xd98a72; // terracotta tile
 BLOCK_COLORS[B.Gold] = 0xf3cf7a;
 BLOCK_COLORS[B.BridgeDeck] = 0xe08a7a; // vermilion bridge
 BLOCK_COLORS[B.Lantern] = 0xffd9a8;
+BLOCK_COLORS[B.LightRed] = 0xff5a52;
+BLOCK_COLORS[B.LightAmber] = 0xffc44f;
+BLOCK_COLORS[B.LightGreen] = 0x5ce67a;
+BLOCK_COLORS[B.Pole] = 0x5b6070;
 BLOCK_COLORS[B.Puddle] = 0x86c5e8; // shallow water left by the aqua blaster
 
 export function isSolid(id: number): boolean {
