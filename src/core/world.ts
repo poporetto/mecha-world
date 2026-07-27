@@ -207,15 +207,18 @@ export class World {
 
     // flood the full connected component (up, down, sideways) within bounds
     const comp: [number, number, number][] = [];
-    const columns = new Set<number>(); // distinct (x,z)
-    let footings = 0; // columns resting on the ground layer
+    const columns = new Set<number>(); // distinct (x,z) the structure occupies
+    const footed = new Set<number>();  // distinct (x,z) still resting on ground
     let anchored = false;
     while (queue.length > 0) {
       const [x, y, z] = queue.pop()!;
       comp.push([x, y, z]);
       if (comp.length > CAP) { anchored = true; break; }
-      columns.add(x * 8192 + z);
-      if (y <= 2) footings++;
+      const col = x * 8192 + z;
+      columns.add(col);
+      // count the COLUMN once, not every block in it — counting blocks double
+      // counted y=1 and y=2 and made the support ratio exceed 1.
+      if (y <= 2) footed.add(col);
       if (Math.abs(x - cx) > BOUND || Math.abs(z - cz) > BOUND) { anchored = true; continue; }
       const nb: [number, number, number][] = [
         [x + 1, y, z], [x - 1, y, z], [x, y + 1, z], [x, y - 1, z], [x, y, z + 1], [x, y, z - 1],
@@ -228,9 +231,13 @@ export class World {
         queue.push([nx, ny, nz]);
       }
     }
-    // stable if it runs off to a neighbor, or still foots most of its columns
+    // Stable if it runs off to a neighbour. Otherwise judge it on how much of
+    // its footprint still reaches the ground: a real structure fails well
+    // before every last column is gone, so ~30% of footings lost brings it
+    // down. Voxel buildings here are solid, so a stricter bar meant a player
+    // could never realistically topple one.
     if (anchored || comp.length < 12) return null;
-    if (footings > columns.size * 0.45) return null;
+    if (footed.size > columns.size * 0.7) return null;
 
     // critically undermined — the whole component comes down
     const out: [number, number, number, number][] = [];

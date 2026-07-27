@@ -765,7 +765,7 @@ export class Game {
         this.lastBoomSound = this.time;
         sfx.explode(Math.min(1, res.count / 60), vol);
       }
-      if (res.count >= 6) this.checkCollapse(p, r);
+      if (res.count >= 4) this.checkCollapse(p, r);
     }
     this.npcs.scare(p, 34);
     this.cars.scare(p, 34);
@@ -774,12 +774,12 @@ export class Game {
   // Anything the blast disconnected from the ground breaks off and falls.
   private checkCollapse(p: THREE.Vector3, r: number): void {
     // the flood fill can walk a whole building — don't run it every beam tick
-    if (this.time - this.lastCollapseScan < 0.25) return;
+    if (this.time - this.lastCollapseScan < 0.15) return;
     this.lastCollapseScan = this.time;
     // fully-disconnected chunks first, then foundation failure (a gutted base
     // topples the tower even if a stray column still stands)
     let cut = this.world.collapseScan(p.x, p.y, p.z, r);
-    if (!cut && p.y < 16) cut = this.world.foundationScan(p.x, p.z, p.y + r);
+    if (!cut && p.y < 26) cut = this.world.foundationScan(p.x, p.z, p.y + r);
     if (!cut) return;
     this.chunks.markDirty(cut.dirty);
     this.repair.noteDamage(cut.dirty, this.time);
