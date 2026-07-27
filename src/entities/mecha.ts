@@ -155,93 +155,99 @@ export class MechaModel {
     this.thrusterR.position.x = 0.34;
     this.torso.add(abdomen, chest, chestTop, ventL, ventR, cockpit, backpack, this.thrusterL, this.thrusterR);
 
-    // Head, built to the RX-78-2 face: white helmet with a centre ridge, a
-    // recessed black mask carrying angled eyes, a slatted mouth vent, cheek
-    // ducts, a forehead jewel, and the yellow V-fin antenna above it.
+    // Head, matched to the reference build: a wide stepped yellow V-fin, a
+    // tall red crest up the centre of the forehead, yellow ear pods, and
+    // horizontal vent slats on the cheeks and mouth.
     const head = new THREE.Group();
     head.position.y = 2.34;
-    // Gundam proportion: the head is small but not a pinhead — this brings the
-    // figure to roughly 7.5 heads tall, the classic heroic mobile-suit ratio.
     head.scale.setScalar(1.52);
 
-    // helmet shell + crown ridge running front to back
-    const helmet = plate(0.62, 0.46, 0.58, WHITE);
+    // helmet shell — wider than tall, with a raised centre ridge
+    const helmet = plate(0.72, 0.46, 0.6, WHITE);
     helmet.position.y = 0.04;
-    const crown = plate(0.2, 0.1, 0.56, WHITE);
+    const crown = plate(0.26, 0.1, 0.58, WHITE);
     crown.position.set(0, 0.29, -0.01);
-    const browGuard = plate(0.56, 0.1, 0.12, WHITE);
-    browGuard.position.set(0, 0.16, 0.28);
+    const browGuard = plate(0.66, 0.11, 0.13, WHITE);
+    browGuard.position.set(0, 0.16, 0.29);
 
-    // recessed dark mask: the whole face sits inside this
-    const mask = box(0.44, 0.34, 0.14, DARK);
-    mask.position.set(0, -0.04, 0.28);
+    // tall red crest running up the middle of the forehead, stepped back
+    const crestLow = box(0.21, 0.24, 0.16, RED);
+    crestLow.position.set(0, 0.19, 0.29);
+    const crestTop = box(0.21, 0.22, 0.22, RED);
+    crestTop.position.set(0, 0.38, 0.22);
+    head.add(crestLow, crestTop);
 
-    // eyes: angled slabs, brighter and larger than a plain dot
-    const eyeL = box(0.14, 0.075, 0.05, EYE, EYE);
-    eyeL.position.set(-0.115, 0.035, 0.35);
-    eyeL.rotation.z = 0.3; // outer corner tilts up
-    const eyeR = box(0.14, 0.075, 0.05, EYE, EYE);
-    eyeR.position.set(0.115, 0.035, 0.35);
-    eyeR.rotation.z = -0.3;
+    // recessed dark mask carrying the eyes
+    const mask = box(0.5, 0.3, 0.14, DARK);
+    mask.position.set(0, -0.02, 0.29);
 
-    // mouth vent: a dark recess with vertical grille slats
-    const vent = box(0.26, 0.11, 0.05, 0x15171c);
-    vent.position.set(0, -0.16, 0.34);
+    // eyes: angled slabs set into the mask
+    const eyeL = box(0.17, 0.08, 0.05, EYE, EYE);
+    eyeL.position.set(-0.135, 0.03, 0.36);
+    eyeL.rotation.z = -0.24; // outer corner rides high
+    const eyeR = box(0.17, 0.08, 0.05, EYE, EYE);
+    eyeR.position.set(0.135, 0.03, 0.36);
+    eyeR.rotation.z = 0.24;
+
+    // mouth: a white vent block scored with dark horizontal lines
+    const vent = box(0.3, 0.15, 0.05, WHITE);
+    vent.position.set(0, -0.16, 0.35);
     head.add(vent);
-    for (let i = 0; i < 4; i++) {
-      const slat = box(0.025, 0.1, 0.03, 0xa9adb8);
-      slat.position.set(-0.09 + i * 0.06, -0.16, 0.36);
+    for (let i = 0; i < 2; i++) {
+      const slat = box(0.27, 0.022, 0.03, 0x4a4f59);
+      slat.position.set(0, -0.13 - i * 0.055, 0.375);
       head.add(slat);
     }
-    // white pointed chin below the vent
-    const chin = plate(0.2, 0.09, 0.14, WHITE);
-    chin.position.set(0, -0.25, 0.3);
+    // white chin block below the vent
+    const chin = plate(0.26, 0.1, 0.15, WHITE);
+    chin.position.set(0, -0.26, 0.31);
 
-    // cheek armour flanking the mask, with a dark duct on each side
-    const cheekL = plate(0.11, 0.32, 0.22, WHITE);
-    cheekL.position.set(-0.27, -0.05, 0.26);
+    // cheek armour with horizontal vent slits down each side
+    const cheekL = plate(0.13, 0.34, 0.24, WHITE);
+    cheekL.position.set(-0.3, -0.04, 0.26);
     const cheekR = cheekL.clone();
-    cheekR.position.x = 0.27;
-    const ductL = box(0.04, 0.16, 0.1, JOINT);
-    ductL.position.set(-0.32, -0.05, 0.3);
-    const ductR = ductL.clone();
-    ductR.position.x = 0.32;
+    cheekR.position.x = 0.3;
+    for (let i = 0; i < 3; i++) {
+      const slitL = box(0.05, 0.035, 0.16, DARK);
+      slitL.position.set(-0.36, 0.04 - i * 0.075, 0.3);
+      const slitR = slitL.clone();
+      slitR.position.x = 0.36;
+      head.add(slitL, slitR);
+    }
 
-    // forehead jewel where the V-fin roots
-    const jewel = box(0.11, 0.11, 0.07, RED, 0x551111);
-    jewel.position.set(0, 0.21, 0.33);
-
-    // V-fin: two broad yellow blades sweeping up and outward
-    const finL = box(0.34, 0.075, 0.11, YELLOW);
-    finL.geometry.translate(-0.17, 0, 0);
-    finL.position.set(-0.03, 0.25, 0.31);
-    finL.rotation.z = -0.62;
-    const finR = box(0.34, 0.075, 0.11, YELLOW);
-    finR.geometry.translate(0.17, 0, 0);
-    finR.position.set(0.03, 0.25, 0.31);
-    finR.rotation.z = 0.62;
-
-    // side sensor pods ("ears") with white caps
-    const earL = box(0.09, 0.22, 0.22, JOINT);
-    earL.position.set(-0.33, -0.01, 0.02);
+    // bright yellow ear pods at the temples
+    const earL = box(0.09, 0.2, 0.2, YELLOW, 0x8a6b00);
+    earL.position.set(-0.37, 0.02, 0.04);
     const earR = earL.clone();
-    earR.position.x = 0.33;
-    const earCapL = plate(0.05, 0.14, 0.14, WHITE);
-    earCapL.position.set(-0.38, -0.01, 0.02);
-    const earCapR = earCapL.clone();
-    earCapR.position.x = 0.38;
+    earR.position.x = 0.37;
+    const earRimL = box(0.05, 0.26, 0.26, WHITE);
+    earRimL.position.set(-0.41, 0.02, 0.04);
+    const earRimR = earRimL.clone();
+    earRimR.position.x = 0.41;
+
+    // V-fin: wide and swept nearly flat, built from stepped voxel blocks
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < 4; i++) {
+        const seg = box(0.16, 0.075, 0.1, YELLOW);
+        seg.position.set(side * (0.16 + i * 0.15), 0.3 + i * 0.075, 0.26 - i * 0.03);
+        head.add(seg);
+      }
+      // outer tip flicks up a little further
+      const tip = box(0.13, 0.075, 0.09, YELLOW);
+      tip.position.set(side * 0.76, 0.63, 0.14);
+      head.add(tip);
+    }
 
     // thin comms antenna and the rear sensor camera
-    const antenna = box(0.035, 0.46, 0.035, JOINT);
-    antenna.position.set(-0.35, 0.36, 0.02);
+    const antenna = box(0.035, 0.44, 0.035, JOINT);
+    antenna.position.set(-0.39, 0.36, 0.02);
     antenna.rotation.z = 0.16;
-    const rearCam = box(0.18, 0.09, 0.06, RED);
-    rearCam.position.set(0, 0.12, -0.3);
+    const rearCam = box(0.2, 0.09, 0.06, RED);
+    rearCam.position.set(0, 0.12, -0.31);
 
     head.add(
       helmet, crown, browGuard, mask, eyeL, eyeR, chin,
-      cheekL, cheekR, ductL, ductR, jewel, finL, finR,
-      earL, earR, earCapL, earCapR, antenna, rearCam
+      cheekL, cheekR, earL, earR, earRimL, earRimR, antenna, rearCam
     );
     this.torso.add(head);
 
