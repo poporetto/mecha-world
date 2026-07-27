@@ -11,6 +11,7 @@ import { FloodManager } from './fx/flood';
 import { CarManager } from './entities/cars';
 import { Plane, PlaneManager } from './entities/planes';
 import { DroneManager } from './entities/drones';
+import { TrafficManager } from './entities/traffic';
 import { RepairManager } from './core/repair';
 import { Debris } from './fx/debris';
 import { buildFallingChunk, FallingChunk, updateFallingChunk } from './fx/collapse';
@@ -43,6 +44,7 @@ export class Game {
   private debris = new Debris();
   private planes = new PlaneManager();
   private drones = new DroneManager();
+  private traffic = new TrafficManager();
   private ridingPlane: Plane | null = null;
   private hud = new Hud();
   private touch: TouchControls | null = null;
@@ -112,7 +114,8 @@ export class Game {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     document.body.appendChild(this.renderer.domElement);
 
-    this.camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 500);
+    // far plane reaches past the fog so the Mount Fuji backdrop stays visible
+    this.camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.2, 1600);
 
     // sky, fog, lights — pastel day, drives the day/night cycle each frame
     this.scene.background = new THREE.Color(0xa5d5f5);
@@ -133,7 +136,7 @@ export class Game {
     this.cars = new CarManager(this.world);
     this.repair = new RepairManager(this.world);
     this.scene.add(this.npcs.group, this.cars.group, this.debris.mesh, this.explosions.group, this.fire.group);
-    this.scene.add(this.planes.group, this.drones.group);
+    this.scene.add(this.planes.group, this.drones.group, this.traffic.group);
 
 
     // beam (unlockable): a long emissive box scaled to hit distance
@@ -1305,6 +1308,8 @@ export class Game {
     this.updatePlaneRiding(jump);
 
     this.chunks.update(this.player.pos.x, this.player.pos.z);
+    this.traffic.update(dt, this.time, this.player.pos,
+      (x, z) => this.world.groundHeight(x, z, 40));
 
     // NPCs flee from the monster and the player's destruction
     const threats: THREE.Vector3[] = [];

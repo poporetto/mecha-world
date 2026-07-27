@@ -42,6 +42,7 @@ const _fog = new THREE.Color();
 export class Sky {
   group = new THREE.Group();
   private sun: THREE.Group;
+  private fuji: THREE.Group;
   private moon: THREE.Mesh;
   private clouds: Cloud[] = [];
   private birds: Bird[] = [];
@@ -55,7 +56,42 @@ export class Sky {
     fogColor: _fog,
   };
 
+  // A distant snow-capped cone that rides with the player, so it always sits
+  // on the horizon well beyond the fog rather than being a place you reach.
+  private buildFuji(): THREE.Group {
+    const g = new THREE.Group();
+    const ROCK = 0x6d7fa0;   // hazy blue-grey at distance
+    const SNOW = 0xf2f7ff;
+    const STEPS = 15;
+    const H = 250, R = 400;
+    for (let i = 0; i < STEPS; i++) {
+      const t = i / STEPS;
+      const y = t * H;
+      const r = R * (1 - t) * (1 - t * 0.15);
+      const band = H * (1 / STEPS) + 1;
+      const snowy = t > 0.68;
+      const mat = new THREE.MeshBasicMaterial({
+        color: snowy ? SNOW : ROCK, fog: false,
+        transparent: true, opacity: 0.92,
+      });
+      const ring = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.86, r, band, 7, 1), mat);
+      ring.position.y = y + band / 2;
+      g.add(ring);
+    }
+    // shallow crater notch at the summit
+    const crater = new THREE.Mesh(
+      new THREE.CylinderGeometry(R * 0.12, R * 0.16, 10, 7),
+      new THREE.MeshBasicMaterial({ color: 0xd8e2f0, fog: false })
+    );
+    crater.position.y = H + 2;
+    g.add(crater);
+    g.renderOrder = -1;
+    return g;
+  }
+
   constructor() {
+    this.fuji = this.buildFuji();
+    this.group.add(this.fuji);
     this.sun = new THREE.Group();
     const core = new THREE.Mesh(
       new THREE.CircleGeometry(22, 24),
@@ -155,6 +191,17 @@ export class Sky {
     this.moon.position.copy(center).addScaledVector(sunDir, -430);
     this.moon.visible = elev < 0.06;
     this.moon.lookAt(camera.position);
+
+    // Fuji sits far to the north-west, always the same distance away
+    this.fuji.position.set(center.x - 620, -168, center.z - 880);
+    this.fuji.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh) {
+        const mat = m.material as THREE.MeshBasicMaterial;
+        const base = mat.userData.base ?? (mat.userData.base = mat.color.clone());
+        mat.color.copy(base).multiplyScalar(0.3 + day * 0.7);
+      }
+    });
 
     // clouds dim at night
     this.cloudMat.color.setScalar(0.35 + day * 0.65);

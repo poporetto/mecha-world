@@ -37,6 +37,12 @@ export const enum B {
   LightAmber = 33,
   LightGreen = 34,
   Pole = 35,
+  Stone = 36,
+  Snow = 37,
+  Deck = 38,
+  Crate = 39,
+  CrateB = 40,
+  Steel = 41,
 }
 
 export const BLOCK_COLORS: number[] = [];
@@ -76,6 +82,12 @@ BLOCK_COLORS[B.LightRed] = 0xff5a52;
 BLOCK_COLORS[B.LightAmber] = 0xffc44f;
 BLOCK_COLORS[B.LightGreen] = 0x5ce67a;
 BLOCK_COLORS[B.Pole] = 0x5b6070;
+BLOCK_COLORS[B.Stone] = 0x9aa0ab;   // mountain rock
+BLOCK_COLORS[B.Snow] = 0xfaFdff;    // summit snow
+BLOCK_COLORS[B.Deck] = 0xc4a882;    // timber pier decking
+BLOCK_COLORS[B.Crate] = 0xe08a6a;   // shipping containers
+BLOCK_COLORS[B.CrateB] = 0x6fa8d0;
+BLOCK_COLORS[B.Steel] = 0xb6bcc8;   // cranes and gantries
 BLOCK_COLORS[B.Puddle] = 0x86c5e8; // shallow water left by the aqua blaster
 
 export function isSolid(id: number): boolean {

@@ -8,8 +8,16 @@ import { fbm, hash2, hash3 } from './noise';
 export const CS = 32; // chunk size (x,z)
 export const H = 96; // world height
 
-const CELL = 26; // city grid cell (road-to-road)
-const ROAD_W = 5;
+export const CELL = 26; // city grid cell (road-to-road)
+export const ROAD_W = 5;
+
+// Region layout. The city sits around the origin; the land climbs into
+// mountains to the west and falls away to the bay in the south-east.
+const MOUNTAIN_X = -230;   // west of here the ground starts rising
+const MOUNTAIN_RAMP = 190; // how far inland the range takes to reach full height
+const OCEAN_Z = 205;       // south of here is open water
+const SHORE_BAND = 34;     // width of the port/waterfront strip
+const SUMMIT_Y = 54;       // levelled platform height for the mountain temple
 
 function mod(n: number, m: number): number {
   return ((n % m) + m) % m;
@@ -187,6 +195,40 @@ function buildBayBridge(dx: number, dz: number, set: (y: number, id: number) => 
   }
 }
 
+// A pagoda perched on a levelled summit platform, reached by stone steps.
+function buildSummitTemple(dx: number, dz: number, set: (y: number, id: number) => void) {
+  const ax = Math.abs(dx), az = Math.abs(dz);
+  // carve a flat rock terrace out of the peak
+  const base = SUMMIT_Y;
+  for (let y = 0; y <= base; y++) {
+    if (ax <= 12 && az <= 12) set(y, y === base ? B.Sidewalk : B.Stone);
+  }
+  // stone stair climbing the south face
+  if (ax <= 2 && dz > 6) {
+    for (let y = 0; y <= base; y++) set(y, B.Stone);
+  }
+  // torii at the head of the steps
+  if (dz === 7 && (dx === -3 || dx === 3)) for (let y = 1; y <= 5; y++) set(base + y, B.Red);
+  if (dz === 7 && ax <= 4) set(base + 6, B.Red);
+  // three-tier pagoda on the terrace
+  let y = base + 1;
+  for (let t = 0; t < 3; t++) {
+    const body = 4.5 - t * 0.8;
+    for (let by = 0; by < 3; by++) {
+      if (ax <= body && az <= body) {
+        set(y + by, (ax >= body - 1 || az >= body - 1) ? B.Red : B.White);
+      }
+    }
+    y += 3;
+    const eave = body + 1.5;
+    if (ax <= eave && az <= eave) set(y, B.TempleRoof);
+    y += 1;
+  }
+  if (dx === 0 && dz === 0) for (let i = 0; i < 5; i++) set(y + i, B.Gold);
+  // stone lanterns flanking the terrace
+  if ((dx === -8 || dx === 8) && az <= 1) { set(base + 1, B.Stone); set(base + 2, B.Lantern); }
+}
+
 export const LANDMARKS: Landmark[] = [
   { x: 55, z: -45, r: 17, build: buildTower },
   { x: -70, z: -100, r: 15, build: buildSpire },
@@ -197,17 +239,43 @@ export const LANDMARKS: Landmark[] = [
   { x: 120, z: -166, r: 14, build: buildBayBridge },
   { x: -152, z: -128, r: 13, build: buildTemple },
   { x: 150, z: 40, r: 14, build: buildShrine },
+  { x: -352, z: -46, r: 15, build: buildSummitTemple },
 ];
 
 // ------------------------------------------------------------- column logic
 
-const enum ColKind { Road, Sidewalk, Park, Lot, Water, Bank, Landmark }
+const enum ColKind { Road, Sidewalk, Park, Lot, Water, Bank, Landmark, Mountain, Ocean, Island, Port }
 
 interface ColInfo {
   kind: ColKind;
   lm?: Landmark;
   lotX?: number;
   lotZ?: number;
+}
+
+// Mountain elevation west of the city — 0 in town, rising inland.
+export function mountainHeight(x: number, z: number): number {
+  if (x > MOUNTAIN_X) return 0;
+  const into = Math.min(1, (MOUNTAIN_X - x) / MOUNTAIN_RAMP);
+  const ridge = fbm(x * 0.0075 + 5.5, z * 0.0075 - 3.2, 4); // 0..1
+  const detail = fbm(x * 0.03 - 12.1, z * 0.03 + 8.4, 2) * 0.18;
+  const h = (10 + ridge * 70 + detail * 40) * into * into;
+  return Math.round(h);
+}
+
+// Small islands scattered across the bay. Returns 0 for open water.
+function islandHeight(x: number, z: number): number {
+  if (z < OCEAN_Z) return 0;
+  const n = fbm(x * 0.013 - 21.7, z * 0.013 + 44.3, 3);
+  if (n < 0.66) return 0;
+  return Math.round((n - 0.66) * 46); // gentle sandy mounds
+}
+
+// Sparse conifer anchors on the mid slopes — the tree line of the range.
+function isConiferAnchor(x: number, z: number): boolean {
+  const mh = mountainHeight(x, z);
+  if (mh < 5 || mh > 48) return false;
+  return hash2(x * 5 + 61, z * 5 - 17) < 0.014;
 }
 
 function riverCenter(x: number): number {
@@ -220,6 +288,14 @@ function columnInfo(x: number, z: number): ColInfo {
       return { kind: ColKind.Landmark, lm };
     }
   }
+  // mountains take precedence over the street grid
+  if (mountainHeight(x, z) > 0) return { kind: ColKind.Mountain };
+  // the bay, its islands, and the port strip along the waterfront
+  if (z >= OCEAN_Z) {
+    return islandHeight(x, z) > 0 ? { kind: ColKind.Island } : { kind: ColKind.Ocean };
+  }
+  if (z >= OCEAN_Z - SHORE_BAND) return { kind: ColKind.Port };
+
   const rd = Math.abs(z - riverCenter(x));
   if (rd < 9) return { kind: ColKind.Water };
   if (rd < 12) return { kind: ColKind.Bank };
@@ -329,6 +405,101 @@ export function generateChunkData(cx: number, cz: number): Uint8Array {
         case ColKind.Water:
           setY(0, B.Water);
           break;
+
+        case ColKind.Mountain: {
+          // rock column up to the ridge line, with grass low down, bare stone
+          // on the flanks and snow on the summits
+          const mh = mountainHeight(x, z);
+          for (let y = 0; y <= mh; y++) {
+            let id: number = B.Stone;
+            if (y === mh) {
+              // band the surface by altitude, with a soft noisy tree line
+              const band = fbm(x * 0.02 + 3.3, z * 0.02 - 7.7, 2) * 10;
+              if (mh + band > 62) id = B.Snow;
+              else if (mh + band < 26) id = B.Grass;
+              else id = B.Stone;
+            }
+            setY(y, id);
+          }
+          // Conifers on the lower slopes. Built from a 5x5 neighbourhood scan
+          // so each tree gets a real tapered canopy instead of a bare pole.
+          for (let az = z - 2; az <= z + 2; az++) {
+            for (let ax = x - 2; ax <= x + 2; ax++) {
+              if (!isConiferAnchor(ax, az)) continue;
+              const amh = mountainHeight(ax, az);
+              const th = 5 + Math.floor(hash2(ax - 9, az + 4) * 5);
+              const dx = Math.abs(x - ax), dz2 = Math.abs(z - az);
+              const rad = Math.max(dx, dz2);
+              if (rad === 0) for (let t = 1; t <= th; t++) setY(amh + t, B.Trunk);
+              // cone: wide at the bottom, narrowing toward the tip
+              for (let t = 0; t < 6; t++) {
+                const ring = t < 2 ? 2 : t < 4 ? 1 : 0;
+                if (rad <= ring) setY(amh + th - 2 + t, B.Leaves);
+              }
+            }
+          }
+          break;
+        }
+
+        case ColKind.Ocean:
+          setY(0, B.Water);
+          break;
+
+        case ColKind.Island: {
+          const ih = islandHeight(x, z);
+          for (let y = 0; y <= ih; y++) {
+            setY(y, y === ih && ih > 3 ? B.Grass : B.Sand);
+          }
+          // a lone pine or two on the bigger islands
+          if (ih > 5 && hash2(x * 3 - 77, z * 3 + 22) < 0.09) {
+            for (let t = 1; t <= 4; t++) setY(ih + t, B.Trunk);
+            for (let t = 0; t < 3; t++) setY(ih + 5 + t, B.Leaves);
+          }
+          break;
+        }
+
+        case ColKind.Port: {
+          // Waterfront: a quay along the shore, timber piers reaching into the
+          // bay, stacked containers, and gantry cranes over the berths.
+          const fromShore = OCEAN_Z - z; // 0 at the water, SHORE_BAND inland
+          const pierSlot = mod(x, 42);
+          const onPier = pierSlot < 9;
+          if (fromShore <= 4 && onPier) {
+            // pier decking on pilings out over the water
+            setY(0, B.Water);
+            if (mod(x, 3) === 0 && mod(z, 3) === 0) for (let y = 1; y <= 3; y++) setY(y, B.Trunk);
+            setY(4, B.Deck);
+          } else if (fromShore <= 4) {
+            setY(0, B.Water);
+          } else {
+            setY(0, B.Plaza); // concrete quay
+            // container stacks
+            const bx = Math.floor(x / 6), bz = Math.floor(z / 6);
+            if (mod(x, 6) < 5 && mod(z, 6) < 4 && hash2(bx + 3, bz - 8) < 0.3) {
+              const stack = 1 + Math.floor(hash2(bx - 2, bz + 5) * 3);
+              for (let y = 1; y <= stack * 2; y++) {
+                setY(y, hash2(bx, bz + Math.floor((y - 1) / 2)) < 0.5 ? B.Crate : B.CrateB);
+              }
+            }
+            // gantry cranes straddling the quay near the piers
+            if (onPier && fromShore >= 6 && fromShore <= 8) {
+              if (pierSlot === 0 || pierSlot === 8) {
+                for (let y = 1; y <= 18; y++) setY(y, B.Steel);
+              }
+              if (fromShore === 7) setY(19, B.Steel);
+            }
+            // warehouses set back from the water
+            if (fromShore > 14) {
+              const wx = Math.floor(x / 22), wz = Math.floor(z / 14);
+              if (mod(x, 22) < 18 && mod(z, 14) < 10 && hash2(wx + 11, wz - 4) < 0.55) {
+                const perim = mod(x, 22) === 0 || mod(x, 22) === 17 || mod(z, 14) === 0 || mod(z, 14) === 9;
+                for (let y = 1; y <= 7; y++) setY(y, perim ? B.WallGray : B.WallTan);
+                setY(8, B.Roof);
+              }
+            }
+          }
+          break;
+        }
         case ColKind.Bank:
           setY(0, B.Sand);
           break;
@@ -360,15 +531,10 @@ export function generateChunkData(cx: number, cz: number): Uint8Array {
           }
           // Traffic signals on the corner posts at each intersection. Which
           // lamp is lit alternates by axis so crossing streets disagree.
+          // Only the post is baked here; the signal head itself is a live
+          // mesh placed by TrafficManager so it can cycle through its phases.
           const corner = (lxm === ROAD_W && lzm === ROAD_W);
-          if (corner) {
-            for (let y = 1; y <= 4; y++) setY(y, B.Pole);
-            const greenAxis = mod(Math.floor(x / CELL) + Math.floor(z / CELL), 2) === 0;
-            setY(5, greenAxis ? B.LightGreen : B.LightRed);
-            setY(6, B.LightAmber);
-            setY(7, greenAxis ? B.LightRed : B.LightGreen);
-            setY(8, B.Roof); // hood over the signal head
-          }
+          if (corner) for (let y = 1; y <= 5; y++) setY(y, B.Pole);
           break;
         }
         case ColKind.Landmark: {
