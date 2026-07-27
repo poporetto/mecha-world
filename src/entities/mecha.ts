@@ -388,7 +388,7 @@ export class MechaModel {
     this.dashT = Math.max(0, this.dashT - dt);
 
     // landing squash: fire when we touch down after being airborne
-    if (grounded && this.wasAirborne) this.landT = 0.26;
+    if (grounded && this.wasAirborne) this.landT = 0.18;
     this.wasAirborne = !grounded;
 
     // Lean: pitch forward with speed, bank into turns. Both are smoothed so
@@ -425,8 +425,10 @@ export class MechaModel {
       this.torso.rotation.y = -sL * 0.1 * walk;
     } else if (!grounded) {
       // Flight: under thrust the mecha streamlines — legs together and swept
-      // back with the knees folded, arms tucked in, body pitched forward and
-      // riding a slow thruster wobble. Falling is a looser, more upright pose.
+      // back with the knees folded, arms held clear of the torso and trailing
+      // slightly, riding a slow thruster wobble. Falling is a looser pose.
+      // Sign notes: +rotation.x sweeps a limb BACK, and on the left arm a
+      // NEGATIVE rotation.z swings it away from the body (mirror on the right).
       const bob = Math.sin(t * 5.5);
       const yaw2 = Math.sin(t * 2.3);
       if (this.flying) {
@@ -437,10 +439,10 @@ export class MechaModel {
         this.kneeR.rotation.x = 0.6 + bob * 0.06;
         this.legL.rotation.z = 0.06;   // ankles drawn together
         this.legR.rotation.z = -0.06;
-        this.armL.rotation.x = -0.5 + bob * 0.05;
-        this.armR.rotation.x = -0.42 - bob * 0.05;
-        this.armL.rotation.z = 0.16;   // arms tucked to the body
-        this.armR.rotation.z = -0.16;
+        this.armL.rotation.x = 0.26 + bob * 0.05;  // trailing back
+        this.armR.rotation.x = 0.2 - bob * 0.05;
+        this.armL.rotation.z = -0.2;   // held out clear of the torso
+        this.armR.rotation.z = 0.2;
         this.torso.rotation.y = yaw2 * 0.05;
         this.group.position.y += bob * 0.06; // thruster hover wobble
       } else {
@@ -451,10 +453,10 @@ export class MechaModel {
         this.kneeR.rotation.x = 0.18;
         this.legL.rotation.z = 0;
         this.legR.rotation.z = 0;
-        this.armL.rotation.x = -0.35;
-        this.armR.rotation.x = -0.28;
-        this.armL.rotation.z = 0.22;
-        this.armR.rotation.z = -0.22;
+        this.armL.rotation.x = -0.12;
+        this.armR.rotation.x = -0.06;
+        this.armL.rotation.z = -0.34;  // arms out wide for balance
+        this.armR.rotation.z = 0.34;
         this.torso.rotation.y *= 0.85;
       }
     } else {
@@ -470,15 +472,16 @@ export class MechaModel {
       this.torso.position.y = 2.25 + Math.sin(t * 1.6) * 0.02; // breathing
     }
 
-    // landing squash: compress the stance, then spring back
+    // Landing: a light weight-absorb, not a jump crouch. Just enough give in
+    // the knees to sell the impact, then straight back to a standing posture.
     if (this.landT > 0) {
-      const k = this.landT / 0.26;          // 1 -> 0
-      const squash = Math.sin(k * Math.PI) * 0.5;
-      this.kneeL.rotation.x += squash;
-      this.kneeR.rotation.x += squash;
-      this.legL.rotation.x += squash * 0.45;
-      this.legR.rotation.x += squash * 0.45;
-      this.group.position.y -= squash * 0.35;
+      const k = this.landT / 0.18;          // 1 -> 0
+      const absorb = Math.sin(k * Math.PI) * 0.15;
+      this.kneeL.rotation.x += absorb;
+      this.kneeR.rotation.x += absorb;
+      this.legL.rotation.x += absorb * 0.25;
+      this.legR.rotation.x += absorb * 0.25;
+      this.group.position.y -= absorb * 0.5;
     }
 
     this.group.rotation.z = this.bank;
