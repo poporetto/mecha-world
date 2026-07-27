@@ -28,6 +28,10 @@ export class Player {
   vel = new THREE.Vector3();
   yaw = 0; // facing of the model
   grounded = false;
+  /** True while standing on a moving platform (an airliner deck). The plane
+   *  check runs after update(), so this carries over one frame and keeps the
+   *  mecha in a standing pose instead of flipping to the flight animation. */
+  onPlatform = false;
   hp = 100;
   maxHp = 100;
   // rocket boots ship with the mecha; everything else is earned from bosses
@@ -74,19 +78,23 @@ export class Player {
       this.dashVel.multiplyScalar(Math.max(0, 1 - dt * 4));
     }
 
-    if (this.abilities.boots && jump && !this.grounded) {
+    // A deck counts as ground: you stand on it, and jumping lifts off it.
+    const standing = this.grounded || this.onPlatform;
+    if (this.abilities.boots && jump && !standing) {
       // overdrive thrusters climb harder and top out higher
       const climb = this.abilities.thrust ? 150 : 80;
       const top = this.abilities.thrust ? FLY_V * 1.9 : FLY_V;
       this.vel.y = Math.min(this.vel.y + climb * dt, top);
       this.model.setThrusters(true);
     } else {
-      this.model.setThrusters(this.abilities.boots && jump);
+      // never light the thrusters while planted on ground or a deck
+      this.model.setThrusters(this.abilities.boots && jump && !standing);
       this.vel.y -= GRAVITY * dt;
     }
-    if (jump && this.grounded) {
+    if (jump && standing) {
       this.vel.y = JUMP_V;
       this.grounded = false;
+      this.onPlatform = false; // released — the plane check will confirm
     }
     this.vel.y = Math.max(this.vel.y, -40);
 
@@ -104,7 +112,7 @@ export class Player {
     const hspeed = Math.hypot(this.vel.x, this.vel.z);
     this.model.group.position.copy(this.pos);
     this.model.group.rotation.y = this.yaw;
-    this.model.animate(this.animT, hspeed, this.grounded, dt);
+    this.model.animate(this.animT, hspeed, this.grounded || this.onPlatform, dt);
   }
 
   private collides(px: number, py: number, pz: number): boolean {

@@ -56,6 +56,7 @@ export class MechaModel {
   private bank = 0;   // smoothed lean into turns
   private lean = 0;   // smoothed forward lean with speed
   private wasAirborne = false;
+  flying = false; // thrusters lit — drives the streamlined flight pose
   private muzzle!: THREE.Mesh;
   private aimT = 0; // rifle raised briefly after each shot
 
@@ -367,6 +368,7 @@ export class MechaModel {
   setThrusters(on: boolean): void {
     this.thrusterL.visible = on;
     this.thrusterR.visible = on;
+    this.flying = on;
   }
 
   private flickerThrusters(t: number): void {
@@ -411,21 +413,50 @@ export class MechaModel {
       const sL = Math.sin(ph), sR = Math.sin(ph + Math.PI);
       this.legL.rotation.x = sL * 0.72 * walk;
       this.legR.rotation.x = sR * 0.72 * walk;
-      // knee only bends one way — clamp to the trailing half of the stride
-      this.kneeL.rotation.x = -Math.max(0, -sL) * 1.15 * walk;
-      this.kneeR.rotation.x = -Math.max(0, -sR) * 1.15 * walk;
+      // A knee only folds backwards. The mecha faces +Z, so the shin swings
+      // toward -Z, which is POSITIVE rotation.x — never negative.
+      this.kneeL.rotation.x = Math.max(0, -sL) * 1.15 * walk;
+      this.kneeR.rotation.x = Math.max(0, -sR) * 1.15 * walk;
       this.armL.rotation.x = sR * 0.42 * walk;
+      this.legL.rotation.z = this.legR.rotation.z = 0;
+      this.armL.rotation.z = this.armR.rotation.z = 0;
       this.group.position.y += Math.abs(Math.sin(ph)) * 0.14 * walk;
       // subtle counter-rotation of the torso against the legs
       this.torso.rotation.y = -sL * 0.1 * walk;
     } else if (!grounded) {
-      // flight/jump pose: legs trail back, one knee tucked, arms swept
-      this.legL.rotation.x = 0.42;
-      this.legR.rotation.x = -0.3;
-      this.kneeL.rotation.x = -0.75;
-      this.kneeR.rotation.x = -0.25;
-      this.armL.rotation.x = -0.35;
-      this.torso.rotation.y *= 0.85;
+      // Flight: under thrust the mecha streamlines — legs together and swept
+      // back with the knees folded, arms tucked in, body pitched forward and
+      // riding a slow thruster wobble. Falling is a looser, more upright pose.
+      const bob = Math.sin(t * 5.5);
+      const yaw2 = Math.sin(t * 2.3);
+      if (this.flying) {
+        const hipBack = -0.5 + bob * 0.05;   // legs trail behind
+        this.legL.rotation.x = hipBack;
+        this.legR.rotation.x = hipBack - 0.08;
+        this.kneeL.rotation.x = 0.72 + bob * 0.06; // folded, correct direction
+        this.kneeR.rotation.x = 0.6 + bob * 0.06;
+        this.legL.rotation.z = 0.06;   // ankles drawn together
+        this.legR.rotation.z = -0.06;
+        this.armL.rotation.x = -0.5 + bob * 0.05;
+        this.armR.rotation.x = -0.42 - bob * 0.05;
+        this.armL.rotation.z = 0.16;   // arms tucked to the body
+        this.armR.rotation.z = -0.16;
+        this.torso.rotation.y = yaw2 * 0.05;
+        this.group.position.y += bob * 0.06; // thruster hover wobble
+      } else {
+        // free fall / jump arc: legs part, arms come up for balance
+        this.legL.rotation.x = -0.22 + bob * 0.08;
+        this.legR.rotation.x = 0.3 - bob * 0.08;
+        this.kneeL.rotation.x = 0.5;
+        this.kneeR.rotation.x = 0.18;
+        this.legL.rotation.z = 0;
+        this.legR.rotation.z = 0;
+        this.armL.rotation.x = -0.35;
+        this.armR.rotation.x = -0.28;
+        this.armL.rotation.z = 0.22;
+        this.armR.rotation.z = -0.22;
+        this.torso.rotation.y *= 0.85;
+      }
     } else {
       // idle: settle the limbs, breathe, and sway gently
       this.legL.rotation.x *= 0.82;
@@ -433,6 +464,8 @@ export class MechaModel {
       this.kneeL.rotation.x *= 0.82;
       this.kneeR.rotation.x *= 0.82;
       this.armL.rotation.x = Math.sin(t * 1.5) * 0.05;
+      this.legL.rotation.z = this.legR.rotation.z = 0;
+      this.armL.rotation.z = this.armR.rotation.z = 0;
       this.torso.rotation.y = Math.sin(t * 0.8) * 0.03;
       this.torso.position.y = 2.25 + Math.sin(t * 1.6) * 0.02; // breathing
     }
@@ -441,8 +474,8 @@ export class MechaModel {
     if (this.landT > 0) {
       const k = this.landT / 0.26;          // 1 -> 0
       const squash = Math.sin(k * Math.PI) * 0.5;
-      this.kneeL.rotation.x -= squash;
-      this.kneeR.rotation.x -= squash;
+      this.kneeL.rotation.x += squash;
+      this.kneeR.rotation.x += squash;
       this.legL.rotation.x += squash * 0.45;
       this.legR.rotation.x += squash * 0.45;
       this.group.position.y -= squash * 0.35;

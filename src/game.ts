@@ -822,21 +822,23 @@ export class Game {
       const deck = this.ridingPlane.group.position.y + this.ridingPlane.deckY;
       const stillOn = this.planes.deckUnder(p.pos.x, p.pos.y, p.pos.z, 2.5) === this.ridingPlane;
       // jumping or stepping off the wing drops you back into open air
-      if (jump && p.vel.y > 0) { this.ridingPlane = null; return; }
-      if (!stillOn) { this.ridingPlane = null; return; }
+      if (jump && p.vel.y > 0) { this.ridingPlane = null; p.onPlatform = false; return; }
+      if (!stillOn) { this.ridingPlane = null; p.onPlatform = false; return; }
       p.pos.y = deck;
       p.vel.y = 0;
       p.grounded = true;
+      p.onPlatform = true;
       return;
     }
     // only catch a deck while falling, so you can still fly up past a plane
-    if (p.vel.y > 0) return;
+    if (p.vel.y > 0) { p.onPlatform = false; return; }
     const hit = this.planes.deckUnder(p.pos.x, p.pos.y, p.pos.z, 2.5);
-    if (!hit) return;
+    if (!hit) { p.onPlatform = false; return; }
     this.ridingPlane = hit;
     p.pos.y = hit.group.position.y + hit.deckY;
     p.vel.y = 0;
     p.grounded = true;
+    p.onPlatform = true;
     this.hud.toast('AIRBORNE', 'Standing on a passing airliner', 2.5);
   }
 
