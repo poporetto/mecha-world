@@ -36,6 +36,13 @@ export abstract class Monster {
   dying = false;
   protected deathT = 0;
   protected flashT = 0;
+  /** Set while a heavy attack winds up — renders a warning tint so the
+   *  player can read the tell and dash out of the way. */
+  protected telegraph = false;
+  private coreT = 0;
+  /** Glowing dorsal core: the visible weak point. Local y is chosen so it
+   *  sits high on the back once MONSTER_SCALE is applied. */
+  weakCore!: THREE.Mesh;
   abstract name: string;
   abstract reward: Reward;
   hitRadius = 8;
@@ -53,16 +60,50 @@ export abstract class Monster {
   }
 
   protected updateFlash(dt: number): void {
+    this.coreT += dt;
+    this.updateCore(this.coreT);
     this.flashT -= dt;
     const flash = this.flashT > 0;
+    const warn = !flash && this.telegraph;
     this.group.traverse((o) => {
       const m = o as THREE.Mesh;
       if (m.isMesh) {
         const mat = m.material as THREE.MeshLambertMaterial;
-        mat.emissive.setHex(flash ? 0xff2222 : (mat.userData.baseEmissive ?? 0));
-        mat.emissiveIntensity = flash ? 0.8 : (mat.userData.baseEmissive ? 1 : 0);
+        if (flash) {
+          mat.emissive.setHex(0xff2222);
+          mat.emissiveIntensity = 0.8;
+        } else if (warn) {
+          mat.emissive.setHex(0xffa32f); // amber wind-up
+          mat.emissiveIntensity = 0.65;
+        } else {
+          mat.emissive.setHex(mat.userData.baseEmissive ?? 0);
+          mat.emissiveIntensity = mat.userData.baseEmissive ? 1 : 0;
+        }
       }
     });
+  }
+
+  /** Attach the glowing weak-point core. Call at the end of a boss ctor,
+   *  before rememberEmissives() so its glow is preserved. */
+  protected addCore(localY: number, localZ = -1.5): void {
+    this.weakCore = new THREE.Mesh(
+      new THREE.BoxGeometry(2.6, 2.6, 2.6),
+      new THREE.MeshLambertMaterial({ color: 0xffe45c, emissive: 0xffc61a, emissiveIntensity: 1 })
+    );
+    this.weakCore.position.set(0, localY, localZ);
+    this.group.add(this.weakCore);
+  }
+
+  /** World position of the weak point, for hit tests and aiming. */
+  corePos(out: THREE.Vector3): THREE.Vector3 {
+    if (this.weakCore) this.weakCore.getWorldPosition(out);
+    else out.copy(this.group.position).setY(this.group.position.y + 24);
+    return out;
+  }
+
+  protected updateCore(t: number): void {
+    if (!this.weakCore) return;
+    this.weakCore.scale.setScalar(0.85 + Math.sin(t * 6) * 0.15);
   }
 
   protected rememberEmissives(): void {
@@ -220,6 +261,7 @@ export class Kaiju extends Monster {
     this.group.add(chest, gut, this.legL, this.legR, this.tail);
     this.group.scale.setScalar(MONSTER_SCALE);
     this.group.position.set(x, 0, z);
+    this.addCore(12.0);
     this.rememberEmissives();
   }
 
@@ -258,6 +300,7 @@ export class Kaiju extends Monster {
     this.tail.rotation.y = Math.sin(t * 1.7) * 0.25;
 
     // stomp: carve the city under and ahead of it
+    this.telegraph = this.stompT < 0.5 && this.stompT > 0;
     this.stompT -= dt;
     if (this.stompT <= 0) {
       this.stompT = 1.1;
@@ -316,6 +359,7 @@ export class RocketBeast extends Monster {
     this.group.add(body, head, eye, this.podL, this.podR, tubesL, tubesR, legL, legR, jetL, jetR);
     this.group.scale.setScalar(MONSTER_SCALE);
     this.group.position.set(x, 0, z);
+    this.addCore(11.0);
     this.rememberEmissives();
   }
 
@@ -339,6 +383,7 @@ export class RocketBeast extends Monster {
     const dz = ctx.playerPos.z - this.group.position.z;
     this.group.rotation.y = Math.atan2(dx, dz);
 
+    this.telegraph = this.fireT < 0.7 && this.fireT > 0;
     this.fireT -= dt;
     if (this.fireT <= 0 && ctx.fireRocket) {
       this.fireT = 3.2;
@@ -398,6 +443,7 @@ export class VoltSerpent extends Monster {
     }
     this.group.scale.setScalar(MONSTER_SCALE);
     this.group.position.set(x, 0, z);
+    this.addCore(5.0);
     this.rememberEmissives();
   }
 
@@ -456,6 +502,7 @@ export class VoltSerpent extends Monster {
     }
 
     // lightning strike at the player's position
+    this.telegraph = this.zapT < 0.7 && this.zapT > 0;
     this.zapT -= dt;
     if (this.zapT <= 0 && dist < 70) {
       this.zapT = 4;
@@ -516,6 +563,7 @@ export class IronColossus extends Monster {
     this.group.add(torso, plate, core, head, eye, shoulderL, shoulderR, this.armL, this.armR, fistL, fistR, this.legL, this.legR);
     this.group.scale.setScalar(MONSTER_SCALE);
     this.group.position.set(x, 0, z);
+    this.addCore(13.0);
     this.rememberEmissives();
   }
 
@@ -545,6 +593,7 @@ export class IronColossus extends Monster {
     this.legR.rotation.x = -Math.sin(t * 2.2) * 0.3;
 
     // slow devastating stomps
+    this.telegraph = this.stompT < 0.6 && this.stompT > 0;
     this.stompT -= dt;
     if (this.stompT <= 0) {
       this.stompT = 1.6;
@@ -555,6 +604,7 @@ export class IronColossus extends Monster {
     }
 
     // hurl a boulder in a high arc
+    this.telegraph = this.throwT < 0.8 && this.throwT > 0;
     this.throwT -= dt;
     if (this.throwT <= 0 && ctx.throwBoulder && dist < 90) {
       this.throwT = 5;
@@ -610,6 +660,7 @@ export class SkyReaver extends Monster {
     this.group.add(body, belly, head, eye, this.wingL, this.wingR, tail, finT);
     this.group.scale.setScalar(MONSTER_SCALE);
     this.group.position.set(x, 26, z);
+    this.addCore(9.5);
     this.rememberEmissives();
   }
 
@@ -735,6 +786,7 @@ export class CrimsonMantis extends Monster {
     this.group.add(thorax, abdomen, neck, head, eyeL, eyeR, antL, antR, this.scytheL, this.scytheR);
     this.group.scale.setScalar(MONSTER_SCALE);
     this.group.position.set(x, 0, z);
+    this.addCore(9.0);
     this.rememberEmissives();
   }
 
@@ -854,6 +906,7 @@ export class MagmaGolem extends Monster {
       this.armL, this.armR, fistL, fistR, this.legL, this.legR);
     this.group.scale.setScalar(MONSTER_SCALE);
     this.group.position.set(x, 0, z);
+    this.addCore(12.0);
     this.rememberEmissives();
   }
 
@@ -885,6 +938,7 @@ export class MagmaGolem extends Monster {
     (this.core.material as THREE.MeshLambertMaterial).emissiveIntensity = pulse;
 
     // ground slam: both fists down, ring of destruction around the feet
+    this.telegraph = this.slamT < 0.7 && this.slamT > 0;
     this.slamT -= dt;
     if (this.slamT <= 0 && dist < 40) {
       this.slamT = 3.5;
@@ -906,6 +960,7 @@ export class MagmaGolem extends Monster {
     this.armR.rotation.x *= 1 - Math.min(1, dt * 2.5);
 
     // lob a molten boulder at range
+    this.telegraph = this.throwT < 0.8 && this.throwT > 0;
     this.throwT -= dt;
     if (this.throwT <= 0 && ctx.throwBoulder && dist > 24 && dist < 95) {
       this.throwT = 4.5;
@@ -958,6 +1013,7 @@ export class DeepMaw extends Monster {
     this.group.add(this.mouth);
     this.group.scale.setScalar(MONSTER_SCALE);
     this.group.position.set(x, 0, z);
+    this.addCore(7.0);
     this.rememberEmissives();
   }
 
@@ -1060,6 +1116,7 @@ export class CinderWyrm extends Monster {
     this.group.add(body, neck, head, this.maw, eyeL, eyeR, hornL, hornR, belly, this.wingL, this.wingR, tail, tailTip);
     this.group.scale.setScalar(MONSTER_SCALE);
     this.group.position.set(x, 22, z);
+    this.addCore(8.0);
     this.rememberEmissives();
   }
 
@@ -1161,6 +1218,7 @@ export class TideLeviathan extends Monster {
     this.group.add(torso, belly, head, jaw, eyeL, eyeR, crest, this.finL, this.finR, arm, this.cannon, legL, legR);
     this.group.scale.setScalar(MONSTER_SCALE);
     this.group.position.set(x, 0, z);
+    this.addCore(9.0);
     this.rememberEmissives();
   }
 
@@ -1189,6 +1247,7 @@ export class TideLeviathan extends Monster {
     this.finR.rotation.x = -Math.sin(t * 2) * 0.2;
 
     // aqua blaster: a rapid burst of water shots that flood where they land
+    this.telegraph = this.fireT < 0.7 && this.fireT > 0;
     this.fireT -= dt;
     if (this.fireT <= 0 && this.burst <= 0) {
       this.burst = 1.2;

@@ -10,6 +10,7 @@ import { FireManager } from './fx/fire';
 import { FloodManager } from './fx/flood';
 import { CarManager } from './entities/cars';
 import { Plane, PlaneManager } from './entities/planes';
+import { DroneManager } from './entities/drones';
 import { RepairManager } from './core/repair';
 import { Debris } from './fx/debris';
 import { buildFallingChunk, FallingChunk, updateFallingChunk } from './fx/collapse';
@@ -41,6 +42,7 @@ export class Game {
   private cars: CarManager;
   private debris = new Debris();
   private planes = new PlaneManager();
+  private drones = new DroneManager();
   private ridingPlane: Plane | null = null;
   private hud = new Hud();
   private touch: TouchControls | null = null;
@@ -82,6 +84,9 @@ export class Game {
   private vulcanCooldown = 0;
   private streamCooldown = 0; // flamer / aqua tick rate
   private attackHeld = false; // A held down (sustained weapons)
+  private pickups: { mesh: THREE.Mesh; spin: number; life: number }[] = [];
+  private deaths = 0;
+  private taughtWeakPoint = false;
 
   private monster: Monster | null = null;
   private bossIndex = 0; // progression through the campaign bosses
@@ -127,7 +132,7 @@ export class Game {
     this.cars = new CarManager(this.world);
     this.repair = new RepairManager(this.world);
     this.scene.add(this.npcs.group, this.cars.group, this.debris.mesh, this.explosions.group, this.fire.group);
-    this.scene.add(this.planes.group);
+    this.scene.add(this.planes.group, this.drones.group);
 
 
     // beam (unlockable): a long emissive box scaled to hit distance
@@ -672,22 +677,40 @@ export class Game {
     }
   }
 
+  // Every sphere-shaped hit funnels through here, so wiring the swarm in once
+  // means all weapons damage drones without touching each weapon.
   private hitMonster(p: THREE.Vector3, radius: number, dmg: number): boolean {
+    let hit = false;
+    this.killDrones(this.drones.damageSphere(p, radius, dmg));
     const m = this.monster;
-    if (!m || m.dying) return false;
-    _v.copy(m.group.position);
-    _v.y += 14;
-    if (_v.distanceTo(p) < radius + m.hitRadius) {
-      m.takeDamage(dmg);
-      this.debris.burst(p, [15], 6);
-      this.addScore(Math.round(dmg * 2), true);
-      this.hud.popDamage(dmg);
-      return true;
+    if (m && !m.dying) {
+      _v.copy(m.group.position);
+      _v.y += 14;
+      if (_v.distanceTo(p) < radius + m.hitRadius) {
+        m.takeDamage(dmg * this.weakPointBonus(p));
+        this.debris.burst(p, [15], 6);
+        this.addScore(Math.round(dmg * 2), true);
+        this.hud.popDamage(dmg * this.weakPointBonus(p));
+        hit = true;
+      }
     }
-    return false;
+    return hit;
+  }
+
+  // Award score + drop a repair cell for each drone destroyed.
+  private killDrones(spots: THREE.Vector3[]): void {
+    for (const at of spots) {
+      this.explosions.boom(at, 4);
+      this.debris.burst(at, [6, 12], 8);
+      this.addScore(120, true);
+      sfx.explode(0.25, 1 - Math.min(1, at.distanceTo(this.player.pos) / 120));
+      // most wrecks leave salvage the player can fly through to repair
+      if (Math.random() < 0.55) this.spawnPickup(at);
+    }
   }
 
   private hitMonsterRay(from: THREE.Vector3, dir: THREE.Vector3, maxDist: number, dmg: number): void {
+    this.killDrones(this.drones.damageRay(from, dir, maxDist, dmg));
     const m = this.monster;
     if (!m || m.dying) return;
     _v.copy(m.group.position);
@@ -806,6 +829,57 @@ export class Game {
     this.hud.toast('AIRBORNE', 'Standing on a passing airliner', 2.5);
   }
 
+  // ---- repair salvage: the only mid-fight way to get health back --------
+
+  private spawnPickup(at: THREE.Vector3): void {
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(2.2, 2.2, 2.2),
+      new THREE.MeshBasicMaterial({ color: 0x5cf2a0, transparent: true, opacity: 0.9 })
+    );
+    mesh.position.copy(at);
+    this.scene.add(mesh);
+    this.pickups.push({ mesh, spin: 1 + Math.random(), life: 26 });
+  }
+
+  private updatePickups(dt: number): void {
+    for (let i = this.pickups.length - 1; i >= 0; i--) {
+      const p = this.pickups[i];
+      p.life -= dt;
+      p.mesh.rotation.y += p.spin * dt;
+      p.mesh.rotation.x += p.spin * 0.4 * dt;
+      // sink to the ground and bob so they are reachable on foot
+      const gy = this.world.groundHeight(p.mesh.position.x, p.mesh.position.z, 60) + 2.5;
+      p.mesh.position.y += (gy - p.mesh.position.y) * Math.min(1, dt * 2.2);
+      p.mesh.position.y += Math.sin(this.time * 3 + i) * 0.02;
+      // fade out in the last couple of seconds
+      (p.mesh.material as THREE.MeshBasicMaterial).opacity = p.life < 2 ? p.life / 2 * 0.9 : 0.9;
+
+      const grabbed = p.mesh.position.distanceTo(this.player.pos) < 9;
+      if (grabbed) {
+        this.player.heal(18);
+        this.hud.toast('+18 REPAIR', 'Salvage recovered', 1.2);
+        sfx.jingle();
+        this.addScore(40, false);
+      }
+      if (grabbed || p.life <= 0) {
+        this.scene.remove(p.mesh);
+        p.mesh.geometry.dispose();
+        (p.mesh.material as THREE.Material).dispose();
+        this.pickups.splice(i, 1);
+      }
+    }
+  }
+
+  // Boss weak point: the glowing core sits high on the back, so flanking and
+  // aiming beats parking in front with lock-on held.
+  private weakPointBonus(p: THREE.Vector3): number {
+    const m = this.monster;
+    if (!m) return 1;
+    m.corePos(_v);
+    // tight radius: the core has to actually be what you hit
+    return _v.distanceTo(p) < 8 ? 2.5 : 1;
+  }
+
   // ------------------------------------------------------------ boss cycle
 
   private updateBosses(dt: number): void {
@@ -873,6 +947,8 @@ export class Game {
 
     this.wave++;
     this.hud.setWave(this.wave);
+    // the swarm thickens as the campaign progresses
+    this.drones.target = Math.min(10, 3 + Math.floor(this.wave * 0.7));
     if (this.bossIndex < campaign.length) {
       const entry = campaign[this.bossIndex++];
       this.monster = entry.make(x, z);
@@ -891,6 +967,15 @@ export class Game {
     this.scene.add(this.monster.group);
     this.hud.showBoss(this.monster.name);
     sfx.roar();
+    // teach the weak point once, after the boss intro toast has had its time
+    if (!this.taughtWeakPoint) {
+      this.taughtWeakPoint = true;
+      setTimeout(() => {
+        if (this.monster && !this.monster.dying) {
+          this.hud.toast('WEAK POINT: DORSAL CORE', 'Strike high on its back for 2.5x damage', 4);
+        }
+      }, 5200);
+    }
     sfx.setMusicIntensity(1);
   }
 
@@ -992,8 +1077,19 @@ export class Game {
     this.hud.damageFlash();
     sfx.thud();
     if (this.player.hp <= 0) {
+      // dying costs the run: the combo breaks, score is docked, and the mecha
+      // comes back only partly repaired, so attrition actually matters
+      this.deaths++;
+      const lost = Math.round(this.score * 0.25);
+      this.score = Math.max(0, this.score - lost);
+      this.combo = 1;
+      this.comboTimer = 0;
+      this.hud.setScore(this.score, this.combo);
       this.player.respawn();
-      this.hud.toast('MECHA DOWN', 'Recovered and redeployed at base', 4);
+      this.player.hp = Math.round(this.player.maxHp * 0.5);
+      this.slowmo = 0.8;
+      this.shake = 1.2;
+      this.hud.toast('MECHA DOWN', `-${lost} score · combo lost · redeployed at 50% integrity`, 4);
     }
   }
 
@@ -1062,10 +1158,17 @@ export class Game {
     this.cars.update(dt, this.player.pos);
 
     this.updateBosses(dt);
+    this.drones.update(dt, this.time, {
+      world: this.world,
+      playerPos: this.player.pos,
+      damagePlayer: (a) => this.damagePlayer(a),
+      destroyAt: (p, r, sh) => this.destroyAt(p, r, sh),
+    });
     this.updateBeam(dt);
     this.updateStreams(dt);
     this.updateProjectiles(dt);
     this.updateFalling(dt);
+    this.updatePickups(dt);
     this.debris.update(dt);
     this.explosions.update(dt);
     this.updateFire(dt);
