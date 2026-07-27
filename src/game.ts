@@ -303,6 +303,7 @@ export class Game {
       dir = new THREE.Vector3(Math.sin(this.player.yaw), 0, Math.cos(this.player.yaw));
     }
     this.player.dash(dir);
+    this.player.model.dashT = 0.3; // forward lunge pose
     this.explosions.boom(this.player.pos.clone().setY(this.player.pos.y + 3), 3);
     sfx.rocket(0.6); // whoosh
   }
@@ -1139,6 +1140,7 @@ export class Game {
       this.explosions.boom(flash, 3);
     }
     this.player.damage(amount);
+    this.player.model.flinchT = 0.22; // visible recoil from the hit
     this.hud.damageFlash();
     sfx.thud();
     if (this.player.hp <= 0) {

@@ -44,6 +44,18 @@ export class MechaModel {
 
   swingT = -1; // 0..1 while swinging
   aiming = false;
+  // knee pivots, so the walk cycle can bend rather than swing rigidly
+  private kneeL!: THREE.Group;
+  private kneeR!: THREE.Group;
+  // one-shot animation triggers, set by the game and decayed in animate()
+  landT = 0;    // squash on touchdown
+  flinchT = 0;  // recoil from taking a hit
+  recoilT = 0;  // rifle kick
+  dashT = 0;    // dash lunge pose
+  private prevYaw = 0;
+  private bank = 0;   // smoothed lean into turns
+  private lean = 0;   // smoothed forward lean with speed
+  private wasAirborne = false;
   private muzzle!: THREE.Mesh;
   private aimT = 0; // rifle raised briefly after each shot
 
@@ -53,6 +65,8 @@ export class MechaModel {
 
     this.legL = this.makeLeg(-0.48);
     this.legR = this.makeLeg(0.48);
+    this.kneeL = (this.legL as THREE.Group & { lower: THREE.Group }).lower;
+    this.kneeR = (this.legR as THREE.Group & { lower: THREE.Group }).lower;
     g.add(this.legL, this.legR);
 
     // hip / abdomen with skirt armor plates
@@ -250,35 +264,41 @@ export class MechaModel {
     this.armR.add(this.saberBlade);
   }
 
+  // The leg is two pivots: a hip group, and a knee group holding everything
+  // below it, so the walk cycle can actually flex rather than swing rigidly.
   private makeLeg(x: number): THREE.Group {
     const leg = new THREE.Group();
     leg.position.set(x, 2.1, 0);
     const thigh = plate(0.5, 1.12, 0.6, WHITE);
     thigh.position.y = -0.56;
-    const knee = box(0.46, 0.3, 0.54, JOINT);
-    knee.position.y = -1.16;
     const kneePad = box(0.54, 0.4, 0.18, WHITE);
     kneePad.position.set(0, -1.14, 0.36);
-    leg.add(kneePad);
+    leg.add(thigh, kneePad);
+
+    const lower = new THREE.Group();
+    lower.position.y = -1.16; // knee pivot
+    const knee = box(0.46, 0.3, 0.54, JOINT);
     const shin = plate(0.64, 1.12, 0.72, WHITE);
-    shin.position.y = -1.78;
+    shin.position.y = -0.62;
     const ankle = box(0.36, 0.22, 0.42, JOINT);
-    ankle.position.y = -2.4;
+    ankle.position.y = -1.24;
     const foot = box(0.78, 0.34, 1.24, RED);
-    foot.position.set(0, -2.28, 0.2);
+    foot.position.set(0, -1.12, 0.2);
     // white ankle guard plate over the red foot, RX-78 style
     const ankleGuard = box(0.8, 0.26, 0.56, WHITE);
-    ankleGuard.position.set(0, -2.1, 0.38);
+    ankleGuard.position.set(0, -0.94, 0.38);
     // Raised shin blade, side verniers and split toe cap improve the read at a distance.
     const shinBlade = plate(0.48, 0.76, 0.14, WHITE);
-    shinBlade.position.set(0, -1.74, 0.43);
+    shinBlade.position.set(0, -0.58, 0.43);
     const calfL = plate(0.11, 0.52, 0.22, STEEL);
-    calfL.position.set(-0.37, -1.72, -0.12);
+    calfL.position.set(-0.37, -0.56, -0.12);
     const calfR = calfL.clone();
-    calfR.position.x = 0.34;
+    calfR.position.x = 0.37;
     const toe = plate(0.6, 0.14, 0.38, RED);
-    toe.position.set(0, -2.3, 0.82);
-    leg.add(thigh, knee, shin, ankle, foot, ankleGuard, shinBlade, calfL, calfR, toe);
+    toe.position.set(0, -1.14, 0.82);
+    lower.add(knee, shin, ankle, foot, ankleGuard, shinBlade, calfL, calfR, toe);
+    leg.add(lower);
+    (leg as THREE.Group & { lower: THREE.Group }).lower = lower;
     return leg;
   }
 
@@ -358,23 +378,78 @@ export class MechaModel {
 
   animate(t: number, speed: number, grounded: boolean, dt: number): void {
     this.flickerThrusters(t);
+
+    // decay the one-shot triggers
+    this.landT = Math.max(0, this.landT - dt);
+    this.flinchT = Math.max(0, this.flinchT - dt);
+    this.recoilT = Math.max(0, this.recoilT - dt);
+    this.dashT = Math.max(0, this.dashT - dt);
+
+    // landing squash: fire when we touch down after being airborne
+    if (grounded && this.wasAirborne) this.landT = 0.26;
+    this.wasAirborne = !grounded;
+
+    // Lean: pitch forward with speed, bank into turns. Both are smoothed so
+    // the mecha settles rather than snapping between poses.
+    let dYaw = this.group.rotation.y - this.prevYaw;
+    while (dYaw > Math.PI) dYaw -= Math.PI * 2;
+    while (dYaw < -Math.PI) dYaw += Math.PI * 2;
+    this.prevYaw = this.group.rotation.y;
+    const run = Math.min(1, speed / 20);
+    const targetLean = grounded ? run * 0.2 + this.dashT * 0.9 : 0.16;
+    const targetBank = Math.max(-0.32, Math.min(0.32, -dYaw * 7));
+    this.lean += (targetLean - this.lean) * Math.min(1, dt * 7);
+    this.bank += (targetBank - this.bank) * Math.min(1, dt * 6);
+
     const walk = Math.min(1, speed / 9);
-    const ph = t * 8;
+    // stride quickens with speed; a run reads faster than a walk
+    const ph = t * (7 + run * 5);
+
     if (grounded && walk > 0.05) {
-      this.legL.rotation.x = Math.sin(ph) * 0.7 * walk;
-      this.legR.rotation.x = Math.sin(ph + Math.PI) * 0.7 * walk;
-      this.armL.rotation.x = Math.sin(ph + Math.PI) * 0.4 * walk;
-      this.group.position.y += Math.abs(Math.sin(ph)) * 0.12 * walk;
+      // Walk cycle: hips swing, knees flex on the back-swing so the foot
+      // lifts instead of dragging, and the body rises on each push-off.
+      const sL = Math.sin(ph), sR = Math.sin(ph + Math.PI);
+      this.legL.rotation.x = sL * 0.72 * walk;
+      this.legR.rotation.x = sR * 0.72 * walk;
+      // knee only bends one way — clamp to the trailing half of the stride
+      this.kneeL.rotation.x = -Math.max(0, -sL) * 1.15 * walk;
+      this.kneeR.rotation.x = -Math.max(0, -sR) * 1.15 * walk;
+      this.armL.rotation.x = sR * 0.42 * walk;
+      this.group.position.y += Math.abs(Math.sin(ph)) * 0.14 * walk;
+      // subtle counter-rotation of the torso against the legs
+      this.torso.rotation.y = -sL * 0.1 * walk;
     } else if (!grounded) {
-      this.legL.rotation.x = 0.35;
-      this.legR.rotation.x = -0.25;
-      this.armL.rotation.x = -0.3;
+      // flight/jump pose: legs trail back, one knee tucked, arms swept
+      this.legL.rotation.x = 0.42;
+      this.legR.rotation.x = -0.3;
+      this.kneeL.rotation.x = -0.75;
+      this.kneeR.rotation.x = -0.25;
+      this.armL.rotation.x = -0.35;
+      this.torso.rotation.y *= 0.85;
     } else {
-      this.legL.rotation.x *= 0.8;
-      this.legR.rotation.x *= 0.8;
+      // idle: settle the limbs, breathe, and sway gently
+      this.legL.rotation.x *= 0.82;
+      this.legR.rotation.x *= 0.82;
+      this.kneeL.rotation.x *= 0.82;
+      this.kneeR.rotation.x *= 0.82;
       this.armL.rotation.x = Math.sin(t * 1.5) * 0.05;
       this.torso.rotation.y = Math.sin(t * 0.8) * 0.03;
+      this.torso.position.y = 2.25 + Math.sin(t * 1.6) * 0.02; // breathing
     }
+
+    // landing squash: compress the stance, then spring back
+    if (this.landT > 0) {
+      const k = this.landT / 0.26;          // 1 -> 0
+      const squash = Math.sin(k * Math.PI) * 0.5;
+      this.kneeL.rotation.x -= squash;
+      this.kneeR.rotation.x -= squash;
+      this.legL.rotation.x += squash * 0.45;
+      this.legR.rotation.x += squash * 0.45;
+      this.group.position.y -= squash * 0.35;
+    }
+
+    this.group.rotation.z = this.bank;
+    this.torso.rotation.x = this.lean + (this.flinchT > 0 ? -Math.sin(this.flinchT / 0.22 * Math.PI) * 0.28 : 0);
 
     // saber swing: arm levels out forward, torso whips a horizontal slash
     if (this.swingT >= 0) {
@@ -383,39 +458,49 @@ export class MechaModel {
       this.saberBlade.visible = true;
       this.armR.rotation.z = 0;
       if (s < 0.25) {
-        // wind up: raise arm to horizontal, twist torso right
+        // wind up: raise arm to horizontal, twist torso right, coil the legs
         const k = s / 0.25;
         this.armR.rotation.x = -1.5 * k;
         this.torso.rotation.y = 0.9 * k;
+        this.torso.rotation.z = -0.18 * k;
       } else if (s < 0.6) {
         // slash: sweep torso hard left, blade carves a flat arc
         const k = (s - 0.25) / 0.35;
         this.armR.rotation.x = -1.5;
         this.torso.rotation.y = 0.9 - 2.1 * k;
+        this.torso.rotation.z = -0.18 + 0.34 * k;
       } else if (s < 1) {
         // recover
         const k = (s - 0.6) / 0.4;
         this.armR.rotation.x = -1.5 * (1 - k);
         this.torso.rotation.y = -1.2 * (1 - k);
+        this.torso.rotation.z = 0.16 * (1 - k);
       } else {
         this.swingT = -1;
         this.saberBlade.visible = false;
         this.armR.rotation.set(0, 0, 0);
         this.torso.rotation.y = 0;
+        this.torso.rotation.z = 0;
       }
     } else if (grounded && walk > 0.05) {
-      this.armR.rotation.x = Math.sin(t * 8) * 0.4 * walk;
+      this.armR.rotation.x = Math.sin(ph) * 0.42 * walk;
     }
 
-    // rifle arm levels at the target while beaming or just after a shot
+    // rifle arm levels at the target while beaming or just after a shot,
+    // with a sharp kick back on the shot itself
     this.aimT -= dt;
-    if (this.aiming || this.aimT > 0) this.armL.rotation.x = -Math.PI / 2;
+    if (this.aiming || this.aimT > 0) {
+      const kick = this.recoilT > 0 ? Math.sin(this.recoilT / 0.18 * Math.PI) * 0.5 : 0;
+      this.armL.rotation.x = -Math.PI / 2 + kick;
+      this.torso.rotation.y += kick * 0.12;
+    }
   }
 
   // Raise the rifle for a shot and report the muzzle's world position.
   // Forces a matrix update so the very first shot spawns at the muzzle.
   fireRifle(out: THREE.Vector3): void {
     this.aimT = 0.3;
+    this.recoilT = 0.18; // kick, played out in animate()
     this.armL.rotation.x = -Math.PI / 2;
     this.group.updateMatrixWorld(true);
     this.muzzle.getWorldPosition(out);
