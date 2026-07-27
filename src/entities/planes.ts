@@ -3,8 +3,13 @@
 
 import * as THREE from 'three';
 
+const _v = new THREE.Vector3();
+const _w = new THREE.Vector3();
+
 const COUNT = 4;
 const SPAN = 620; // how far a plane travels before wrapping around the player
+const PLANE_HP = 90;
+const RESPAWN_AFTER = 12; // seconds before a downed airliner is replaced
 
 export interface Plane {
   group: THREE.Group;
@@ -15,6 +20,17 @@ export interface Plane {
   halfWide: number; // across the wings
   dx: number; // movement applied this frame (platform carry)
   dz: number;
+  hp: number;
+  crashing: boolean; // shot down: spiralling toward the ground
+  fallVel: number;
+  roll: number;
+  smokeT: number;
+}
+
+/** Reported when a downed airliner hits the ground. */
+export interface PlaneCrash {
+  at: THREE.Vector3;
+  heading: number;
 }
 
 function box(w: number, h: number, d: number, color: number, emissive = 0): THREE.Mesh {
@@ -117,12 +133,38 @@ export class PlaneManager {
         group, heading, deckY, halfLen, halfWide,
         speed: 4 + Math.random() * 3.5, // slow cruise
         dx: 0, dz: 0,
+        hp: PLANE_HP, crashing: false, fallVel: 0, roll: 0, smokeT: 0,
       });
     }
   }
 
-  update(dt: number, center: THREE.Vector3): void {
+  /** Advance the fleet. Returns crash sites for any plane that hit the ground
+   *  this frame so the caller can blow a hole in the city. */
+  update(dt: number, center: THREE.Vector3, groundAt: (x: number, z: number) => number): PlaneCrash[] {
+    const crashes: PlaneCrash[] = [];
     for (const p of this.planes) {
+      if (p.crashing) {
+        // stricken: nose over, roll, and accelerate into the city
+        p.fallVel = Math.min(70, p.fallVel + 26 * dt);
+        p.roll += dt * 1.6;
+        p.speed = Math.max(0, p.speed - dt * 1.2);
+        p.dx = Math.sin(p.heading) * p.speed * dt;
+        p.dz = Math.cos(p.heading) * p.speed * dt;
+        p.group.position.x += p.dx;
+        p.group.position.z += p.dz;
+        p.group.position.y -= p.fallVel * dt;
+        p.group.rotation.z = Math.sin(p.roll) * 0.9;
+        p.group.rotation.x = Math.min(1.1, p.fallVel / 55);
+        p.smokeT -= dt;
+
+        const gy = groundAt(p.group.position.x, p.group.position.z);
+        if (p.group.position.y <= gy + 6) {
+          crashes.push({ at: p.group.position.clone(), heading: p.heading });
+          this.reset(p, center);
+        }
+        continue;
+      }
+
       p.dx = Math.sin(p.heading) * p.speed * dt;
       p.dz = Math.cos(p.heading) * p.speed * dt;
       p.group.position.x += p.dx;
@@ -135,6 +177,64 @@ export class PlaneManager {
       if (rz > SPAN / 2) p.group.position.z -= SPAN;
       if (rz < -SPAN / 2) p.group.position.z += SPAN;
     }
+    return crashes;
+  }
+
+  /** Put a fresh airliner back into the sky far from the player. */
+  private reset(p: Plane, center: THREE.Vector3): void {
+    const a = Math.random() * Math.PI * 2;
+    p.heading = Math.random() * Math.PI * 2;
+    p.group.position.set(
+      center.x + Math.sin(a) * SPAN * 0.45,
+      62 + Math.random() * 34,
+      center.z + Math.cos(a) * SPAN * 0.45
+    );
+    p.group.rotation.set(0, p.heading, 0);
+    p.hp = PLANE_HP;
+    p.crashing = false;
+    p.fallVel = 0;
+    p.roll = 0;
+    p.speed = 4 + Math.random() * 3.5;
+  }
+
+  /** Hit test a sphere against the fleet; returns planes newly shot down. */
+  damageSphere(pt: THREE.Vector3, radius: number, dmg: number): Plane[] {
+    const downed: Plane[] = [];
+    for (const p of this.planes) {
+      if (p.crashing) continue;
+      if (!this.overlaps(p, pt, radius)) continue;
+      p.hp -= dmg;
+      if (p.hp <= 0) { p.crashing = true; downed.push(p); }
+    }
+    return downed;
+  }
+
+  /** Hit test a ray against the fleet (railgun / beam / tracers). */
+  damageRay(from: THREE.Vector3, dir: THREE.Vector3, maxDist: number, dmg: number): Plane[] {
+    const downed: Plane[] = [];
+    for (const p of this.planes) {
+      if (p.crashing) continue;
+      _v.copy(p.group.position).sub(from);
+      const along = _v.dot(dir);
+      if (along < 0 || along > maxDist) continue;
+      _w.copy(dir).multiplyScalar(along);
+      if (_v.sub(_w).length() > p.halfWide * 0.55) continue;
+      p.hp -= dmg;
+      if (p.hp <= 0) { p.crashing = true; downed.push(p); }
+    }
+    return downed;
+  }
+
+  // Rough silhouette test: the fuselage spine or the wing box.
+  private overlaps(p: Plane, pt: THREE.Vector3, radius: number): boolean {
+    if (Math.abs(pt.y - p.group.position.y) > 10 + radius) return false;
+    const ox = pt.x - p.group.position.x, oz = pt.z - p.group.position.z;
+    const s = Math.sin(p.heading), c = Math.cos(p.heading);
+    const lx = ox * c - oz * s;
+    const lz = ox * s + oz * c;
+    const onSpine = Math.abs(lx) <= 8 + radius && Math.abs(lz) <= p.halfLen + radius;
+    const onWings = Math.abs(lx) <= p.halfWide + radius && lz >= -18 - radius && lz <= 12 + radius;
+    return onSpine || onWings;
   }
 
   // The plane whose deck is directly under this point, within a vertical band.

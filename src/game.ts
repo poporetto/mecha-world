@@ -682,6 +682,7 @@ export class Game {
   private hitMonster(p: THREE.Vector3, radius: number, dmg: number): boolean {
     let hit = false;
     this.killDrones(this.drones.damageSphere(p, radius, dmg));
+    this.notePlanesDowned(this.planes.damageSphere(p, radius, dmg));
     const m = this.monster;
     if (m && !m.dying) {
       _v.copy(m.group.position);
@@ -711,6 +712,7 @@ export class Game {
 
   private hitMonsterRay(from: THREE.Vector3, dir: THREE.Vector3, maxDist: number, dmg: number): void {
     this.killDrones(this.drones.damageRay(from, dir, maxDist, dmg));
+    this.notePlanesDowned(this.planes.damageRay(from, dir, maxDist, dmg));
     const m = this.monster;
     if (!m || m.dying) return;
     _v.copy(m.group.position);
@@ -827,6 +829,39 @@ export class Game {
     p.vel.y = 0;
     p.grounded = true;
     this.hud.toast('AIRBORNE', 'Standing on a passing airliner', 2.5);
+  }
+
+  private notePlanesDowned(downed: Plane[]): void {
+    for (const p of downed) {
+      this.addScore(400, true);
+      this.hud.toast('AIRLINER HIT', 'It is going down — clear the impact zone', 3);
+      this.explosions.boom(p.group.position.clone(), 12);
+      sfx.explode(0.7, 1 - Math.min(1, p.group.position.distanceTo(this.player.pos) / 150));
+      // riding the plane you just shot down? you go with it
+      if (this.ridingPlane === p) this.ridingPlane = null;
+    }
+  }
+
+  // A downed airliner ploughs a burning furrow through the city.
+  private planeCrash(c: { at: THREE.Vector3; heading: number }): void {
+    const fwd = new THREE.Vector3(Math.sin(c.heading), 0, Math.cos(c.heading));
+    sfx.explode(1, 1 - Math.min(1, c.at.distanceTo(this.player.pos) / 200));
+    this.shake = Math.max(this.shake, 1.5);
+    // gouge a trench along the direction of travel, biggest at the impact
+    for (let i = 0; i < 7; i++) {
+      const p = c.at.clone().addScaledVector(fwd, i * 9);
+      p.y = this.world.groundHeight(p.x, p.z, 60) + 2;
+      this.destroyAt(p, i === 0 ? 13 : 10 - i * 0.7, 0.6);
+      this.explosions.boom(p, 12 - i);
+      // burning fuel spreads from the wreck
+      this.fire.igniteSphere(this.world, p.x, p.y, p.z, 7);
+    }
+    this.npcs.scare(c.at, 90);
+    this.cars.scare(c.at, 90);
+    // caught in the fireball
+    if (c.at.distanceTo(this.player.pos) < 26) this.damagePlayer(28);
+    this.addScore(800, true);
+    this.hud.toast('AIRLINER DOWN', 'Wreckage burning in the streets', 3.5);
   }
 
   // ---- repair salvage: the only mid-fight way to get health back --------
@@ -1146,7 +1181,9 @@ export class Game {
     } else {
       this.player.update(dt, 0, 0, this.camYaw, false, false);
     }
-    this.planes.update(dt, this.player.pos);
+    const crashes = this.planes.update(dt, this.player.pos,
+      (x, z) => this.world.groundHeight(x, z, 60));
+    for (const c of crashes) this.planeCrash(c);
     this.updatePlaneRiding(jump);
 
     this.chunks.update(this.player.pos.x, this.player.pos.z);
