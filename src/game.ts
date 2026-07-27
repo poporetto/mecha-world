@@ -54,6 +54,10 @@ export class Game {
   private mouseDown = [false, false, false];
   private drag: { x: number; y: number; sx: number; sy: number; button: number; moved: boolean } | null = null;
   private lastCollapseScan = 0;
+  // Sites awaiting a structural re-check. A blast that undermines a building
+  // often lands inside the scan throttle; without this the structure could be
+  // left standing with no support until something happened to hit it again.
+  private collapseQueue: THREE.Vector3[] = [];
   private camYaw = 0;
   private camPitch = 0.32;
   private locked = false;
@@ -321,13 +325,13 @@ export class Game {
   }
 
   private swingSaber(): void {
-    if (!this.player.model.startSwing()) return;
-    // combo: chaining swings within the window steps 1→2→3, each hitting harder
-    if (this.comboWindow > 0) this.comboStep = (this.comboStep + 1) % 3;
-    else this.comboStep = 0;
+    // Work out which link of the combo this is BEFORE starting the swing, so
+    // the model can play the matching arc: horizontal, reverse, then overhead.
+    const step = this.comboWindow > 0 ? (this.comboStep + 1) % 3 : 0;
+    if (!this.player.model.startSwing(step)) return;
+    this.comboStep = step;
     // twin sabers keep the combo window open longer, so chains are easier
     this.comboWindow = this.player.abilities.blades ? 1.0 : 0.7;
-    const step = this.comboStep;
     // aim toward the boss when locked on, else where the camera looks
     if (this.lockOn && this.monster && !this.monster.dying) {
       const d = this.monster.group.position;
@@ -770,15 +774,32 @@ export class Game {
         sfx.explode(Math.min(1, res.count / 60), vol);
       }
       if (res.count >= 4) this.checkCollapse(p, r);
+      else if (res.count > 0) this.queueCollapse(p);
     }
     this.npcs.scare(p, 34);
     this.cars.scare(p, 34);
   }
 
+  /** Queue a site so it is re-examined even if the immediate scan is throttled. */
+  private queueCollapse(p: THREE.Vector3): void {
+    for (const q of this.collapseQueue) {
+      if (q.distanceToSquared(p) < 100) return; // already covered nearby
+    }
+    if (this.collapseQueue.length < 24) this.collapseQueue.push(p.clone());
+  }
+
+  /** Work through queued sites once the throttle allows, one per tick. */
+  private drainCollapseQueue(): void {
+    if (this.collapseQueue.length === 0) return;
+    if (this.time - this.lastCollapseScan < 0.2) return;
+    const p = this.collapseQueue.shift()!;
+    this.checkCollapse(p, 6);
+  }
+
   // Anything the blast disconnected from the ground breaks off and falls.
   private checkCollapse(p: THREE.Vector3, r: number): void {
     // the flood fill can walk a whole building — don't run it every beam tick
-    if (this.time - this.lastCollapseScan < 0.15) return;
+    if (this.time - this.lastCollapseScan < 0.15) { this.queueCollapse(p); return; }
     this.lastCollapseScan = this.time;
     // fully-disconnected chunks first, then foundation failure (a gutted base
     // topples the tower even if a stray column still stands)
@@ -1387,6 +1408,7 @@ export class Game {
     this.updateStreams(dt);
     this.updateProjectiles(dt);
     this.updateFalling(dt);
+    this.drainCollapseQueue();
     this.updatePickups(dt);
     this.debris.update(dt);
     this.explosions.update(dt);

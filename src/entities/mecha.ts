@@ -43,6 +43,8 @@ export class MechaModel {
   private thrusterR: THREE.Mesh;
 
   swingT = -1; // 0..1 while swinging
+  /** 0 horizontal, 1 reverse horizontal, 2 overhead finisher */
+  private swingStyle = 0;
   aiming = false;
   // knee pivots, so the walk cycle can bend rather than swing rigidly
   private kneeL!: THREE.Group;
@@ -493,36 +495,86 @@ export class MechaModel {
     this.group.rotation.z = this.bank;
     this.torso.rotation.x = this.lean + (this.flinchT > 0 ? -Math.sin(this.flinchT / 0.22 * Math.PI) * 0.28 : 0);
 
-    // saber swing: arm levels out forward, torso whips a horizontal slash
+    // Saber swing. Three phases with real easing: a deliberate wind-up, an
+    // explosive strike that decelerates through the arc, then a settle. The
+    // blade extends as it ignites and retracts on the way out, and the hips
+    // and shoulders drive the motion rather than the arm alone.
     if (this.swingT >= 0) {
-      this.swingT += dt / 0.45;
+      this.swingT += dt / 0.52;
       const s = this.swingT;
+      const style = this.swingStyle;
+      const overhead = style === 2;
+      const dir = style === 1 ? -1 : 1; // style 1 comes back the other way
+
       this.saberBlade.visible = true;
-      this.armR.rotation.z = 0;
-      if (s < 0.25) {
-        // wind up: raise arm to horizontal, twist torso right, coil the legs
-        const k = s / 0.25;
-        this.armR.rotation.x = -1.5 * k;
-        this.torso.rotation.y = 0.9 * k;
-        this.torso.rotation.z = -0.18 * k;
-      } else if (s < 0.6) {
-        // slash: sweep torso hard left, blade carves a flat arc
-        const k = (s - 0.25) / 0.35;
-        this.armR.rotation.x = -1.5;
-        this.torso.rotation.y = 0.9 - 2.1 * k;
-        this.torso.rotation.z = -0.18 + 0.34 * k;
+      // ignition: the blade shoots out, then draws back at the end
+      const ignite = s < 0.14 ? s / 0.14 : s > 0.86 ? Math.max(0, (1 - s) / 0.14) : 1;
+      this.saberBlade.scale.set(1, Math.max(0.05, ignite), 1);
+      this.saberBlade.position.y = -3.9 + (1 - ignite) * 1.7;
+
+      if (s < 0.3) {
+        // WIND UP — ease out, so it snaps back then hangs for anticipation
+        const k = 1 - (1 - s / 0.3) * (1 - s / 0.3);
+        if (overhead) {
+          this.armR.rotation.x = -2.5 * k;      // raised high above the head
+          this.armR.rotation.z = 0;
+          this.torso.rotation.y = 0.35 * k;
+          this.torso.rotation.x = this.lean - 0.22 * k; // arch back
+        } else {
+          this.armR.rotation.x = -1.35 * k;
+          this.armR.rotation.z = -0.5 * k * dir;  // cocked across the body
+          this.torso.rotation.y = 1.05 * k * dir;
+          this.torso.rotation.x = this.lean - 0.06 * k;
+        }
+        this.torso.rotation.z = -0.2 * k * dir;
+        // coil: weight shifts onto the back leg
+        this.legL.rotation.x = 0.16 * k * dir;
+        this.legR.rotation.x = -0.16 * k * dir;
+      } else if (s < 0.58) {
+        // STRIKE — front-loaded curve: explosive, then decelerating
+        const t = (s - 0.3) / 0.28;
+        const k = 1 - Math.pow(1 - t, 3);
+        if (overhead) {
+          this.armR.rotation.x = -2.5 + 3.3 * k;   // cleaves down past vertical
+          this.armR.rotation.z = 0;
+          this.torso.rotation.y = 0.35 - 0.5 * k;
+          this.torso.rotation.x = this.lean - 0.22 + 0.66 * k; // whips forward
+        } else {
+          this.armR.rotation.x = -1.35 - 0.35 * k;
+          this.armR.rotation.z = (-0.5 + 1.5 * k) * dir;
+          this.torso.rotation.y = (1.05 - 2.45 * k) * dir;
+          this.torso.rotation.x = this.lean - 0.06 + 0.2 * k;
+        }
+        this.torso.rotation.z = (-0.2 + 0.42 * k) * dir;
+        // hips drive through the cut
+        this.legL.rotation.x = (0.16 - 0.42 * k) * dir;
+        this.legR.rotation.x = (-0.16 + 0.42 * k) * dir;
+        this.kneeL.rotation.x = Math.max(0, 0.3 * k);
       } else if (s < 1) {
-        // recover
-        const k = (s - 0.6) / 0.4;
-        this.armR.rotation.x = -1.5 * (1 - k);
-        this.torso.rotation.y = -1.2 * (1 - k);
-        this.torso.rotation.z = 0.16 * (1 - k);
+        // FOLLOW THROUGH — drift a little further, then ease back to guard
+        const t = (s - 0.58) / 0.42;
+        const k = t * t * (3 - 2 * t); // smoothstep settle
+        const over = Math.sin(t * Math.PI) * 0.12; // slight overswing
+        if (overhead) {
+          this.armR.rotation.x = (0.8 + over) * (1 - k);
+          this.torso.rotation.x = this.lean + 0.44 * (1 - k);
+        } else {
+          this.armR.rotation.x = (-1.7 - over) * (1 - k);
+          this.armR.rotation.z = (1.0 + over) * dir * (1 - k);
+          this.torso.rotation.x = this.lean + 0.14 * (1 - k);
+        }
+        this.torso.rotation.y = (overhead ? -0.15 : -1.4 * dir) * (1 - k);
+        this.torso.rotation.z = (0.22 * dir) * (1 - k);
+        this.legL.rotation.x *= 0.86;
+        this.legR.rotation.x *= 0.86;
+        this.kneeL.rotation.x *= 0.86;
       } else {
         this.swingT = -1;
         this.saberBlade.visible = false;
+        this.saberBlade.scale.set(1, 1, 1);
+        this.saberBlade.position.y = -3.9;
         this.armR.rotation.set(0, 0, 0);
-        this.torso.rotation.y = 0;
-        this.torso.rotation.z = 0;
+        this.torso.rotation.set(0, 0, 0);
       }
     } else if (grounded && walk > 0.05) {
       this.armR.rotation.x = Math.sin(ph) * 0.42 * walk;
@@ -548,9 +600,10 @@ export class MechaModel {
     this.muzzle.getWorldPosition(out);
   }
 
-  startSwing(): boolean {
+  startSwing(style = 0): boolean {
     if (this.swingT >= 0 && this.swingT < 0.7) return false;
     this.swingT = 0;
+    this.swingStyle = style % 3;
     return true;
   }
 }

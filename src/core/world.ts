@@ -186,7 +186,7 @@ export class World {
   // stray corner still stands. Bounded by a box + block cap around the blast.
   foundationScan(px: number, pz: number, bandTop: number): { blocks: [number, number, number, number][]; dirty: Set<string> } | null {
     const BOUND = 26; // horizontal reach — one building, not the block
-    const CAP = 20000;
+    const CAP = 40000;
     const cx = Math.floor(px), cz = Math.floor(pz);
     const seedTop = Math.min(H - 1, Math.max(4, Math.round(bandTop)) + 2);
 
