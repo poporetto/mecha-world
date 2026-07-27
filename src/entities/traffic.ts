@@ -3,7 +3,7 @@
 // green -> amber -> red cycle, with crossing streets held out of phase.
 
 import * as THREE from 'three';
-import { CELL, ROAD_W } from '../core/worldgen';
+import { CELL, ROAD_W, hasTrafficPost } from '../core/worldgen';
 
 const RANGE = 150;      // how far from the player signals are kept alive
 const POST_TOP = 6;     // world y of the baked post's top
@@ -69,7 +69,13 @@ export class TrafficManager {
     this.pool.push(s);
   }
 
-  update(dt: number, time: number, playerPos: THREE.Vector3, groundAt: (x: number, z: number) => number): void {
+  update(
+    dt: number,
+    time: number,
+    playerPos: THREE.Vector3,
+    groundAt: (x: number, z: number) => number,
+    postStanding: (x: number, z: number) => boolean,
+  ): void {
     // Re-scan occasionally: signals are cheap but finding them is a grid walk.
     this.scanT -= dt;
     if (this.scanT <= 0) {
@@ -83,6 +89,11 @@ export class TrafficManager {
           const cx = x + (mod(ROAD_W - x, CELL));
           const cz = z + (mod(ROAD_W - z, CELL));
           if (Math.hypot(cx - playerPos.x, cz - playerPos.z) > RANGE) continue;
+          // only real city-street corners get a signal — no posts up the
+          // mountains, out in the forest, on the water or across the port
+          if (!hasTrafficPost(cx, cz)) continue;
+          // a post blown apart in combat takes its signal head with it
+          if (!postStanding(cx, cz)) continue;
           const key = cx + ',' + cz;
           wanted.add(key);
           if (this.live.has(key)) continue;
@@ -96,7 +107,9 @@ export class TrafficManager {
         }
       }
       for (const [key, s] of this.live) {
-        if (!wanted.has(key)) { this.release(s); this.live.delete(key); }
+        const stillThere = wanted.has(key)
+          && postStanding(s.group.position.x, s.group.position.z);
+        if (!stillThere) { this.release(s); this.live.delete(key); }
       }
     }
 

@@ -630,6 +630,15 @@ export function generateChunkData(cx: number, cz: number): Uint8Array {
   return data;
 }
 
+// True only where the generator actually bakes a signal post: a city-street
+// corner. Mountains, the bay, the port, the river and landmark plazas all
+// resolve to other column kinds and are excluded, so TrafficManager cannot
+// plant signals out in the wilderness.
+export function hasTrafficPost(x: number, z: number): boolean {
+  if (mod(x, CELL) !== ROAD_W || mod(z, CELL) !== ROAD_W) return false;
+  return columnInfo(x, z).kind === ColKind.Sidewalk;
+}
+
 // True for columns where ground level is walkable open street (NPC spawns).
 export function isOpenStreet(x: number, z: number): boolean {
   const k = columnInfo(x, z).kind;

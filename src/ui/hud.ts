@@ -69,6 +69,26 @@ export class Hud {
                color:#eaf6ff; font-size:12px; letter-spacing:2.5px; text-shadow:0 1px 3px #000;
                white-space:nowrap; }
         .obj b { color:#ffcf4f; }
+        .minimap { position:absolute; right:24px; top:150px; width:168px; height:168px;
+                   border-radius:50%; background:#08111ecc; border:2px solid #7fdcff55;
+                   overflow:hidden; box-shadow:0 2px 14px #0007; }
+        .mm-dot { position:absolute; border-radius:50%; transform:translate(-50%,-50%); }
+        .mm-me { width:9px; height:9px; background:#7fdcff; box-shadow:0 0 8px #39e6e0;
+                 left:50%; top:50%; }
+        .mm-cone { position:absolute; left:50%; top:50%; width:0; height:0;
+                   border-left:9px solid transparent; border-right:9px solid transparent;
+                   border-bottom:34px solid #7fdcff22; transform-origin:50% 100%;
+                   margin-left:-9px; margin-top:-34px; }
+        .mm-label { position:absolute; left:0; right:0; bottom:5px; text-align:center;
+                    color:#8fb4d8; font-size:9.5px; letter-spacing:2px; }
+        /* off-screen boss pointer that hugs the edge of the view */
+        .bossarrow { position:absolute; left:50%; top:50%; width:0; height:0; display:none;
+                     border-left:15px solid transparent; border-right:15px solid transparent;
+                     border-bottom:30px solid #ff5a7a; filter:drop-shadow(0 0 8px #ff5a7a);
+                     transform-origin:50% 50%; }
+        .bossdist { position:absolute; color:#ff9bb0; font-size:12px; font-weight:700;
+                    letter-spacing:1px; text-shadow:0 1px 4px #000; display:none;
+                    transform:translate(-50%,-50%); }
         .pause { position:absolute; inset:0; background:#060a14ee; display:none; flex-direction:column;
                  align-items:center; justify-content:center; pointer-events:auto; z-index:30; }
         .pause.open { display:flex; }
@@ -148,6 +168,13 @@ export class Hud {
         }).join('')}</div>
         <div class="wheel-title">SELECT WEAPON</div>
       </div>
+      <div class="minimap" id="minimap">
+        <div class="mm-cone" id="mm-cone"></div>
+        <div class="mm-dot mm-me"></div>
+        <div class="mm-label">RADAR</div>
+      </div>
+      <div class="bossarrow" id="bossarrow"></div>
+      <div class="bossdist" id="bossdist"></div>
       <div class="vig" id="vig"></div>
       <div class="pause" id="pause">
         <h1>PAUSED</h1>
@@ -259,6 +286,78 @@ export class Hud {
   bindPause(onResume: () => void, onRestart: () => void): void {
     document.getElementById('p-resume')!.addEventListener('click', onResume);
     document.getElementById('p-restart')!.addEventListener('click', onRestart);
+  }
+
+  // ------------------------------------------------------------------ radar
+
+  private blips: HTMLElement[] = [];
+
+  /**
+   * Draw the radar. `contacts` are world-space offsets relative to the player,
+   * already rotated into view space by the caller. `camYaw` orients the cone.
+   */
+  setRadar(
+    contacts: { dx: number; dz: number; kind: 'boss' | 'drone' | 'pickup' }[],
+    camYaw: number,
+    range: number,
+  ): void {
+    const map = document.getElementById('minimap')!;
+    const R = 78; // usable radius in px
+    // reuse blip elements so we are not churning DOM every frame
+    while (this.blips.length < contacts.length) {
+      const el = document.createElement('div');
+      el.className = 'mm-dot';
+      map.appendChild(el);
+      this.blips.push(el);
+    }
+    for (let i = 0; i < this.blips.length; i++) {
+      const el = this.blips[i];
+      const c = contacts[i];
+      if (!c) { el.style.display = 'none'; continue; }
+      // clamp far contacts to the rim so they still show a bearing
+      const d = Math.hypot(c.dx, c.dz);
+      const k = d > range ? range / d : 1;
+      const px = 84 + (c.dx / range) * R * k;
+      const py = 84 + (c.dz / range) * R * k;
+      const boss = c.kind === 'boss';
+      const size = boss ? 13 : c.kind === 'pickup' ? 7 : 8;
+      el.style.display = 'block';
+      el.style.left = px + 'px';
+      el.style.top = py + 'px';
+      el.style.width = size + 'px';
+      el.style.height = size + 'px';
+      el.style.background = boss ? '#ff5a52' : c.kind === 'pickup' ? '#5cf2a0' : '#ffb454';
+      el.style.boxShadow = boss ? '0 0 10px #ff5a52' : 'none';
+      el.style.opacity = d > range ? '0.65' : '1';
+    }
+    (document.getElementById('mm-cone') as HTMLElement).style.transform =
+      `rotate(${camYaw}rad)`;
+  }
+
+  /**
+   * Point the on-screen arrow at the boss. `screen` is its projected position
+   * in normalised device coords; `onScreen` false means clamp to the edge.
+   */
+  setBossPointer(bearing: number | null, distance = 0): void {
+    const arrow = document.getElementById('bossarrow') as HTMLElement;
+    const label = document.getElementById('bossdist') as HTMLElement;
+    if (bearing === null) {
+      arrow.style.display = 'none';
+      label.style.display = 'none';
+      return;
+    }
+    // ride an ellipse just inside the viewport edge, pointing outward
+    const rx = window.innerWidth * 0.36, ry = window.innerHeight * 0.34;
+    const x = window.innerWidth / 2 + Math.sin(bearing) * rx;
+    const y = window.innerHeight / 2 - Math.cos(bearing) * ry;
+    arrow.style.display = 'block';
+    arrow.style.left = x + 'px';
+    arrow.style.top = y + 'px';
+    arrow.style.transform = `translate(-50%,-50%) rotate(${bearing + Math.PI}rad)`;
+    label.style.display = 'block';
+    label.style.left = x + 'px';
+    label.style.top = (y + 34) + 'px';
+    label.textContent = Math.round(distance) + 'm';
   }
 
   /** The always-visible goal line under the boss bar. */

@@ -1,6 +1,7 @@
 // Game orchestrator: scene, camera, input, combat, projectiles, boss cycle.
 
 import * as THREE from 'three';
+import { B } from './core/blocks';
 import { World } from './core/world';
 import { ChunkManager } from './render/chunkManager';
 import { Player } from './entities/player';
@@ -908,6 +909,54 @@ export class Game {
     this.hud.toast('AIRLINER DOWN', 'Wreckage burning in the streets', 3.5);
   }
 
+  // Feed the radar and the off-screen boss pointer. Contacts are rotated into
+  // view space so the map reads relative to where the camera is looking.
+  private updateRadar(): void {
+    const RANGE = 320;
+    const sin = Math.sin(-this.camYaw), cos = Math.cos(-this.camYaw);
+    const rot = (dx: number, dz: number) => ({
+      dx: dx * cos - dz * sin,
+      dz: dx * sin + dz * cos,
+    });
+    const contacts: { dx: number; dz: number; kind: 'boss' | 'drone' | 'pickup' }[] = [];
+
+    if (this.monster && !this.monster.dying) {
+      const m = this.monster.group.position;
+      const r = rot(m.x - this.player.pos.x, m.z - this.player.pos.z);
+      contacts.push({ ...r, kind: 'boss' });
+    }
+    for (const d of this.drones.group.children) {
+      const r = rot(d.position.x - this.player.pos.x, d.position.z - this.player.pos.z);
+      if (Math.hypot(r.dx, r.dz) < RANGE * 1.4) contacts.push({ ...r, kind: 'drone' });
+    }
+    for (const p of this.pickups) {
+      const r = rot(p.mesh.position.x - this.player.pos.x, p.mesh.position.z - this.player.pos.z);
+      if (Math.hypot(r.dx, r.dz) < RANGE) contacts.push({ ...r, kind: 'pickup' });
+    }
+    this.hud.setRadar(contacts, this.camYaw, RANGE);
+
+    // Arrow: only while a boss is alive and not already comfortably in view.
+    if (!this.monster || this.monster.dying) {
+      this.hud.setBossPointer(null);
+      return;
+    }
+    const m = this.monster.group.position;
+    _v.set(m.x, m.y + 14, m.z);
+    const dist = Math.hypot(m.x - this.player.pos.x, m.z - this.player.pos.z);
+    const ndc = _v.clone().project(this.camera);
+    const inView = ndc.z < 1 && Math.abs(ndc.x) < 0.72 && Math.abs(ndc.y) < 0.72;
+    if (inView) {
+      this.hud.setBossPointer(null);
+      return;
+    }
+    // bearing relative to the camera's facing, 0 = straight ahead
+    const world = Math.atan2(m.x - this.player.pos.x, m.z - this.player.pos.z);
+    let bearing = world - (this.camYaw + Math.PI);
+    while (bearing > Math.PI) bearing -= Math.PI * 2;
+    while (bearing < -Math.PI) bearing += Math.PI * 2;
+    this.hud.setBossPointer(bearing, dist);
+  }
+
   // ------------------------------------------------------------ pause / run
 
   private setPaused(on: boolean): void {
@@ -1076,8 +1125,14 @@ export class Game {
     this.bossTimer -= dt;
     if (this.bossTimer > 0) return;
 
+    // Bosses land somewhere out in the world rather than always the same
+    // distance away — sometimes right on top of you, sometimes a hunt across
+    // the districts. The minimap arrow is what makes the far ones findable.
     const a = Math.random() * Math.PI * 2;
-    const d = 100;
+    const roll = Math.random();
+    const d = roll < 0.3 ? 90 + Math.random() * 40      // close: immediate fight
+      : roll < 0.7 ? 180 + Math.random() * 120          // mid: short trek
+      : 340 + Math.random() * 260;                      // far: a real hunt
     const x = this.player.pos.x + Math.sin(a) * d;
     const z = this.player.pos.z + Math.cos(a) * d;
 
@@ -1309,7 +1364,11 @@ export class Game {
 
     this.chunks.update(this.player.pos.x, this.player.pos.z);
     this.traffic.update(dt, this.time, this.player.pos,
-      (x, z) => this.world.groundHeight(x, z, 40));
+      (x, z) => this.world.groundHeight(x, z, 40),
+      (x, z) => {
+        for (let y = 1; y <= 5; y++) if (this.world.getBlock(x, y, z) === B.Pole) return true;
+        return false;
+      });
 
     // NPCs flee from the monster and the player's destruction
     const threats: THREE.Vector3[] = [];
@@ -1356,6 +1415,7 @@ export class Game {
     this.hemi.intensity = skyState.hemiIntensity;
     // switch the city lights on as the sun goes down
     this.chunks.nightAmount.value = Math.max(0, Math.min(1, 1 - skyState.sunIntensity / 0.75));
+    this.updateRadar();
     this.hud.setHP(this.player.hp / this.player.maxHp);
     this.hud.update(dt);
 
