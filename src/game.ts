@@ -19,7 +19,7 @@ import { buildFallingChunk, FallingChunk, updateFallingChunk } from './fx/collap
 import { Explosions } from './fx/explosions';
 import { Sky } from './fx/sky';
 import { sfx } from './fx/sound';
-import { CHAPTERS, ENDLESS_LINES, EPILOGUE, PROLOGUE } from './core/story';
+import { BARKS, CHAPTERS, ENDLESS_LINES, EPILOGUE, PROLOGUE } from './core/story';
 import { Hud, WEAPONS, WeaponId } from './ui/hud';
 import { isTouchDevice, TouchControls } from './ui/touch';
 
@@ -96,6 +96,11 @@ export class Game {
   private deaths = 0;
   private taughtWeakPoint = false;
   private campaignOver = false;
+  // reactive radio chatter, rate-limited so Command never talks over itself
+  private barkT = 0;
+  private lastBark = '';
+  private idleChatterT = 30;
+  private blocksWrecked = 0;
   private paused = false;
 
   private monster: Monster | null = null;
@@ -720,10 +725,12 @@ export class Game {
       _v.copy(m.group.position);
       _v.y += 14;
       if (_v.distanceTo(p) < radius + m.hitRadius) {
-        m.takeDamage(dmg * this.weakPointBonus(p));
+        const bonus = this.weakPointBonus(p);
+        if (bonus > 1) this.bark('weakPoint');
+        m.takeDamage(dmg * bonus);
         this.debris.burst(p, [15], 6);
         this.addScore(Math.round(dmg * 2), true);
-        this.hud.popDamage(dmg * this.weakPointBonus(p));
+        this.hud.popDamage(dmg * bonus);
         hit = true;
       }
     }
@@ -780,6 +787,7 @@ export class Game {
       if (shake > 0.25) this.shake = Math.max(this.shake, Math.min(1.4, shake));
       this.chunks.markDirty(res.dirty);
       this.repair.noteDamage(res.dirty, this.time);
+      this.blocksWrecked += res.count;
       this.debris.burst(p, res.ids, Math.min(26, 6 + res.count / 3));
       if (res.count > 4) this.explosions.boom(p, Math.min(9, 2 + r));
       // explosion loudness falls off with distance from the player
@@ -832,6 +840,7 @@ export class Game {
     const chunk = buildFallingChunk(cut.blocks, groundY);
     this.scene.add(chunk.mesh);
     this.falling.push(chunk);
+    if (cut.blocks.length > 1500) this.bark('buildingDown');
   }
 
   private updateFalling(dt: number): void {
@@ -886,6 +895,7 @@ export class Game {
     for (const p of downed) {
       this.addScore(400, true);
       this.hud.toast('AIRLINER HIT', 'It is going down — clear the impact zone', 3);
+      this.bark('planeDown', true);
       const at = p.group.position.clone();
       const vol = 1 - Math.min(1, at.distanceTo(this.player.pos) / 150);
       // engine blows out: fireball, torn hull plating, black smoke
@@ -949,7 +959,11 @@ export class Game {
   // view space so the map reads relative to where the camera is looking.
   private updateRadar(): void {
     const RANGE = 320;
-    const sin = Math.sin(-this.camYaw), cos = Math.cos(-this.camYaw);
+    // Project a world offset into radar space, where up = the way the camera
+    // is looking. Player forward is (-sin, -cos) and right is (cos, -sin), so
+    // screenX is the right component and screenY the negated forward one.
+    // (This previously used -camYaw, which mirrored every contact.)
+    const sin = Math.sin(this.camYaw), cos = Math.cos(this.camYaw);
     const rot = (dx: number, dz: number) => ({
       dx: dx * cos - dz * sin,
       dz: dx * sin + dz * cos,
@@ -1019,6 +1033,53 @@ export class Game {
     }
   }
 
+  /**
+   * Fire a reactive line from Command. Rate-limited, never repeats the same
+   * trigger twice in a row, and yields to whatever story beat is already
+   * playing so briefings are never talked over.
+   */
+  private bark(key: string, urgent = false): void {
+    if (!this.started || this.hud.cardOpen) return;
+    if (this.barkT > 0 && !urgent) return;
+    if (key === this.lastBark && !urgent) return;
+    if (this.hud.busy && !urgent) return; // a scripted beat is mid-flight
+    const pool = BARKS[key];
+    if (!pool || pool.length === 0) return;
+    this.barkT = urgent ? 9 : 16;
+    this.lastBark = key;
+    this.idleChatterT = 34;
+    this.hud.say([pool[Math.floor(Math.random() * pool.length)]]);
+  }
+
+  /** Watch the fight and let Command comment on it. */
+  private updateChatter(dt: number): void {
+    this.barkT -= dt;
+    this.idleChatterT -= dt;
+
+    const hpFrac = this.player.hp / this.player.maxHp;
+    if (hpFrac > 0 && hpFrac < 0.28) this.bark('lowHealth');
+    if (this.combo >= 5) this.bark('bigCombo');
+    if (this.drones.count >= 6) this.bark('droneSwarm');
+
+    if (this.monster && !this.monster.dying) {
+      if (this.monster.hp / this.monster.maxHp < 0.2) this.bark('bossHurt');
+      const d = this.monster.group.position.distanceTo(this.player.pos);
+      if (d > 320) this.bark('bossFar');
+    }
+
+    // sustained levelling of the city earns a comment
+    if (this.blocksWrecked > 2600) {
+      this.blocksWrecked = 0;
+      this.bark('heavyDestruction');
+    }
+
+    // quiet stretch with nothing happening
+    if (this.idleChatterT <= 0 && !this.monster && this.drones.count === 0) {
+      this.idleChatterT = 45;
+      this.bark('idle');
+    }
+  }
+
   // ------------------------------------------------------------ pause / run
 
   private setPaused(on: boolean): void {
@@ -1079,6 +1140,9 @@ export class Game {
     this.slowmo = 0;
     this.shake = 0;
 
+    this.barkT = 0;
+    this.lastBark = '';
+    this.blocksWrecked = 0;
     this.hud.closeCard();
     this.hud.clearComms();
     this.campaignOver = false;
@@ -1491,6 +1555,7 @@ export class Game {
     this.hemi.intensity = skyState.hemiIntensity;
     // switch the city lights on as the sun goes down
     this.chunks.nightAmount.value = Math.max(0, Math.min(1, 1 - skyState.sunIntensity / 0.75));
+    this.updateChatter(dt);
     this.updateRadar();
     this.hud.setHP(this.player.hp / this.player.maxHp);
     this.hud.update(dt);

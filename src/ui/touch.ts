@@ -36,11 +36,6 @@ export class TouchControls {
   private beamBtn: HTMLElement;
   private novaBtn: HTMLElement;
   private quakeBtn: HTMLElement;
-  // D-pad state, combined with the joystick each change
-  private stickX = 0;
-  private stickZ = 0;
-  private dpadX = 0;
-  private dpadZ = 0;
 
   constructor(root: HTMLElement, private cb: TouchCallbacks) {
     this.layer = document.createElement('div');
@@ -64,10 +59,13 @@ export class TouchControls {
         .tc-btn.big { width:78px; height:78px; border-color:#39e6e0; font-size:12px; }
         .tc-btn.held { background:#39e6e055; border-color:#39e6e0; }
         .tc-btn.hidden { display:none; }
-        .tc-dpad { position:absolute; left:calc(16px + env(safe-area-inset-left));
-                   bottom:calc(78px + env(safe-area-inset-bottom)); display:grid;
-                   grid-template-columns:repeat(3, 54px); grid-template-rows:repeat(3, 54px); gap:4px; }
-        .tc-dir { width:54px; height:54px; border-radius:12px; font-size:16px; color:#7fdcff; }
+        /* hint ring showing where the movement stick lives until first touch */
+        .tc-hint { position:absolute; left:calc(64px + env(safe-area-inset-left));
+                   bottom:calc(120px + env(safe-area-inset-bottom)); width:96px; height:96px;
+                   margin:-48px 0 0 -48px; border-radius:50%; border:2px dashed #7fdcff33;
+                   display:flex; align-items:center; justify-content:center;
+                   color:#7fdcff66; font-size:10px; letter-spacing:1px; pointer-events:none; }
+        .tc-hint.gone { display:none; }
         /* declutter the desktop HUD while touch controls are active */
         .tc-on .hint { display:none !important; }
         .tc-on .chips { display:none !important; }
@@ -76,11 +74,7 @@ export class TouchControls {
         .tc-on .start .keys { font-size:11px !important; padding:0 16px; }
       </style>
       <div class="tc-stick" id="tc-stick"><div class="tc-knob" id="tc-knob"></div></div>
-      <div class="tc-dpad">
-        <div></div><div class="tc-btn tc-dir" id="tc-up">▲</div><div></div>
-        <div class="tc-btn tc-dir" id="tc-left">◀</div><div></div><div class="tc-btn tc-dir" id="tc-right">▶</div>
-        <div></div><div class="tc-btn tc-dir" id="tc-down">▼</div><div></div>
-      </div>
+      <div class="tc-hint" id="tc-hint">DRAG<br/>TO MOVE</div>
       <div class="tc-btns">
         <div class="tc-btn hidden" id="tc-nova">NOVA</div>
         <div class="tc-btn hidden" id="tc-quake">QUAKE</div>
@@ -169,16 +163,6 @@ export class TouchControls {
     hold('tc-jump', (v) => (this.jump = v));
     hold('tc-boost', (v) => (this.boost = v));
     hold('tc-beam', (v) => (this.beam = v));
-    // D-pad: hold to move; releasing one direction keeps the other axis
-    hold('tc-up', (v) => { this.dpadZ = v ? 1 : 0; this.combine(); });
-    hold('tc-down', (v) => { this.dpadZ = v ? -1 : 0; this.combine(); });
-    hold('tc-left', (v) => { this.dpadX = v ? -1 : 0; this.combine(); });
-    hold('tc-right', (v) => { this.dpadX = v ? 1 : 0; this.combine(); });
-  }
-
-  private combine(): void {
-    this.moveX = Math.max(-1, Math.min(1, this.stickX + this.dpadX));
-    this.moveZ = Math.max(-1, Math.min(1, this.stickZ + this.dpadZ));
   }
 
   // left ~45% of the screen spawns the joystick; the rest drags the camera
@@ -193,6 +177,7 @@ export class TouchControls {
           this.stickBase.style.top = t.clientY + 'px';
           this.stickBase.style.display = 'block';
           this.stickKnob.style.display = 'block';
+          this.layer.querySelector('#tc-hint')!.classList.add('gone');
           this.setKnob(0, 0);
         } else if (this.lookId === null) {
           this.lookId = t.identifier;
@@ -213,9 +198,8 @@ export class TouchControls {
           }
           this.setKnob(dx, dy);
           // dead zone so a resting thumb doesn't creep
-          this.stickX = Math.abs(dx) > 8 ? dx / STICK_RADIUS : 0;
-          this.stickZ = Math.abs(dy) > 8 ? -dy / STICK_RADIUS : 0;
-          this.combine();
+          this.moveX = Math.abs(dx) > 8 ? dx / STICK_RADIUS : 0;
+          this.moveZ = Math.abs(dy) > 8 ? -dy / STICK_RADIUS : 0;
         } else if (t.identifier === this.lookId) {
           this.cb.onLook(t.clientX - this.lookLast.x, t.clientY - this.lookLast.y);
           this.lookLast = { x: t.clientX, y: t.clientY };
@@ -226,9 +210,8 @@ export class TouchControls {
       for (const t of Array.from(e.changedTouches)) {
         if (t.identifier === this.moveId) {
           this.moveId = null;
-          this.stickX = 0;
-          this.stickZ = 0;
-          this.combine();
+          this.moveX = 0;
+          this.moveZ = 0;
           this.stickBase.style.display = 'none';
           this.stickKnob.style.display = 'none';
         } else if (t.identifier === this.lookId) {

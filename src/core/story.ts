@@ -18,13 +18,14 @@ export interface Chapter {
 
 export const AYA = 'AYA · COMMAND';
 export const KUROSAWA = 'DR. KUROSAWA';
-export const PILOT = 'YOU';
+export const KUROKI = 'KUROKI'; // the pilot — you
 
 export const PROLOGUE: Line[] = [
-  { who: AYA, text: 'Fourteen hours ago the bay split open. Something came through.' },
+  { who: AYA, text: 'Kuroki — fourteen hours ago the bay split open. Something came through.' },
   { who: AYA, text: 'Every defence line we had is gone. You are what is left.' },
   { who: KUROSAWA, text: 'The unit is a prototype. Untested. I am sorry — there was no time.' },
-  { who: AYA, text: 'Neo Tokyo is still full of people. Keep it standing, pilot.' },
+  { who: KUROKI, text: 'It will hold. It has to.' },
+  { who: AYA, text: 'Neo Tokyo is still full of people. Keep it standing.' },
 ];
 
 export const CHAPTERS: Chapter[] = [
@@ -34,6 +35,7 @@ export const CHAPTERS: Chapter[] = [
     brief: [
       { who: AYA, text: 'Contact in the eastern wards. It is tearing through the district.' },
       { who: AYA, text: 'Designation GORGOSAUR. Get close and do not let it reach the shelters.' },
+      { who: KUROKI, text: 'Understood. Moving in.' },
     ],
     debrief: [
       { who: KUROSAWA, text: 'The carcass is venting plasma. I can route that into your rifle.' },
@@ -73,6 +75,7 @@ export const CHAPTERS: Chapter[] = [
     ],
     debrief: [
       { who: KUROSAWA, text: 'It is not armour. It is fabrication. These things are being BUILT.' },
+      { who: KUROKI, text: 'Then somebody is aiming them at us.' },
       { who: AYA, text: 'Built by whom? …Salvage the plating. We will need it.' },
     ],
   },
@@ -132,6 +135,7 @@ export const CHAPTERS: Chapter[] = [
       { who: AYA, text: 'CINDER WYRM. It is torching the wards faster than we can evacuate.' },
     ],
     debrief: [
+      { who: KUROKI, text: 'How many were still in those wards?' },
       { who: AYA, text: 'Fires are contained. Barely. We lost three districts.' },
       { who: KUROSAWA, text: 'Take its igniter. And pilot — the rift is opening fully. One signature left.' },
     ],
@@ -142,11 +146,13 @@ export const CHAPTERS: Chapter[] = [
     brief: [
       { who: KUROSAWA, text: 'This is the one that opened the bay. Everything else was an escort.' },
       { who: AYA, text: 'TIDE LEVIATHAN. If it reaches the mainland there is nothing after it.' },
-      { who: AYA, text: 'Pilot… whatever happens out there. Thank you.' },
+      { who: AYA, text: 'Kuroki… whatever happens out there. Thank you.' },
+      { who: KUROKI, text: 'Save it for when I am back.' },
     ],
     debrief: [
       { who: KUROSAWA, text: 'The rift is collapsing. You did it. You actually did it.' },
       { who: AYA, text: 'Neo Tokyo is still standing. Because you kept it standing.' },
+      { who: KUROKI, text: 'The city held. That is enough for today.' },
     ],
   },
 ];
@@ -154,7 +160,8 @@ export const CHAPTERS: Chapter[] = [
 export const EPILOGUE: Line[] = [
   { who: KUROSAWA, text: 'The tear is sealed — but the seam never fully closed.' },
   { who: KUROSAWA, text: 'Smaller fractures are opening across the districts. They will keep coming.' },
-  { who: AYA, text: 'Then we keep flying. Stay sharp out there, pilot.' },
+  { who: AYA, text: 'Then we keep flying. Stay sharp out there, Kuroki.' },
+  { who: KUROKI, text: 'Same as always. Call it in when you see one.' },
 ];
 
 /** Endless-mode chatter once the campaign is finished. */
@@ -165,3 +172,65 @@ export const ENDLESS_LINES: Line[] = [
   { who: KUROSAWA, text: 'Every one you put down slows the spread. Keep going.' },
   { who: AYA, text: 'The city is watching you on every screen it has left.' },
 ];
+
+// ---------------------------------------------------------------- reactions
+// Short reactive lines. These fire off what the player actually does, so
+// Command feels like it is watching the fight rather than reading a script.
+// Keyed by event; the game picks one at random and rate-limits them.
+
+export const BARKS: Record<string, Line[]> = {
+  lowHealth: [
+    { who: AYA, text: 'Kuroki, your integrity is critical. Break off and find salvage.' },
+    { who: AYA, text: 'I am watching your armour readings drop. Please disengage.' },
+    { who: KUROSAWA, text: 'The frame will not take another hit like that. Be careful.' },
+  ],
+  repaired: [
+    { who: KUROSAWA, text: 'Good — that salvage is patching the frame nicely.' },
+    { who: AYA, text: 'Integrity coming back up. That is a relief.' },
+  ],
+  died: [
+    { who: AYA, text: 'We lost your signal, Kuroki. Do not do that to me again.' },
+    { who: KUROKI, text: 'Still here. Give me a target.' },
+    { who: KUROSAWA, text: 'Emergency reconstruction complete. Half integrity. It is all I could manage.' },
+  ],
+  bigCombo: [
+    { who: AYA, text: 'Look at you, Kuroki. The whole command deck just went quiet.' },
+    { who: AYA, text: 'That is the cleanest run of hits I have seen from anyone.' },
+    { who: KUROSAWA, text: 'The suit is performing beyond spec. You are performing beyond spec.' },
+  ],
+  weakPoint: [
+    { who: KUROSAWA, text: 'Direct hit on the core — that is where they are vulnerable.' },
+    { who: AYA, text: 'Its readings just dropped through the floor. Keep hitting that spot.' },
+  ],
+  planeDown: [
+    { who: AYA, text: 'That was a civilian airliner, Kuroki. Watch your fire.' },
+    { who: KUROKI, text: '…That one is on me.' },
+    { who: AYA, text: 'We had people on that aircraft. Please be careful up there.' },
+  ],
+  buildingDown: [
+    { who: AYA, text: 'That block was evacuated — but try to leave the city something to rebuild.' },
+    { who: KUROSAWA, text: 'Structural collapse logged. The insurers are going to hate you.' },
+  ],
+  heavyDestruction: [
+    { who: AYA, text: 'You are levelling the district faster than the kaiju is.' },
+    { who: AYA, text: 'Reminder that we are supposed to be defending Neo Tokyo.' },
+  ],
+  bossHurt: [
+    { who: AYA, text: 'It is faltering. Finish it.' },
+    { who: KUROSAWA, text: 'Vitals collapsing. One more push should do it.' },
+  ],
+  bossFar: [
+    { who: AYA, text: 'Target is a long way out. Follow the marker — I will keep it lit for you.' },
+    { who: KUROSAWA, text: 'It is heading away from the shelters, at least. Run it down.' },
+  ],
+  droneSwarm: [
+    { who: AYA, text: 'Multiple small contacts converging on you. Watch your back.' },
+    { who: KUROSAWA, text: 'The drones are herding you. Do not let them box you in.' },
+  ],
+  idle: [
+    { who: AYA, text: 'Sensors are quiet. Use it — check your armour while you can.' },
+    { who: AYA, text: 'The shelters are asking about you. I told them Kuroki is still out here.' },
+    { who: KUROSAWA, text: 'Reactor is holding steady. Whatever you are doing, keep doing it.' },
+    { who: AYA, text: 'It is strange, seeing the city this still.' },
+  ],
+};

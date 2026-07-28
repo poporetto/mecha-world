@@ -89,6 +89,9 @@ export class Hud {
                          border:1px solid #7fdcffaa; border-radius:50%; box-shadow:0 0 14px #39e6e066; }
         .comms-copy { min-width:0; flex:1; }
         .comms-who { color:#39e6e0; font-size:11px; letter-spacing:3px; margin-bottom:6px; }
+        /* the pilot's own replies read back warm, so the exchange is legible */
+        .comms.self { border-color:#ffcf4f88; border-left-color:#ffcf4f; }
+        .comms.self .comms-who { color:#ffcf4f; }
         .comms-text { color:#e8f4ff; font-size:15px; line-height:1.55; letter-spacing:.4px;
                       min-height:2.6em; }
         .comms-next { position:absolute; right:14px; bottom:8px; color:#7fdcff99;
@@ -114,12 +117,22 @@ export class Hud {
         .mm-dot { position:absolute; border-radius:50%; transform:translate(-50%,-50%); }
         .mm-me { width:9px; height:9px; background:#7fdcff; box-shadow:0 0 8px #39e6e0;
                  left:50%; top:50%; }
+        /* the view wedge never moves — up is always where you are looking */
         .mm-cone { position:absolute; left:50%; top:50%; width:0; height:0;
-                   border-left:9px solid transparent; border-right:9px solid transparent;
-                   border-bottom:34px solid #7fdcff22; transform-origin:50% 100%;
-                   margin-left:-9px; margin-top:-34px; }
-        .mm-label { position:absolute; left:0; right:0; bottom:5px; text-align:center;
-                    color:#8fb4d8; font-size:9.5px; letter-spacing:2px; }
+                   border-left:26px solid transparent; border-right:26px solid transparent;
+                   border-bottom:74px solid #7fdcff1c;
+                   margin-left:-26px; margin-top:-74px; }
+        .mm-ring { position:absolute; left:50%; top:50%; border-radius:50%;
+                   border:1px solid #7fdcff22; transform:translate(-50%,-50%); }
+        .mm-fwd { position:absolute; left:50%; top:6px; transform:translateX(-50%);
+                  color:#7fdcff; font-size:9px; letter-spacing:2px; font-weight:700; }
+        /* compass ring turns with your heading so world north stays true */
+        .mm-compass { position:absolute; inset:0; }
+        .mm-card { position:absolute; left:50%; top:50%; width:0; height:0;
+                   color:#ffcf4f; font-size:10px; font-weight:700; letter-spacing:1px; }
+        .mm-card span { position:absolute; transform:translate(-50%,-50%); }
+        .mm-label { position:absolute; left:0; right:0; bottom:4px; text-align:center;
+                    color:#8fb4d8; font-size:9px; letter-spacing:2px; }
         /* off-screen boss pointer that hugs the edge of the view */
         .bossarrow { position:absolute; left:50%; top:50%; width:0; height:0; display:none;
                      border-left:15px solid transparent; border-right:15px solid transparent;
@@ -208,8 +221,17 @@ export class Hud {
         <div class="wheel-title">SELECT WEAPON</div>
       </div>
       <div class="minimap" id="minimap">
-        <div class="mm-cone" id="mm-cone"></div>
+        <div class="mm-ring" style="width:56px;height:56px"></div>
+        <div class="mm-ring" style="width:112px;height:112px"></div>
+        <div class="mm-cone"></div>
+        <div class="mm-compass" id="mm-compass">
+          <div class="mm-card" id="mm-n"><span>N</span></div>
+          <div class="mm-card" id="mm-e"><span>E</span></div>
+          <div class="mm-card" id="mm-s"><span>S</span></div>
+          <div class="mm-card" id="mm-w"><span>W</span></div>
+        </div>
         <div class="mm-dot mm-me"></div>
+        <div class="mm-fwd">▲ FWD</div>
         <div class="mm-label">RADAR</div>
       </div>
       <div class="bossarrow" id="bossarrow"></div>
@@ -349,6 +371,11 @@ export class Hud {
     this.commsQueue.push(...lines);
   }
 
+  /** True while scripted dialogue is still playing — barks defer to it. */
+  get busy(): boolean {
+    return this.commsQueue.length > 0;
+  }
+
   /** Drop anything still queued (used when a run restarts). */
   /** Force any open card shut (used when a run restarts). */
   closeCard(): void {
@@ -373,10 +400,18 @@ export class Hud {
       this.holdT = 0;
       const line = this.commsQueue[0];
       const avatar = document.getElementById('comms-avatar') as HTMLImageElement;
-      avatar.src = line.who.includes('KUROSAWA') ? '/portraits/dr-kurosawa.png' : '/portraits/aya-command.png';
+      const portrait = line.who.includes('KUROSAWA') ? 'dr-kurosawa'
+        : line.who.includes('KUROKI') ? 'kuroki'
+        : 'aya-command';
+      // a missing portrait should collapse the slot, not show a broken image
+      avatar.onerror = () => { avatar.style.display = 'none'; };
+      avatar.style.display = '';
+      avatar.src = `/portraits/${portrait}.png`;
       avatar.alt = line.who;
       document.getElementById('comms-who')!.textContent = line.who;
       document.getElementById('comms-text')!.textContent = '';
+      // the pilot's own transmissions read back warm
+      box.classList.toggle('self', line.who.includes('KUROKI'));
       box.classList.add('show');
     }
     const line = this.commsQueue[0];
@@ -471,8 +506,17 @@ export class Hud {
       el.style.boxShadow = boss ? '0 0 10px #ff5a52' : 'none';
       el.style.opacity = d > range ? '0.65' : '1';
     }
-    (document.getElementById('mm-cone') as HTMLElement).style.transform =
-      `rotate(${camYaw}rad)`;
+    // World north sits at `camYaw` clockwise from the top of the radar, so the
+    // four cardinals orbit the rim as you turn while staying upright.
+    const marks: [string, number][] = [
+      ['mm-n', 0], ['mm-e', Math.PI / 2], ['mm-s', Math.PI], ['mm-w', -Math.PI / 2],
+    ];
+    for (const [id, offset] of marks) {
+      const ang = camYaw + offset;
+      const el = document.getElementById(id) as HTMLElement;
+      el.style.left = (84 + Math.sin(ang) * 70) + 'px';
+      el.style.top = (84 - Math.cos(ang) * 70) + 'px';
+    }
   }
 
   /**
@@ -545,7 +589,7 @@ export class Hud {
          <b>LEFT CLICK</b> beam saber &nbsp; <b>R (hold)</b> charge rifle &nbsp; <b>T</b> missiles<br/>`;
     el.innerHTML = `
       <h1>MECHA CITY</h1>
-      <h2>NEO TOKYO · INFINITE VOXEL FRONTIER</h2>
+      <h2>NEO TOKYO · THE LAST SORTIE OF KUROKI</h2>
       <div class="keys">
         ${keys}
         Everything breaks. Citizens can't be hurt — but they will run.<br/>
