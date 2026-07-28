@@ -19,6 +19,7 @@ import { buildFallingChunk, FallingChunk, updateFallingChunk } from './fx/collap
 import { Explosions } from './fx/explosions';
 import { Sky } from './fx/sky';
 import { sfx } from './fx/sound';
+import { CHAPTERS, ENDLESS_LINES, EPILOGUE, PROLOGUE } from './core/story';
 import { Hud, WEAPONS, WeaponId } from './ui/hud';
 import { isTouchDevice, TouchControls } from './ui/touch';
 
@@ -94,6 +95,7 @@ export class Game {
   private pickups: { mesh: THREE.Mesh; spin: number; life: number }[] = [];
   private deaths = 0;
   private taughtWeakPoint = false;
+  private campaignOver = false;
   private paused = false;
 
   private monster: Monster | null = null;
@@ -189,11 +191,21 @@ export class Game {
     }
 
     this.hud.showStart(() => {
-      this.started = true;
       sfx.ensure();
       sfx.startMusic();
-      if (!this.touch) this.renderer.domElement.requestPointerLock();
-      this.hud.toast('DEPLOYED', 'Explore Neo Tokyo. Something big is coming…', 4);
+      // open on the story, then hand control over
+      void this.hud.showCard(
+        'PROLOGUE',
+        'THE BAY SPLIT OPEN',
+        'Fourteen hours ago something came through the water.<br/>' +
+        'The defence line is gone. The shelters are full.<br/><br/>' +
+        'You are the last mobile suit standing.'
+      ).then(() => {
+        this.started = true;
+        if (!this.touch) this.renderer.domElement.requestPointerLock();
+        this.hud.say(PROLOGUE);
+        this.hud.setObjective('Hold Neo Tokyo');
+      });
     }, this.touch !== null);
 
     this.renderer.setAnimationLoop(() => this.frame());
@@ -978,6 +990,32 @@ export class Game {
     this.hud.setBossPointer(bearing, dist);
   }
 
+  /**
+   * Radio traffic after a kill. The final chapter rolls straight into the
+   * epilogue and hands the player over to endless mode.
+   */
+  private playDebrief(): void {
+    const done = this.bossIndex - 1; // index of the chapter just cleared
+    const ch = CHAPTERS[done];
+    if (!ch) return;
+    this.hud.say(ch.debrief);
+    if (done === CHAPTERS.length - 1 && !this.campaignOver) {
+      this.campaignOver = true;
+      this.hud.setObjective('The rift is sealed — hold the line');
+      // let the debrief play, then close the story out
+      setTimeout(() => {
+        void this.hud.showCard(
+          'EPILOGUE',
+          'NEO TOKYO STANDS',
+          'The bay is quiet for the first time in weeks.<br/>' +
+          'The rift is closed — but the seam it tore is still there,<br/>' +
+          'and the fractures are spreading.<br/><br/>' +
+          '<b>Endless deployment begins now.</b>'
+        ).then(() => this.hud.say(EPILOGUE));
+      }, 7000);
+    }
+  }
+
   // ------------------------------------------------------------ pause / run
 
   private setPaused(on: boolean): void {
@@ -1038,6 +1076,8 @@ export class Game {
     this.slowmo = 0;
     this.shake = 0;
 
+    this.hud.clearComms();
+    this.campaignOver = false;
     this.hud.resetUnlocks();
     this.hud.setScore(0, 1);
     this.hud.setWave(0);
@@ -1130,6 +1170,7 @@ export class Game {
           this.shake = 1.4;
           this.explosions.boom(this.monster.group.position.clone().setY(this.monster.group.position.y + 14), 16);
           this.grantReward(this.monster.reward);
+          this.playDebrief();
         }
       }
       if (this.monster.dead) {
@@ -1138,7 +1179,8 @@ export class Game {
         this.monster = null;
         this.bossTimer = 25;
         sfx.setMusicIntensity(0);
-        this.hud.setObjective('Clear the drones — next contact inbound');
+        // don't stomp the campaign-complete objective set by the epilogue
+        if (!this.campaignOver) this.hud.setObjective('Clear the drones — next contact inbound');
       }
       return;
     }
@@ -1175,9 +1217,16 @@ export class Game {
     // the swarm thickens as the campaign progresses
     this.drones.target = Math.min(10, 3 + Math.floor(this.wave * 0.7));
     if (this.bossIndex < campaign.length) {
+      const chapterNo = this.bossIndex;
       const entry = campaign[this.bossIndex++];
       this.monster = entry.make(x, z);
-      this.hud.toast(entry.toast[0], entry.toast[1], 5);
+      const ch = CHAPTERS[chapterNo];
+      // title card first, then Command talks you through the contact
+      void this.hud.showCard(
+        `CHAPTER ${ch.no}`,
+        ch.title,
+        `A new signature has broken through.<br/>Neo Tokyo is counting on you.`
+      ).then(() => this.hud.say(ch.brief));
     } else {
       // endless mode: any boss, scaled up each wave; reward = repairs + power
       const pool = [Kaiju, RocketBeast, VoltSerpent, IronColossus, SkyReaver, CrimsonMantis, MagmaGolem, DeepMaw, CinderWyrm, TideLeviathan];
@@ -1186,7 +1235,8 @@ export class Game {
       m.maxHp = m.hp = Math.round(m.maxHp * (1.3 + this.powerLevel * 0.2 + (this.wave - campaign.length) * 0.15));
       m.reward = 'repair';
       this.monster = m;
-      this.hud.toast('⚠ WAVE ' + this.wave + ' ⚠', m.name + ' detected. Defeat it for repairs and a power boost.', 4);
+      this.hud.toast('⚠ WAVE ' + this.wave + ' ⚠', m.name + ' detected.', 3);
+      this.hud.say([ENDLESS_LINES[this.wave % ENDLESS_LINES.length]]);
     }
     if (this.monster instanceof VoltSerpent) this.monster.addSegmentsTo(this.scene);
     this.scene.add(this.monster.group);

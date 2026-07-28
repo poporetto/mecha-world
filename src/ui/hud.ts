@@ -15,6 +15,12 @@ export const WEAPONS = [
 export type WeaponId = (typeof WEAPONS)[number]['id'];
 
 export class Hud {
+  // --- radio traffic -------------------------------------------------------
+  private commsQueue: { who: string; text: string }[] = [];
+  private typed = 0;      // characters revealed so far
+  private holdT = 0;      // seconds to linger once a line is fully typed
+  private commsOn = false;
+
   private root: HTMLElement;
   private hpFill!: HTMLElement;
   private bossWrap!: HTMLElement;
@@ -69,6 +75,29 @@ export class Hud {
                color:#eaf6ff; font-size:12px; letter-spacing:2.5px; text-shadow:0 1px 3px #000;
                white-space:nowrap; }
         .obj b { color:#ffcf4f; }
+        /* radio traffic from Command — speaker tag + typed-out line */
+        .comms { position:absolute; left:50%; bottom:110px; transform:translateX(-50%);
+                 width:min(660px, 76vw); background:#06121fee; border:1px solid #39e6e088;
+                 border-left:4px solid #39e6e0; border-radius:6px; padding:12px 18px 14px;
+                 box-shadow:0 6px 26px #0009; display:none; }
+        .comms.show { display:block; }
+        .comms-who { color:#39e6e0; font-size:11px; letter-spacing:3px; margin-bottom:6px; }
+        .comms-text { color:#e8f4ff; font-size:15px; line-height:1.55; letter-spacing:.4px;
+                      min-height:2.6em; }
+        .comms-next { position:absolute; right:14px; bottom:8px; color:#7fdcff99;
+                      font-size:10px; letter-spacing:2px; }
+        /* full-screen story card for the prologue / chapter titles / ending */
+        .card { position:absolute; inset:0; background:#04070d; display:none;
+                flex-direction:column; align-items:center; justify-content:center;
+                pointer-events:auto; z-index:40; text-align:center; padding:0 8vw; }
+        .card.show { display:flex; }
+        .card .ch { color:#39e6e0; font-size:13px; letter-spacing:8px; margin-bottom:10px; }
+        .card h1 { color:#fff; font-size:clamp(26px,5vw,46px); letter-spacing:10px; margin:0 0 26px;
+                   text-shadow:0 0 26px #39e6e0aa; }
+        .card .body { color:#cfe3f5; font-size:15px; line-height:2; letter-spacing:1px;
+                      max-width:640px; }
+        .card .go { margin-top:34px; color:#8fb4d8; font-size:12px; letter-spacing:4px;
+                    animation:pulse 1.8s infinite; }
         .minimap { position:absolute; right:24px; top:150px; width:168px; height:168px;
                    border-radius:50%; background:#08111ecc; border:2px solid #7fdcff55;
                    overflow:hidden; box-shadow:0 2px 14px #0007; }
@@ -175,6 +204,17 @@ export class Hud {
       </div>
       <div class="bossarrow" id="bossarrow"></div>
       <div class="bossdist" id="bossdist"></div>
+      <div class="comms" id="comms">
+        <div class="comms-who" id="comms-who"></div>
+        <div class="comms-text" id="comms-text"></div>
+        <div class="comms-next">TRANSMISSION</div>
+      </div>
+      <div class="card" id="card">
+        <div class="ch" id="card-ch"></div>
+        <h1 id="card-title"></h1>
+        <div class="body" id="card-body"></div>
+        <div class="go">CLICK TO CONTINUE</div>
+      </div>
       <div class="vig" id="vig"></div>
       <div class="pause" id="pause">
         <h1>PAUSED</h1>
@@ -286,6 +326,71 @@ export class Hud {
   bindPause(onResume: () => void, onRestart: () => void): void {
     document.getElementById('p-resume')!.addEventListener('click', onResume);
     document.getElementById('p-restart')!.addEventListener('click', onRestart);
+  }
+
+  /**
+   * Queue radio lines. They type out one at a time and auto-advance, so the
+   * player can keep fighting while Command talks.
+   */
+  say(lines: { who: string; text: string }[]): void {
+    this.commsQueue.push(...lines);
+  }
+
+  /** Drop anything still queued (used when a run restarts). */
+  clearComms(): void {
+    this.commsQueue.length = 0;
+    this.typed = 0;
+    this.holdT = 0;
+    this.commsOn = false;
+    document.getElementById('comms')!.classList.remove('show');
+  }
+
+  private updateComms(dt: number): void {
+    const box = document.getElementById('comms')!;
+    if (!this.commsOn) {
+      if (this.commsQueue.length === 0) return;
+      this.commsOn = true;
+      this.typed = 0;
+      this.holdT = 0;
+      const line = this.commsQueue[0];
+      document.getElementById('comms-who')!.textContent = line.who;
+      document.getElementById('comms-text')!.textContent = '';
+      box.classList.add('show');
+    }
+    const line = this.commsQueue[0];
+    if (!line) { this.commsOn = false; box.classList.remove('show'); return; }
+
+    if (this.typed < line.text.length) {
+      this.typed += dt * 46; // characters per second
+      document.getElementById('comms-text')!.textContent =
+        line.text.slice(0, Math.floor(this.typed));
+      // linger longer on longer lines so there is time to read
+      this.holdT = 1.1 + line.text.length * 0.028;
+    } else {
+      this.holdT -= dt;
+      if (this.holdT <= 0) {
+        this.commsQueue.shift();
+        this.commsOn = false;
+        if (this.commsQueue.length === 0) box.classList.remove('show');
+      }
+    }
+  }
+
+  /** Full-screen story card. Resolves once the player clicks through. */
+  showCard(chapter: string, title: string, body: string): Promise<void> {
+    const card = document.getElementById('card')!;
+    document.getElementById('card-ch')!.textContent = chapter;
+    document.getElementById('card-title')!.textContent = title;
+    document.getElementById('card-body')!.innerHTML = body;
+    card.classList.add('show');
+    return new Promise((resolve) => {
+      const done = () => {
+        card.removeEventListener('click', done);
+        card.classList.remove('show');
+        resolve();
+      };
+      card.addEventListener('click', done);
+    });
   }
 
   // ------------------------------------------------------------------ radar
@@ -465,6 +570,7 @@ export class Hud {
   }
 
   update(dt: number): void {
+    this.updateComms(dt);
     if (this.toastTimer > 0) {
       this.toastTimer -= dt;
       if (this.toastTimer <= 0) this.toastEl.style.opacity = '0';
