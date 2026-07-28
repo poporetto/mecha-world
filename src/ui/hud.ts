@@ -20,6 +20,9 @@ export class Hud {
   private typed = 0;      // characters revealed so far
   private holdT = 0;      // seconds to linger once a line is fully typed
   private commsOn = false;
+  private isTouch = false;
+  /** True while a full-screen story card is up — game input is suspended. */
+  cardOpen = false;
 
   private root: HTMLElement;
   private hpFill!: HTMLElement;
@@ -81,11 +84,18 @@ export class Hud {
                  border-left:4px solid #39e6e0; border-radius:6px; padding:12px 18px 14px;
                  box-shadow:0 6px 26px #0009; display:none; }
         .comms.show { display:block; }
+        .comms-row { display:flex; align-items:flex-start; gap:12px; }
+        .comms-avatar { width:58px; height:58px; flex:0 0 58px; object-fit:cover; object-position:center;
+                         border:1px solid #7fdcffaa; border-radius:50%; box-shadow:0 0 14px #39e6e066; }
+        .comms-copy { min-width:0; flex:1; }
         .comms-who { color:#39e6e0; font-size:11px; letter-spacing:3px; margin-bottom:6px; }
         .comms-text { color:#e8f4ff; font-size:15px; line-height:1.55; letter-spacing:.4px;
                       min-height:2.6em; }
         .comms-next { position:absolute; right:14px; bottom:8px; color:#7fdcff99;
                       font-size:10px; letter-spacing:2px; }
+        @media (max-width:600px) { .comms { width:calc(100vw - 30px); bottom:96px; padding:9px 12px 12px; }
+          .comms-avatar { width:44px; height:44px; flex-basis:44px; } .comms-text { font-size:13px; }
+          .comms-who { font-size:9px; letter-spacing:2px; } }
         /* full-screen story card for the prologue / chapter titles / ending */
         .card { position:absolute; inset:0; background:#04070d; display:none;
                 flex-direction:column; align-items:center; justify-content:center;
@@ -205,8 +215,11 @@ export class Hud {
       <div class="bossarrow" id="bossarrow"></div>
       <div class="bossdist" id="bossdist"></div>
       <div class="comms" id="comms">
-        <div class="comms-who" id="comms-who"></div>
-        <div class="comms-text" id="comms-text"></div>
+        <div class="comms-row">
+          <img class="comms-avatar" id="comms-avatar" src="/portraits/aya-command.png" alt="" />
+          <div class="comms-copy"><div class="comms-who" id="comms-who"></div>
+          <div class="comms-text" id="comms-text"></div></div>
+        </div>
         <div class="comms-next">TRANSMISSION</div>
       </div>
       <div class="card" id="card">
@@ -337,6 +350,12 @@ export class Hud {
   }
 
   /** Drop anything still queued (used when a run restarts). */
+  /** Force any open card shut (used when a run restarts). */
+  closeCard(): void {
+    document.getElementById('card')!.classList.remove('show');
+    this.cardOpen = false;
+  }
+
   clearComms(): void {
     this.commsQueue.length = 0;
     this.typed = 0;
@@ -353,6 +372,9 @@ export class Hud {
       this.typed = 0;
       this.holdT = 0;
       const line = this.commsQueue[0];
+      const avatar = document.getElementById('comms-avatar') as HTMLImageElement;
+      avatar.src = line.who.includes('KUROSAWA') ? '/portraits/dr-kurosawa.png' : '/portraits/aya-command.png';
+      avatar.alt = line.who;
       document.getElementById('comms-who')!.textContent = line.who;
       document.getElementById('comms-text')!.textContent = '';
       box.classList.add('show');
@@ -382,14 +404,28 @@ export class Hud {
     document.getElementById('card-ch')!.textContent = chapter;
     document.getElementById('card-title')!.textContent = title;
     document.getElementById('card-body')!.innerHTML = body;
+    // The cursor is hidden under pointer lock, so a key press is the reliable
+    // way off a card mid-game; tapping is what mobile has.
+    document.querySelector('.card .go')!.textContent =
+      this.isTouch ? 'TAP TO CONTINUE' : 'PRESS SPACE TO CONTINUE';
     card.classList.add('show');
+    this.cardOpen = true;
+
     return new Promise((resolve) => {
       const done = () => {
         card.removeEventListener('click', done);
+        window.removeEventListener('keydown', onKey, true);
         card.classList.remove('show');
+        this.cardOpen = false;
         resolve();
       };
+      const onKey = (e: KeyboardEvent) => {
+        if (e.code !== 'Space' && e.code !== 'Enter' && e.code !== 'Escape') return;
+        e.preventDefault();
+        done();
+      };
       card.addEventListener('click', done);
+      window.addEventListener('keydown', onKey, true);
     });
   }
 
@@ -499,6 +535,7 @@ export class Hud {
   }
 
   showStart(onStart: () => void, isTouch = false): void {
+    this.isTouch = isTouch;
     const el = document.createElement('div');
     el.className = 'start';
     const keys = isTouch

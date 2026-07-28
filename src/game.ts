@@ -216,6 +216,9 @@ export class Game {
   private bindInput(): void {
     window.addEventListener('keydown', (e) => {
       if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
+      // a story card is modal: swallow input so dismissing it cannot also
+      // jump, attack or switch weapons
+      if (this.hud.cardOpen) return;
       this.keys.add(e.code);
       if (e.code === 'KeyF') this.fireLaser();
       if (e.code === 'KeyT') this.fireMissiles();
@@ -1076,6 +1079,7 @@ export class Game {
     this.slowmo = 0;
     this.shake = 0;
 
+    this.hud.closeCard();
     this.hud.clearComms();
     this.campaignOver = false;
     this.hud.resetUnlocks();
