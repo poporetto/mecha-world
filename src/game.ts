@@ -1067,7 +1067,8 @@ export class Game {
       if (d > 320) this.bark('bossFar');
     }
 
-    // sustained levelling of the city earns a comment
+    // Aya scolds early, then loses patience entirely if you keep wrecking.
+    if (this.blocksWrecked > 700 && this.blocksWrecked <= 2600) this.bark('cityDamage');
     if (this.blocksWrecked > 2600) {
       this.blocksWrecked = 0;
       this.bark('heavyDestruction');
@@ -1184,6 +1185,7 @@ export class Game {
       if (grabbed) {
         this.player.heal(18);
         this.hud.toast('+18 REPAIR', 'Salvage recovered', 1.2);
+        this.bark('repaired');
         sfx.jingle();
         this.addScore(40, false);
       }
