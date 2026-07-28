@@ -33,6 +33,7 @@ export const PROLOGUE: Line[] = [
   { who: KUROSAWA, text: 'The suit is a prototype. Untested. Please bring it back in one piece.' },
   { who: KUROKI, text: 'No promises on the suit. …The shelters. They full?' },
   { who: AYA, text: '…They are full.' },
+  { who: AYA, text: 'Kuroki. This is not the last one. Do you understand me? Not again.' },
   { who: KUROKI, text: 'Then nothing gets past me. Launching.' },
 ];
 
@@ -79,6 +80,8 @@ export const CHAPTERS: Chapter[] = [
     debrief: [
       { who: KUROKI, text: 'Told you I would watch for it.' },
       { who: AYA, text: 'You watched for NONE of it! I have the damage readout right here!' },
+      { who: AYA, text: '…That last turn. Where did you learn that?' },
+      { who: KUROKI, text: 'You know exactly where.' },
       { who: KUROSAWA, text: 'I can weaponise the discharge. Call it a nova pulse.' },
       { who: KUROSAWA, text: 'Kuroki… its spine had a seam. A machined seam.' },
       { who: KUROKI, text: 'Say that again.' },
@@ -129,6 +132,8 @@ export const CHAPTERS: Chapter[] = [
       { who: AYA, text: 'Casualty reports are dropping. People are starting to believe again.' },
       { who: AYA, text: 'They are painting your suit on the shelter walls. Do not tell him, doctor.' },
       { who: KUROKI, text: 'Too late. Heard it. I am going to be unbearable now.' },
+      { who: AYA, text: 'They painted Rei up there too. Years ago. It is still there.' },
+      { who: KUROKI, text: '…I know. I walk past it.' },
     ],
   },
   {
@@ -154,7 +159,8 @@ export const CHAPTERS: Chapter[] = [
       { who: AYA, text: 'It burrows. No visual, no warning — then it is on top of you.' },
       { who: AYA, text: 'Keep moving. Kuroki. Please. Keep moving.' },
       { who: KUROKI, text: '…You never say please.' },
-      { who: AYA, text: 'I know.' },
+      { who: AYA, text: 'I said it once before. On a comm channel exactly like this one.' },
+      { who: AYA, text: 'So humour me.' },
     ],
     debrief: [
       { who: KUROSAWA, text: 'Head repeaters recovered. Small calibre, very fast. You will like them.' },
@@ -189,13 +195,15 @@ export const CHAPTERS: Chapter[] = [
       { who: KUROKI, text: 'Then it does not reach the mainland.' },
       { who: AYA, text: 'Kuroki. …Come back. That is an order.' },
       { who: KUROKI, text: 'You have never once made me follow one of those.' },
+      { who: AYA, text: 'Then follow it as a favour. You still owe me one from three years ago.' },
     ],
     debrief: [
       { who: KUROSAWA, text: 'The rift is collapsing! You did it — you actually did it!' },
       { who: AYA, text: 'Kuroki? Kuroki, answer me. ANSWER ME.' },
       { who: KUROKI, text: '…Still here. Suit is a write-off though. Sorry, doc.' },
       { who: AYA, text: 'You absolute IDIOT. I thought— …I thought we lost you.' },
-      { who: KUROKI, text: 'Told you nothing gets past me.' },
+      { who: KUROKI, text: 'Not this time. I kept talking. Like you asked.' },
+      { who: AYA, text: '…You did. You kept talking the whole way down.' },
     ],
   },
 ];
@@ -204,7 +212,8 @@ export const EPILOGUE: Line[] = [
   { who: KUROSAWA, text: 'The tear is sealed — but the seam never fully closed.' },
   { who: KUROSAWA, text: 'Smaller fractures are opening across the districts. They will keep coming.' },
   { who: AYA, text: 'Then we keep flying. …And you keep coming back. Every time.' },
-  { who: KUROKI, text: 'Every time. Call it in when you see one.' },
+  { who: KUROKI, text: 'That is the arrangement.' },
+  { who: AYA, text: 'That is the arrangement. Call it in when you see one.' },
 ];
 
 /** Endless-mode chatter once the campaign is finished. */
@@ -265,6 +274,7 @@ export const BARKS: Record<string, Line[]> = {
     { who: AYA, text: 'KUROKI! …Answer me. Answer me right now.' },
     { who: KUROKI, text: '…Still here. Mostly.' },
     { who: AYA, text: 'Do not EVER do that again!' },
+    { who: AYA, text: 'I have sat through one silent channel already. I am not doing a second.' },
     { who: KUROSAWA, text: 'Emergency reconstruction complete. Half integrity — all I could manage.' },
   ],
   bigCombo: [
@@ -372,3 +382,72 @@ export const MONSTER_BARKS: Record<string, Line[]> = {
     { who: KUROKI, text: 'I always have something left.' },
   ],
 };
+
+// ------------------------------------------------------------- shared past
+// Their history, released a fragment at a time during lulls in the fighting.
+// Read in order it explains both of them: why he flies like he does not care
+// whether he comes back, and why she cannot stand it when his signal drops.
+
+export const MEMORIES: Line[][] = [
+  [
+    { who: AYA, text: 'You know you still fly exactly like you did in training.' },
+    { who: KUROKI, text: 'Brilliantly?' },
+    { who: AYA, text: 'Recklessly. I wrote it in every single report I filed on you.' },
+    { who: KUROKI, text: 'And they promoted me anyway. Devastating for you, that.' },
+  ],
+  [
+    { who: AYA, text: 'I outranked you, you know. Before all this.' },
+    { who: KUROKI, text: 'You outflew me too. Once.' },
+    { who: AYA, text: 'Twice.' },
+    { who: KUROKI, text: '…Twice.' },
+  ],
+  [
+    { who: KUROSAWA, text: 'Aya was in the seat before you, Kuroki. Did you know that?' },
+    { who: AYA, text: 'Doctor.' },
+    { who: KUROSAWA, text: 'Best reflex scores the programme ever recorded. It is in the file.' },
+    { who: AYA, text: 'Doctor. Drop it.' },
+  ],
+  [
+    { who: KUROKI, text: 'Do you ever miss it? Flying.' },
+    { who: AYA, text: 'Every day.' },
+    { who: KUROKI, text: 'Then why the command chair?' },
+    { who: AYA, text: 'Because somebody has to be on the other end of the radio.' },
+  ],
+  [
+    { who: AYA, text: 'Rei used to fly the pattern you just pulled. Almost exactly.' },
+    { who: KUROKI, text: 'I know. He taught it to me.' },
+    { who: AYA, text: '…He taught it to me first.' },
+  ],
+  [
+    { who: KUROKI, text: 'You never ask about that day.' },
+    { who: AYA, text: 'I was on comms that day, Kuroki. I do not need to ask.' },
+    { who: AYA, text: 'I heard all of it.' },
+  ],
+  [
+    { who: KUROKI, text: 'I was lead. I called the turn. He followed it.' },
+    { who: AYA, text: 'You have carried that for three years.' },
+    { who: KUROKI, text: 'It is not heavy.' },
+    { who: AYA, text: 'You are a terrible liar. You always have been.' },
+  ],
+  [
+    { who: AYA, text: 'You think I shout because you break things.' },
+    { who: KUROKI, text: 'I break a LOT of things.' },
+    { who: AYA, text: 'I shout because the last time a signal went quiet on me, it stayed quiet.' },
+    { who: KUROKI, text: '…' },
+    { who: AYA, text: 'So keep talking out there. That is all I am asking.' },
+  ],
+  [
+    { who: KUROKI, text: 'Aya. If this one goes badly—' },
+    { who: AYA, text: 'No.' },
+    { who: KUROKI, text: 'I am only saying—' },
+    { who: AYA, text: 'I said NO. You come back. You always come back. That is the arrangement.' },
+    { who: KUROKI, text: '…Understood, Commander.' },
+  ],
+  [
+    { who: AYA, text: 'When this is over I am putting you back in front of a review board.' },
+    { who: KUROKI, text: 'For what?' },
+    { who: AYA, text: 'Everything! Pick anything from the last month!' },
+    { who: AYA, text: '…And then I am buying you a drink. Do not read into that.' },
+    { who: KUROKI, text: 'Reading into it heavily.' },
+  ],
+];

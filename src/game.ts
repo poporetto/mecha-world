@@ -19,7 +19,7 @@ import { buildFallingChunk, FallingChunk, updateFallingChunk } from './fx/collap
 import { Explosions } from './fx/explosions';
 import { Sky } from './fx/sky';
 import { sfx } from './fx/sound';
-import { BARKS, CHAPTERS, ENDLESS_LINES, EPILOGUE, MONSTER_BARKS, PROLOGUE } from './core/story';
+import { BARKS, CHAPTERS, ENDLESS_LINES, EPILOGUE, MEMORIES, MONSTER_BARKS, PROLOGUE } from './core/story';
 import { Hud, WEAPONS, WeaponId } from './ui/hud';
 import { isTouchDevice, TouchControls } from './ui/touch';
 
@@ -103,6 +103,7 @@ export class Game {
   private blocksWrecked = 0;
   private monsterBarkT = 0;   // gap between remarks about the current kaiju
   private monsterBarkFor = ''; // which kaiju those remarks are about
+  private memoryIdx = 0;       // next backstory fragment to surface
   private paused = false;
 
   private monster: Monster | null = null;
@@ -1103,10 +1104,16 @@ export class Game {
       this.bark('heavyDestruction');
     }
 
-    // quiet stretch with nothing happening
+    // Quiet stretch: use it to let their history out, a fragment at a time.
+    // Only once the fighting has actually stopped, so it never lands mid-brawl.
     if (this.idleChatterT <= 0 && !this.monster && this.drones.count === 0) {
       this.idleChatterT = 45;
-      this.bark('idle');
+      if (this.memoryIdx < MEMORIES.length && !this.hud.busy && !this.hud.cardOpen) {
+        this.hud.say(MEMORIES[this.memoryIdx++]);
+        this.barkT = 20; // give the scene room to breathe
+      } else {
+        this.bark('idle');
+      }
     }
   }
 
@@ -1174,6 +1181,7 @@ export class Game {
     this.lastBark = '';
     this.blocksWrecked = 0;
     this.monsterBarkFor = '';
+    this.memoryIdx = 0;
     this.hud.closeCard();
     this.hud.clearComms();
     this.campaignOver = false;
