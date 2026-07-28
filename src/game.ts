@@ -14,6 +14,7 @@ import { Plane, PlaneManager } from './entities/planes';
 import { DroneManager } from './entities/drones';
 import { TrafficManager } from './entities/traffic';
 import { Ally } from './entities/ally';
+import { Shelter, ShelterManager } from './entities/shelters';
 import { RepairManager } from './core/repair';
 import { Debris } from './fx/debris';
 import { buildFallingChunk, FallingChunk, updateFallingChunk } from './fx/collapse';
@@ -21,7 +22,7 @@ import { Explosions } from './fx/explosions';
 import { Sky } from './fx/sky';
 import { sfx } from './fx/sound';
 import { BARKS, CHAPTERS, ENDLESS_LINES, EPILOGUE, HINATA_CHAPTER, LATE_MEMORIES, MEMORIES, MONSTER_BARKS, PROLOGUE } from './core/story';
-import { Hud, WEAPONS, WeaponId } from './ui/hud';
+import { Hud, RadarKind, WEAPONS, WeaponId } from './ui/hud';
 import { isTouchDevice, TouchControls } from './ui/touch';
 
 interface Projectile {
@@ -49,6 +50,7 @@ export class Game {
   private drones = new DroneManager();
   private traffic = new TrafficManager();
   private ally = new Ally();
+  private shelters!: ShelterManager;
   private lateMemoryIdx = 0;
   private ridingPlane: Plane | null = null;
   private hud = new Hud();
@@ -99,6 +101,7 @@ export class Game {
   private deaths = 0;
   private taughtWeakPoint = false;
   private campaignOver = false;
+  private gameOver = false;
   // reactive radio chatter, rate-limited so Command never talks over itself
   private barkT = 0;
   private lastBark = '';
@@ -158,6 +161,8 @@ export class Game {
     this.npcs = new NpcManager(this.world);
     this.cars = new CarManager(this.world);
     this.repair = new RepairManager(this.world);
+    this.shelters = new ShelterManager((x, z) => this.world.groundHeight(x, z, 60));
+    this.scene.add(this.shelters.group);
     this.scene.add(this.npcs.group, this.cars.group, this.debris.mesh, this.explosions.group, this.fire.group);
     this.scene.add(this.planes.group, this.drones.group, this.traffic.group, this.ally.group);
 
@@ -1018,7 +1023,7 @@ export class Game {
       dx: dx * cos - dz * sin,
       dz: dx * sin + dz * cos,
     });
-    const contacts: { dx: number; dz: number; kind: 'boss' | 'drone' | 'pickup' }[] = [];
+    const contacts: { dx: number; dz: number; kind: RadarKind }[] = [];
 
     if (this.monster && !this.monster.dying) {
       const m = this.monster.group.position;
@@ -1028,6 +1033,10 @@ export class Game {
     for (const d of this.drones.group.children) {
       const r = rot(d.position.x - this.player.pos.x, d.position.z - this.player.pos.z);
       if (Math.hypot(r.dx, r.dz) < RANGE * 1.4) contacts.push({ ...r, kind: 'drone' });
+    }
+    for (const s of this.shelters.shelters) {
+      const r = rot(s.pos.x - this.player.pos.x, s.pos.z - this.player.pos.z);
+      contacts.push({ ...r, kind: s.underAttack ? 'shelterHit' : 'shelter' });
     }
     for (const p of this.pickups) {
       const r = rot(p.mesh.position.x - this.player.pos.x, p.mesh.position.z - this.player.pos.z);
@@ -1174,6 +1183,32 @@ export class Game {
     }
   }
 
+  /** Aya calls it out the moment something settles on a ward. */
+  private warnShelters(): void {
+    const s = this.shelters.anyUnderAttack;
+    if (!s) return;
+    this.hud.setObjective('DEFEND ' + s.name + ' — ' + Math.round(s.hp) + '%');
+    this.bark(s.hp < 40 ? 'shelterCritical' : 'shelterAttacked', s.hp < 40);
+  }
+
+  /** A shelter has fallen. The run is over. */
+  private endRun(s: Shelter): void {
+    this.gameOver = true;
+    this.slowmo = 1.6;
+    this.shake = 1.6;
+    sfx.explode(1, 1);
+    // drop whatever was queued — nothing matters now except this
+    this.hud.clearComms();
+    this.hud.say(BARKS.shelterLost);
+    void this.hud.showCard(
+      'THE LINE BROKE',
+      s.name + ' IS GONE',
+      'The shelter could not hold.<br/><br/>' +
+      `Score <b>${this.score.toLocaleString()}</b> · Wave <b>${this.wave}</b><br/><br/>` +
+      'Neo Tokyo needed you somewhere else.'
+    ).then(() => this.restart());
+  }
+
   // ------------------------------------------------------------ pause / run
 
   private setPaused(on: boolean): void {
@@ -1241,6 +1276,8 @@ export class Game {
     this.memoryIdx = 0;
     this.lateMemoryIdx = 0;
     this.ally.retire();
+    this.shelters.reset();
+    this.gameOver = false;
     this.hud.closeCard();
     this.hud.clearComms();
     this.campaignOver = false;
@@ -1622,6 +1659,14 @@ export class Game {
     this.cars.update(dt, this.player.pos);
 
     this.updateBosses(dt);
+    // shelters: only kaiju hurt them, and losing one ends the run
+    const dronePos = this.drones.group.children.map((d) => d.position);
+    const bossPos = this.monster && !this.monster.dying ? this.monster.group.position : null;
+    const fallen = this.shelters.update(dt, this.time, bossPos, dronePos);
+    this.shelters.mend(dt);
+    if (fallen && !this.gameOver) this.endRun(fallen);
+    this.warnShelters();
+
     this.updateAlly(dt);
     this.drones.update(dt, this.time, {
       world: this.world,

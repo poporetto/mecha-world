@@ -25,9 +25,11 @@ export interface Chapter {
 export const AYA = 'AYA · COMMAND';
 export const KUROSAWA = 'DR. KUROSAWA';
 export const KUROKI = 'KUROKI'; // the pilot — you
-export const HINATA = 'HINATA · KOTETSU'; // second unit, joins mid-campaign
+export const REI = 'REI · MEMORIAL'; // Aya's late brother; heard only in archived recordings
+export const HINATA = 'HINATA · PILOT'; // second unit, joins mid-campaign
+export const KOTETSU = 'KOTETSU · SUPPORT'; // mechanic and mission-control ally
 
-/** Chapter index (0-based) that KOTETSU first drops into the fight. */
+/** Chapter index (0-based) that Hinata's second unit first drops into the fight. */
 export const HINATA_CHAPTER = 3;
 
 export const PROLOGUE: Line[] = [
@@ -100,7 +102,8 @@ export const CHAPTERS: Chapter[] = [
       { who: AYA, text: 'It has plating we cannot identify. And you are not going alone.' },
       { who: KUROKI, text: 'I work alone. You know I work alone.' },
       { who: AYA, text: 'Not any more. Kurosawa finished the second frame this morning.' },
-      { who: HINATA, text: 'KOTETSU, dropping in! Hi! Oh wow, you are TALLER than the file said.' },
+      { who: KOTETSU, text: 'Second frame checks green. Hinata is eager. The frame is less eager.' },
+      { who: HINATA, text: 'HINATA, dropping in! Hi! Oh wow, you are TALLER than the file said.' },
       { who: KUROKI, text: '…Aya. Who is this.' },
       { who: HINATA, text: 'Hinata! I am your wingman! Please look after me, senpai!' },
       { who: KUROKI, text: 'Do not call me that.' },
@@ -350,6 +353,22 @@ export const BARKS: Record<string, Line[]> = {
     { who: HINATA, text: 'I can take the hits! That is the whole point of me!' },
     { who: KUROKI, text: 'Not for you. Never for me.' },
     { who: HINATA, text: 'That is not how wingmen work!' },
+  ],
+  shelterAttacked: [
+    { who: AYA, text: 'It is on a SHELTER, Kuroki! There are people under that!' },
+    { who: AYA, text: 'Get it off the ward! Get it off RIGHT NOW!' },
+    { who: HINATA, text: 'Senpai, it is standing on the shelter! Go, I will cover the drones!' },
+    { who: KUROKI, text: 'I see it. Moving.' },
+  ],
+  shelterCritical: [
+    { who: AYA, text: 'The shelter is caving in! KUROKI!' },
+    { who: AYA, text: 'They cannot evacuate in time — you are the evacuation!' },
+    { who: HINATA, text: 'It is going to break! SENPAI!' },
+  ],
+  shelterLost: [
+    { who: AYA, text: '…The ward is gone. Kuroki. It is gone.' },
+    { who: KUROKI, text: 'How many.' },
+    { who: AYA, text: 'Do not ask me that. Please do not ask me that.' },
   ],
   idle: [
     { who: AYA, text: 'Sensors are quiet. Check your armour while you can.' },

@@ -23,6 +23,17 @@ function mod(n: number, m: number): number {
   return ((n % m) + m) % m;
 }
 
+/** Where the population is sheltering. Losing one of these ends the run. */
+export const SHELTER_SITES = [
+  { x: 118, z: 34, name: 'EAST WARD' },
+  { x: -104, z: 96, name: 'SOUTH WARD' },
+  { x: -66, z: -140, name: 'RIVERSIDE' },
+  { x: 172, z: -92, name: 'NORTH GATE' },
+];
+
+/** Where the mecha deploys from and returns to. */
+export const BASE_SITE = { x: 0, z: 0 };
+
 // ---------------------------------------------------------------- landmarks
 
 interface Landmark {
@@ -386,6 +397,86 @@ function buildStation(dx: number, dz: number, set: (y: number, id: number) => vo
   }
 }
 
+// HOME BASE — the launch pad the suit deploys from and returns to. A marked
+// pad ringed with lights, a hangar with an open bay, a control tower and
+// fuel drums.
+export function buildBase(dx: number, dz: number, set: (y: number, id: number) => void) {
+  const ax = Math.abs(dx), az = Math.abs(dz);
+
+  // circular landing pad with cross markings and a lit rim
+  const d = Math.sqrt(dx * dx + dz * dz);
+  if (d <= 13) {
+    const ring = d > 11.4;
+    const cross = (ax <= 1 && az <= 9) || (az <= 1 && ax <= 9);
+    const inner = Math.abs(d - 7.5) < 0.7;
+    set(0, ring || cross || inner ? B.RoadLine : B.Plaza);
+    // pad edge lights
+    if (ring && mod(Math.round(Math.atan2(dz, dx) * 8), 3) === 0) set(1, B.Lantern);
+    return;
+  }
+
+  // hangar to the north: side walls, roof, and an open bay facing the pad
+  if (dz < -14 && dz > -30 && ax <= 15) {
+    const wall = ax === 15 || dz === -29;
+    const bayMouth = dz === -15 && ax <= 9;
+    if (!bayMouth) {
+      for (let y = 1; y <= 13; y++) {
+        if (wall) set(y, y % 5 === 0 ? B.Steel : B.WallGray);
+        else if (dz === -15) set(y, y > 10 ? B.Steel : B.Air); // lintel over the mouth
+      }
+      if (ax <= 15) set(14, B.Roof);
+      if (ax <= 15 && mod(dx, 4) === 0) set(15, B.Steel); // roof ribs
+    }
+    // service lighting inside the bay
+    if (bayMouth && mod(dx, 4) === 0) set(12, B.Lantern);
+  }
+
+  // control tower on the east side, glazed cab on top
+  const tx = dx - 20, tz = dz + 6;
+  if (Math.abs(tx) <= 3 && Math.abs(tz) <= 3) {
+    for (let y = 1; y <= 18; y++) set(y, B.WallGray);
+    for (let y = 19; y <= 22; y++) set(y, B.Glass);
+    set(23, B.Roof);
+    if (tx === 0 && tz === 0) { set(24, B.Pole); set(25, B.LightRed); }
+  }
+
+  // fuel drums and crates along the west apron
+  if (dx < -16 && dx > -26 && az < 10) {
+    if (mod(dx, 3) === 0 && mod(dz, 4) === 0) {
+      for (let y = 1; y <= 3; y++) set(y, B.Crate);
+      set(4, B.Steel);
+    }
+  }
+}
+
+// CIVILIAN SHELTER — a hardened bunker the population is packed into. These
+// are what the whole campaign is actually defending.
+export function buildShelter(dx: number, dz: number, set: (y: number, id: number) => void) {
+  const ax = Math.abs(dx), az = Math.abs(dz);
+
+  // sloped blast berm around the structure
+  if (ax <= 13 && az <= 13 && (ax > 9 || az > 9)) {
+    const h = 13 - Math.max(ax, az);
+    for (let y = 1; y <= Math.max(1, h); y++) set(y, B.Stone);
+    return;
+  }
+
+  // main bunker: thick concrete, low and wide
+  if (ax <= 9 && az <= 9) {
+    for (let y = 1; y <= 7; y++) {
+      const shell = ax === 9 || az === 9;
+      set(y, shell ? B.WallGray : B.Plaza);
+    }
+    set(8, B.Steel);
+    if (ax <= 7 && az <= 7) set(9, B.Steel);
+    // green cross on the roof so it reads as a refuge from the air
+    if ((ax <= 1 && az <= 5) || (az <= 1 && ax <= 5)) set(10, B.Grass);
+    // lit vents and doorway
+    if (az === 9 && ax <= 2) { set(1, B.Lantern); set(2, B.Lantern); }
+    if (ax === 9 && mod(dz, 4) === 0) set(6, B.WindowLit);
+  }
+}
+
 export const LANDMARKS: Landmark[] = [
   { x: 55, z: -45, r: 17, build: buildTower },
   { x: -70, z: -100, r: 15, build: buildSpire },
@@ -402,6 +493,10 @@ export const LANDMARKS: Landmark[] = [
   { x: 132, z: 118, r: 22, build: buildAsakusa, ground: () => B.Plaza },
   { x: -14, z: -118, r: 23, build: buildStation },
   { x: -190, z: 196, r: 26, build: buildBayBridge, ground: () => B.Water },
+  // home base — the suit launches and redeploys from here
+  { x: 0, z: 0, r: 30, build: buildBase },
+  // civilian shelters, spread across the districts
+  ...SHELTER_SITES.map((p) => ({ x: p.x, z: p.z, r: 15, build: buildShelter })),
 ];
 
 // ------------------------------------------------------------- column logic

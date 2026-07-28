@@ -2,6 +2,7 @@
 
 import * as THREE from 'three';
 import { World } from '../core/world';
+import { BASE_SITE } from '../core/worldgen';
 import { MechaModel } from './mecha';
 
 const HALF = 1.7; // half-width of collision box
@@ -45,9 +46,12 @@ export class Player {
 
   constructor(private world: World) {}
 
+  /** Deploy (or redeploy) from the launch pad at home base. */
   respawn(): void {
-    this.pos.set(2.5, this.world.groundHeight(2.5, 2.5) + 1, 2.5);
+    const { x, z } = BASE_SITE;
+    this.pos.set(x, this.world.groundHeight(x, z) + 1, z);
     this.vel.set(0, 0, 0);
+    this.onPlatform = false;
     this.hp = this.maxHp;
   }
 

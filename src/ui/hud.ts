@@ -14,6 +14,9 @@ export const WEAPONS = [
 
 export type WeaponId = (typeof WEAPONS)[number]['id'];
 
+/** What a radar blip represents. */
+export type RadarKind = 'boss' | 'drone' | 'pickup' | 'shelter' | 'shelterHit';
+
 export class Hud {
   // --- radio traffic -------------------------------------------------------
   private commsQueue: { who: string; text: string }[] = [];
@@ -432,7 +435,9 @@ export class Hud {
       const avatar = document.getElementById('comms-avatar') as HTMLImageElement;
       const portrait = line.who.includes('KUROSAWA') ? 'dr-kurosawa'
         : line.who.includes('KUROKI') ? 'kuroki-pilot'
-        : line.who.includes('HINATA') ? 'hinata-kotetsu'
+        : line.who.includes('HINATA') ? 'hinata-pilot'
+        : line.who.includes('KOTETSU') ? 'kotetsu-support'
+        : line.who.includes('REI') ? 'rei-memorial'
         : 'aya-command';
       // a missing portrait should collapse the slot, not show a broken image
       avatar.onerror = () => { avatar.style.display = 'none'; };
@@ -504,7 +509,7 @@ export class Hud {
    * already rotated into view space by the caller. `camYaw` orients the cone.
    */
   setRadar(
-    contacts: { dx: number; dz: number; kind: 'boss' | 'drone' | 'pickup' }[],
+    contacts: { dx: number; dz: number; kind: RadarKind }[],
     camYaw: number,
     range: number,
   ): void {
@@ -530,14 +535,21 @@ export class Hud {
       const px = C + (c.dx / range) * R * k;
       const py = C + (c.dz / range) * R * k;
       const boss = c.kind === 'boss';
-      const size = boss ? 13 : c.kind === 'pickup' ? 7 : 8;
+      const shelter = c.kind === 'shelter' || c.kind === 'shelterHit';
+      const size = boss ? 13 : shelter ? 11 : c.kind === 'pickup' ? 7 : 8;
       el.style.display = 'block';
       el.style.left = px + 'px';
       el.style.top = py + 'px';
       el.style.width = size + 'px';
       el.style.height = size + 'px';
-      el.style.background = boss ? '#ff5a52' : c.kind === 'pickup' ? '#5cf2a0' : '#ffb454';
-      el.style.boxShadow = boss ? '0 0 10px #ff5a52' : 'none';
+      // shelters read as square wards, everything else as round contacts
+      el.style.borderRadius = shelter ? '2px' : '50%';
+      el.style.background = boss ? '#ff5a52'
+        : c.kind === 'shelterHit' ? '#ff4d4d'
+        : c.kind === 'shelter' ? '#5cf2a0'
+        : c.kind === 'pickup' ? '#5cf2a0' : '#ffb454';
+      el.style.boxShadow = boss ? '0 0 10px #ff5a52'
+        : c.kind === 'shelterHit' ? '0 0 12px #ff4d4d' : 'none';
       el.style.opacity = d > range ? '0.65' : '1';
     }
     // World north sits at `camYaw` clockwise from the top of the radar, so the
