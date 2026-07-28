@@ -28,7 +28,7 @@ export const KUROKI = 'KUROKI'; // the pilot — you
 export const HINATA = 'HINATA · KOTETSU'; // second unit, joins mid-campaign
 
 /** Chapter index (0-based) that KOTETSU first drops into the fight. */
-export const HINATA_CHAPTER = 6;
+export const HINATA_CHAPTER = 3;
 
 export const PROLOGUE: Line[] = [
   { who: AYA, text: 'Kuroki, are you even listening? The bay tore open fourteen hours ago.' },
@@ -97,14 +97,22 @@ export const CHAPTERS: Chapter[] = [
     brief: [
       { who: AYA, text: 'This one is walking straight up the boulevard. No stealth. No fear.' },
       { who: KUROKI, text: 'Something we have in common.' },
-      { who: AYA, text: 'It has plating we cannot identify. Do NOT trade hits with it.' },
-      { who: KUROKI, text: 'Trading hits is the only move I know, Aya.' },
+      { who: AYA, text: 'It has plating we cannot identify. And you are not going alone.' },
+      { who: KUROKI, text: 'I work alone. You know I work alone.' },
+      { who: AYA, text: 'Not any more. Kurosawa finished the second frame this morning.' },
+      { who: HINATA, text: 'KOTETSU, dropping in! Hi! Oh wow, you are TALLER than the file said.' },
+      { who: KUROKI, text: '…Aya. Who is this.' },
+      { who: HINATA, text: 'Hinata! I am your wingman! Please look after me, senpai!' },
+      { who: KUROKI, text: 'Do not call me that.' },
     ],
     debrief: [
       { who: KUROSAWA, text: 'It is not armour. It is fabrication. These things are being BUILT.' },
       { who: KUROKI, text: 'Then somebody is aiming them. At us. On purpose.' },
       { who: AYA, text: 'Built by WHO? Kurosawa, tell me you have something—' },
       { who: KUROSAWA, text: 'I have nothing. Salvage the plating. We will need it.' },
+      { who: HINATA, text: 'I blocked four hits for you. Just so it is on the record.' },
+      { who: KUROKI, text: 'Nobody asked you to.' },
+      { who: AYA, text: 'Nobody ever has to ask her. That is rather the point.' },
     ],
   },
   {
@@ -136,8 +144,8 @@ export const CHAPTERS: Chapter[] = [
       { who: AYA, text: 'Casualty reports are dropping. People are starting to believe again.' },
       { who: AYA, text: 'They are painting your suit on the shelter walls. Do not tell him, doctor.' },
       { who: KUROKI, text: 'Too late. Heard it. I am going to be unbearable now.' },
-      { who: AYA, text: 'They painted Rei up there too. Years ago. It is still there.' },
-      { who: KUROKI, text: '…I know. I walk past it.' },
+      { who: AYA, text: 'They painted my brother up there too. Years ago. It is still there.' },
+      { who: KUROKI, text: '…I know. I walk past it every morning.' },
     ],
   },
   {
@@ -145,13 +153,10 @@ export const CHAPTERS: Chapter[] = [
     title: 'THE GROUND BREAKS',
     brief: [
       { who: KUROSAWA, text: 'Magma surge under the western hills. It is coming up through the rock.' },
-      { who: AYA, text: 'If it lands a slam it will BURY you. And you are not going alone.' },
-      { who: KUROKI, text: 'I work alone. You know I work alone.' },
-      { who: AYA, text: 'Not any more. Kurosawa finished the second frame this morning.' },
-      { who: HINATA, text: 'KOTETSU, dropping in! Hi! Oh wow, you are TALLER than the file said.' },
-      { who: KUROKI, text: '…Aya. Who is this.' },
-      { who: HINATA, text: 'Hinata! I am your wingman! Please look after me, senpai!' },
-      { who: KUROKI, text: 'Do not call me that.' },
+      { who: AYA, text: 'If it lands a slam it will BURY you. Do you understand me?' },
+      { who: KUROKI, text: 'Loud and clear. You worry too much.' },
+      { who: HINATA, text: 'She worries the correct amount, senpai.' },
+      { who: AYA, text: 'Thank you, Hinata.' },
     ],
     debrief: [
       { who: KUROSAWA, text: 'I can push that shockwave through your legs. Do not stand near anything.' },
@@ -219,7 +224,7 @@ export const CHAPTERS: Chapter[] = [
       { who: HINATA, text: 'YES! Aya, he said it!' },
       { who: AYA, text: 'I heard. …Kuroki. Come back. That is an order.' },
       { who: KUROKI, text: 'You have never once made me follow one of those.' },
-      { who: AYA, text: 'Then follow it as a favour. You still owe me one from three years ago.' },
+      { who: AYA, text: 'Then do it for me. I have buried one pilot I loved. I am not burying two.' },
     ],
     debrief: [
       { who: KUROSAWA, text: 'The rift is collapsing! You did it — you actually did it!' },
@@ -455,27 +460,30 @@ export const MEMORIES: Line[][] = [
     { who: AYA, text: 'Every day.' },
     { who: KUROKI, text: 'Then why the command chair?' },
     { who: AYA, text: 'Because somebody has to be on the other end of the radio.' },
+    { who: AYA, text: 'Nobody was on Rei\'s. Not really. Not in time.' },
   ],
   [
     { who: AYA, text: 'Rei used to fly the pattern you just pulled. Almost exactly.' },
     { who: KUROKI, text: 'I know. He taught it to me.' },
-    { who: AYA, text: '…He taught it to me first.' },
+    { who: AYA, text: '…He taught it to me first. He taught me everything first.' },
+    { who: KUROKI, text: 'He would. Older brothers are like that.' },
   ],
   [
     { who: KUROKI, text: 'You never ask about that day.' },
     { who: AYA, text: 'I was on comms that day, Kuroki. I do not need to ask.' },
-    { who: AYA, text: 'I heard all of it.' },
+    { who: AYA, text: 'I heard my brother go quiet. I do not need anybody to describe it to me.' },
   ],
   [
     { who: KUROKI, text: 'I was lead. I called the turn. He followed it.' },
-    { who: AYA, text: 'You have carried that for three years.' },
-    { who: KUROKI, text: 'It is not heavy.' },
-    { who: AYA, text: 'You are a terrible liar. You always have been.' },
+    { who: AYA, text: 'I know exactly what you called. I was listening.' },
+    { who: KUROKI, text: 'Then say it. Whatever it is you have not said for three years.' },
+    { who: AYA, text: '…That I do not blame you. And that some mornings I do anyway.' },
+    { who: AYA, text: 'Both of those are true. I have stopped trying to fix it.' },
   ],
   [
     { who: AYA, text: 'You think I shout because you break things.' },
     { who: KUROKI, text: 'I break a LOT of things.' },
-    { who: AYA, text: 'I shout because the last time a signal went quiet on me, it stayed quiet.' },
+    { who: AYA, text: 'I shout because the last time a signal went quiet on me it was my brother, and it stayed quiet.' },
     { who: KUROKI, text: '…' },
     { who: AYA, text: 'So keep talking out there. That is all I am asking.' },
   ],
@@ -500,8 +508,8 @@ export const LATE_MEMORIES: Line[][] = [
   [
     { who: HINATA, text: 'Aya says you flew with someone before me.' },
     { who: KUROKI, text: 'Aya talks too much.' },
-    { who: HINATA, text: 'She said he was better than you.' },
-    { who: KUROKI, text: '…He was.' },
+    { who: HINATA, text: 'She said he was better than you. She smiled when she said it.' },
+    { who: KUROKI, text: '…He was her brother. Of course she smiled.' },
   ],
   [
     { who: HINATA, text: 'Senpai, why do you always put yourself between me and it?' },
@@ -512,7 +520,7 @@ export const LATE_MEMORIES: Line[][] = [
   ],
   [
     { who: HINATA, text: 'I read the report from three years ago. The whole thing.' },
-    { who: KUROKI, text: 'Then you know I called the turn.' },
+    { who: KUROKI, text: 'Then you know I called the turn. And whose brother followed it.' },
     { who: HINATA, text: 'I know he followed it because he trusted you. Those are different sentences.' },
     { who: KUROKI, text: '…' },
     { who: HINATA, text: 'I am going to keep following them too, by the way. Just so you know.' },
