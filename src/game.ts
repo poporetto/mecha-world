@@ -13,13 +13,14 @@ import { CarManager } from './entities/cars';
 import { Plane, PlaneManager } from './entities/planes';
 import { DroneManager } from './entities/drones';
 import { TrafficManager } from './entities/traffic';
+import { Ally } from './entities/ally';
 import { RepairManager } from './core/repair';
 import { Debris } from './fx/debris';
 import { buildFallingChunk, FallingChunk, updateFallingChunk } from './fx/collapse';
 import { Explosions } from './fx/explosions';
 import { Sky } from './fx/sky';
 import { sfx } from './fx/sound';
-import { BARKS, CHAPTERS, ENDLESS_LINES, EPILOGUE, MEMORIES, MONSTER_BARKS, PROLOGUE } from './core/story';
+import { BARKS, CHAPTERS, ENDLESS_LINES, EPILOGUE, HINATA_CHAPTER, LATE_MEMORIES, MEMORIES, MONSTER_BARKS, PROLOGUE } from './core/story';
 import { Hud, WEAPONS, WeaponId } from './ui/hud';
 import { isTouchDevice, TouchControls } from './ui/touch';
 
@@ -27,7 +28,7 @@ interface Projectile {
   pos: THREE.Vector3;
   vel: THREE.Vector3;
   life: number;
-  kind: 'laser' | 'rocket' | 'boulder' | 'missile' | 'charge';
+  kind: 'laser' | 'rocket' | 'boulder' | 'missile' | 'charge' | 'ally';
   mesh: THREE.Mesh;
   dmg?: number; // override damage / blast radius for player weapons
 }
@@ -47,6 +48,8 @@ export class Game {
   private planes = new PlaneManager();
   private drones = new DroneManager();
   private traffic = new TrafficManager();
+  private ally = new Ally();
+  private lateMemoryIdx = 0;
   private ridingPlane: Plane | null = null;
   private hud = new Hud();
   private touch: TouchControls | null = null;
@@ -156,7 +159,7 @@ export class Game {
     this.cars = new CarManager(this.world);
     this.repair = new RepairManager(this.world);
     this.scene.add(this.npcs.group, this.cars.group, this.debris.mesh, this.explosions.group, this.fire.group);
-    this.scene.add(this.planes.group, this.drones.group, this.traffic.group);
+    this.scene.add(this.planes.group, this.drones.group, this.traffic.group, this.ally.group);
 
 
     // beam (unlockable): a long emissive box scaled to hit distance
@@ -963,6 +966,45 @@ export class Game {
     this.hud.toast('AIRLINER DOWN', 'Wreckage burning in the streets', 3.5);
   }
 
+  /** Keep KOTETSU alongside and let her put fire on whatever is closest. */
+  private updateAlly(dt: number): void {
+    if (!this.ally.active) return;
+    // pick the nearest hostile: the boss if it is close, else a drone
+    let target: THREE.Vector3 | null = null;
+    let best = 190;
+    if (this.monster && !this.monster.dying) {
+      const d = this.monster.group.position.distanceTo(this.ally.group.position);
+      if (d < best) { best = d; target = this.monster.group.position.clone().setY(this.monster.group.position.y + 14); }
+    }
+    for (const d of this.drones.group.children) {
+      const dist = d.position.distanceTo(this.ally.group.position);
+      if (dist < best) { best = dist; target = d.position.clone(); }
+    }
+    this.ally.update(dt, this.time, {
+      world: this.world,
+      playerPos: this.player.pos,
+      target,
+      fire: (from, toward) => this.allyShot(from, toward),
+    });
+  }
+
+  /** A shell from KOTETSU's shoulder cannon — hers, not the player's. */
+  private allyShot(from: THREE.Vector3, toward: THREE.Vector3): void {
+    const dir = toward.clone().sub(from).normalize();
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(0.4, 0.4, 1.5),
+      new THREE.MeshBasicMaterial({ color: 0xffc46a })
+    );
+    mesh.position.copy(from);
+    mesh.lookAt(toward);
+    this.scene.add(mesh);
+    this.projectiles.push({
+      pos: from.clone(), vel: dir.multiplyScalar(78), life: 2.4,
+      kind: 'ally', mesh, dmg: 7,
+    });
+    sfx.laser();
+  }
+
   // Feed the radar and the off-screen boss pointer. Contacts are rotated into
   // view space so the map reads relative to where the camera is looking.
   private updateRadar(): void {
@@ -1024,6 +1066,17 @@ export class Game {
     const ch = CHAPTERS[done];
     if (!ch) return;
     this.hud.say(ch.debrief);
+    // The lull after a kill is the natural place for them to talk, so drip a
+    // backstory scene here too rather than relying on the player idling.
+    // Once KOTETSU has joined, her scenes get folded into the drip so the
+    // later half of the story is about the three of them, not two.
+    if (this.ally.active && this.lateMemoryIdx < LATE_MEMORIES.length && (done % 2 === 1)) {
+      this.hud.say(LATE_MEMORIES[this.lateMemoryIdx++]);
+      this.idleChatterT = 60;
+    } else if (this.memoryIdx < MEMORIES.length) {
+      this.hud.say(MEMORIES[this.memoryIdx++]);
+      this.idleChatterT = 60; // don't stack idle chatter straight after
+    }
     if (done === CHAPTERS.length - 1 && !this.campaignOver) {
       this.campaignOver = true;
       this.hud.setObjective('The rift is sealed — hold the line');
@@ -1076,6 +1129,10 @@ export class Game {
     const hpFrac = this.player.hp / this.player.maxHp;
     if (hpFrac > 0 && hpFrac < 0.28) this.bark('lowHealth');
     if (this.combo >= 5) this.bark('bigCombo');
+    if (this.ally.active) {
+      if (hpFrac > 0 && hpFrac < 0.3) this.bark('hinataWorried');
+      else if (this.drones.count > 0 && Math.random() < 0.02) this.bark('hinataBanter');
+    }
     if (this.drones.count >= 6) this.bark('droneSwarm');
 
     if (this.monster && !this.monster.dying) {
@@ -1182,6 +1239,8 @@ export class Game {
     this.blocksWrecked = 0;
     this.monsterBarkFor = '';
     this.memoryIdx = 0;
+    this.lateMemoryIdx = 0;
+    this.ally.retire();
     this.hud.closeCard();
     this.hud.clearComms();
     this.campaignOver = false;
@@ -1328,6 +1387,13 @@ export class Game {
       const chapterNo = this.bossIndex;
       const entry = campaign[this.bossIndex++];
       this.monster = entry.make(x, z);
+      // KOTETSU joins from her chapter onward
+      if (chapterNo >= HINATA_CHAPTER && !this.ally.active) {
+        const at = this.player.pos.clone();
+        at.x -= 14;
+        at.z += 10;
+        this.ally.deploy(at);
+      }
       const ch = CHAPTERS[chapterNo];
       // title card first, then Command talks you through the contact
       void this.hud.showCard(
@@ -1556,6 +1622,7 @@ export class Game {
     this.cars.update(dt, this.player.pos);
 
     this.updateBosses(dt);
+    this.updateAlly(dt);
     this.drones.update(dt, this.time, {
       world: this.world,
       playerPos: this.player.pos,
@@ -1626,7 +1693,9 @@ export class Game {
   }
 
   private updateProjectiles(dt: number): void {
-    const playerShot = (k: Projectile['kind']) => k === 'laser' || k === 'missile' || k === 'charge';
+    // friendly ordnance — the player's own plus KOTETSU's covering fire
+    const playerShot = (k: Projectile['kind']) =>
+      k === 'laser' || k === 'missile' || k === 'charge' || k === 'ally';
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const p = this.projectiles[i];
       p.life -= dt;

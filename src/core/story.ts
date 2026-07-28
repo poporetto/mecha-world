@@ -25,6 +25,10 @@ export interface Chapter {
 export const AYA = 'AYA · COMMAND';
 export const KUROSAWA = 'DR. KUROSAWA';
 export const KUROKI = 'KUROKI'; // the pilot — you
+export const HINATA = 'HINATA · KOTETSU'; // second unit, joins mid-campaign
+
+/** Chapter index (0-based) that KOTETSU first drops into the fight. */
+export const HINATA_CHAPTER = 6;
 
 export const PROLOGUE: Line[] = [
   { who: AYA, text: 'Kuroki, are you even listening? The bay tore open fourteen hours ago.' },
@@ -141,12 +145,18 @@ export const CHAPTERS: Chapter[] = [
     title: 'THE GROUND BREAKS',
     brief: [
       { who: KUROSAWA, text: 'Magma surge under the western hills. It is coming up through the rock.' },
-      { who: AYA, text: 'If it lands a slam it will BURY you. Do you understand me?' },
-      { who: KUROKI, text: 'Loud and clear. You worry too much.' },
-      { who: AYA, text: 'Somebody has to!' },
+      { who: AYA, text: 'If it lands a slam it will BURY you. And you are not going alone.' },
+      { who: KUROKI, text: 'I work alone. You know I work alone.' },
+      { who: AYA, text: 'Not any more. Kurosawa finished the second frame this morning.' },
+      { who: HINATA, text: 'KOTETSU, dropping in! Hi! Oh wow, you are TALLER than the file said.' },
+      { who: KUROKI, text: '…Aya. Who is this.' },
+      { who: HINATA, text: 'Hinata! I am your wingman! Please look after me, senpai!' },
+      { who: KUROKI, text: 'Do not call me that.' },
     ],
     debrief: [
       { who: KUROSAWA, text: 'I can push that shockwave through your legs. Do not stand near anything.' },
+      { who: HINATA, text: 'Senpai, you took eleven hits I could have blocked. I counted!' },
+      { who: KUROKI, text: 'Nobody asked you to count.' },
       { who: AYA, text: 'Your integrity dropped to nine percent out there. NINE, Kuroki.' },
       { who: KUROKI, text: 'Nine is still a number.' },
       { who: AYA, text: '…The rift is widening. Whatever is sending them is out of patience.' },
@@ -157,6 +167,9 @@ export const CHAPTERS: Chapter[] = [
     title: 'FROM BELOW',
     brief: [
       { who: AYA, text: 'It burrows. No visual, no warning — then it is on top of you.' },
+      { who: HINATA, text: 'I will watch the ground! If it moves under you I will shout!' },
+      { who: KUROKI, text: 'Stay behind me.' },
+      { who: HINATA, text: 'Nope!' },
       { who: AYA, text: 'Keep moving. Kuroki. Please. Keep moving.' },
       { who: KUROKI, text: '…You never say please.' },
       { who: AYA, text: 'I said it once before. On a comm channel exactly like this one.' },
@@ -177,8 +190,16 @@ export const CHAPTERS: Chapter[] = [
       { who: AYA, text: 'It is torching the wards faster than we can evacuate them!' },
       { who: KUROKI, text: 'How many are still down there?' },
       { who: AYA, text: 'Too many. GO!' },
+      { who: HINATA, text: 'I will take the east wards! You take the fire!' },
+      { who: KUROKI, text: 'Hinata — do not plant yourself in front of it. It is not worth—' },
+      { who: HINATA, text: 'That is literally what the shield is for, senpai!' },
     ],
     debrief: [
+      { who: KUROKI, text: 'Hinata. Report.' },
+      { who: HINATA, text: '…Shield is slag and I cannot feel my left arm. But I am here!' },
+      { who: KUROKI, text: '…Good.' },
+      { who: HINATA, text: 'Was that concern? Aya, was that concern?' },
+      { who: AYA, text: 'That was absolutely concern.' },
       { who: KUROKI, text: 'How many did we lose.' },
       { who: AYA, text: 'Kuroki—' },
       { who: KUROKI, text: 'How many, Aya.' },
@@ -193,7 +214,10 @@ export const CHAPTERS: Chapter[] = [
       { who: KUROSAWA, text: 'This is the one that opened the bay. Everything else was an escort.' },
       { who: AYA, text: 'If it reaches the mainland there is nothing after it. Nothing, Kuroki.' },
       { who: KUROKI, text: 'Then it does not reach the mainland.' },
-      { who: AYA, text: 'Kuroki. …Come back. That is an order.' },
+      { who: HINATA, text: 'Senpai. I am on your wing. Say it properly this time.' },
+      { who: KUROKI, text: '…Hinata. On my wing. Match my turns and do not fall behind.' },
+      { who: HINATA, text: 'YES! Aya, he said it!' },
+      { who: AYA, text: 'I heard. …Kuroki. Come back. That is an order.' },
       { who: KUROKI, text: 'You have never once made me follow one of those.' },
       { who: AYA, text: 'Then follow it as a favour. You still owe me one from three years ago.' },
     ],
@@ -204,6 +228,8 @@ export const CHAPTERS: Chapter[] = [
       { who: AYA, text: 'You absolute IDIOT. I thought— …I thought we lost you.' },
       { who: KUROKI, text: 'Not this time. I kept talking. Like you asked.' },
       { who: AYA, text: '…You did. You kept talking the whole way down.' },
+      { who: HINATA, text: 'And I caught him! Tell them I caught him!' },
+      { who: KUROKI, text: 'She caught me.' },
     ],
   },
 ];
@@ -302,6 +328,23 @@ export const BARKS: Record<string, Line[]> = {
     { who: AYA, text: 'Multiple contacts converging — watch your back!' },
     { who: KUROSAWA, text: 'They are herding you. Do not let them box you in.' },
     { who: KUROKI, text: 'Let them come. Saves me the walk.' },
+  ],
+  hinataBanter: [
+    { who: HINATA, text: 'Senpai! Look! I got one! Did you see it?' },
+    { who: KUROKI, text: 'I saw it.' },
+    { who: HINATA, text: 'You did not even turn around!' },
+    { who: HINATA, text: 'I am keeping score, senpai. You are only four ahead.' },
+    { who: KUROKI, text: 'I am eleven ahead.' },
+    { who: HINATA, text: 'Four! I am counting the drones!' },
+    { who: HINATA, text: 'Left side is clear, I am holding it. Go be dramatic somewhere else.' },
+    { who: AYA, text: 'She is a better wingman than you deserve, Kuroki.' },
+    { who: KUROKI, text: '…I know.' },
+  ],
+  hinataWorried: [
+    { who: HINATA, text: 'Senpai, your armour is really low. Get behind the shield. GET BEHIND IT.' },
+    { who: HINATA, text: 'I can take the hits! That is the whole point of me!' },
+    { who: KUROKI, text: 'Not for you. Never for me.' },
+    { who: HINATA, text: 'That is not how wingmen work!' },
   ],
   idle: [
     { who: AYA, text: 'Sensors are quiet. Check your armour while you can.' },
@@ -449,5 +492,29 @@ export const MEMORIES: Line[][] = [
     { who: AYA, text: 'Everything! Pick anything from the last month!' },
     { who: AYA, text: '…And then I am buying you a drink. Do not read into that.' },
     { who: KUROKI, text: 'Reading into it heavily.' },
+  ],
+];
+
+/** Later fragments — these only make sense once KOTETSU has joined. */
+export const LATE_MEMORIES: Line[][] = [
+  [
+    { who: HINATA, text: 'Aya says you flew with someone before me.' },
+    { who: KUROKI, text: 'Aya talks too much.' },
+    { who: HINATA, text: 'She said he was better than you.' },
+    { who: KUROKI, text: '…He was.' },
+  ],
+  [
+    { who: HINATA, text: 'Senpai, why do you always put yourself between me and it?' },
+    { who: KUROKI, text: 'Habit.' },
+    { who: AYA, text: 'It is not habit.' },
+    { who: KUROKI, text: 'Aya.' },
+    { who: AYA, text: '…It is not habit, Hinata.' },
+  ],
+  [
+    { who: HINATA, text: 'I read the report from three years ago. The whole thing.' },
+    { who: KUROKI, text: 'Then you know I called the turn.' },
+    { who: HINATA, text: 'I know he followed it because he trusted you. Those are different sentences.' },
+    { who: KUROKI, text: '…' },
+    { who: HINATA, text: 'I am going to keep following them too, by the way. Just so you know.' },
   ],
 ];

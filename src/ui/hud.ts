@@ -432,6 +432,7 @@ export class Hud {
       const avatar = document.getElementById('comms-avatar') as HTMLImageElement;
       const portrait = line.who.includes('KUROSAWA') ? 'dr-kurosawa'
         : line.who.includes('KUROKI') ? 'kuroki-pilot'
+        : line.who.includes('HINATA') ? 'hinata-kotetsu'
         : 'aya-command';
       // a missing portrait should collapse the slot, not show a broken image
       avatar.onerror = () => { avatar.style.display = 'none'; };
