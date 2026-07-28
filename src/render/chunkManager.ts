@@ -5,11 +5,17 @@ import { CS } from '../core/worldgen';
 import { World } from '../core/world';
 import { buildChunkGeometry } from './mesher';
 
-const DATA_R = 5; // chunks of raw data kept generated
-const MESH_R = 4; // chunks meshed & visible
-const DROP_R = 6; // beyond this, meshes are disposed
+// View distance in chunks (CS=32 units each). Cost scales with the SQUARE of
+// this, so it is the main lever on frame rate: 6 draws ~169 chunks where 4
+// drew ~81. Phones get the smaller ring since they cannot afford the fill.
+const DESKTOP_VIEW = 6; // ~192 units of city
+const MOBILE_VIEW = 4;  // ~128 units, the old distance
 
 export class ChunkManager {
+  private readonly meshR: number;
+  private readonly dataR: number;
+  private readonly dropR: number;
+
   private meshes = new Map<string, THREE.Mesh | null>();
   /** 0 by day, 1 at night — drives the window/neon glow in the shader. */
   nightAmount = { value: 0 };
@@ -36,7 +42,16 @@ export class ChunkManager {
   }
   dirty = new Set<string>();
 
-  constructor(private world: World, private scene: THREE.Scene) {}
+  constructor(private world: World, private scene: THREE.Scene, lowSpec = false) {
+    this.meshR = lowSpec ? MOBILE_VIEW : DESKTOP_VIEW;
+    this.dataR = this.meshR + 1;
+    this.dropR = this.meshR + 2;
+  }
+
+  /** How far the city is drawn, in world units — used to match the fog. */
+  get viewDistance(): number {
+    return this.meshR * CS;
+  }
 
   update(px: number, pz: number): void {
     const pcx = Math.floor(px / CS), pcz = Math.floor(pz / CS);
@@ -46,16 +61,16 @@ export class ChunkManager {
     for (const key of this.dirty) {
       this.dirty.delete(key);
       const [cx, cz] = key.split(',').map(Number);
-      if (Math.abs(cx - pcx) > MESH_R || Math.abs(cz - pcz) > MESH_R) continue;
+      if (Math.abs(cx - pcx) > this.meshR || Math.abs(cz - pcz) > this.meshR) continue;
       this.buildMesh(cx, cz);
       if (++rebuilds >= 6) break;
     }
 
     // stream new chunks, nearest first, small budget per frame
     let built = 0;
-    for (let r = 0; r <= MESH_R && built < 2; r++) {
-      for (let dz = -r; dz <= r && built < 2; dz++) {
-        for (let dx = -r; dx <= r && built < 2; dx++) {
+    for (let r = 0; r <= this.meshR && built < 3; r++) {
+      for (let dz = -r; dz <= r && built < 3; dz++) {
+        for (let dx = -r; dx <= r && built < 3; dx++) {
           if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
           const cx = pcx + dx, cz = pcz + dz;
           if (this.meshes.has(this.world.key(cx, cz))) continue;
@@ -67,8 +82,8 @@ export class ChunkManager {
 
     // pre-generate data ring so mesh border queries don't cascade
     if (built > 0) {
-      for (let dz = -DATA_R; dz <= DATA_R; dz++) {
-        for (let dx = -DATA_R; dx <= DATA_R; dx++) {
+      for (let dz = -this.dataR; dz <= this.dataR; dz++) {
+        for (let dx = -this.dataR; dx <= this.dataR; dx++) {
           this.world.getChunk(pcx + dx, pcz + dz);
         }
       }
@@ -77,7 +92,7 @@ export class ChunkManager {
     // drop far meshes
     for (const [key, mesh] of this.meshes) {
       const [cx, cz] = key.split(',').map(Number);
-      if (Math.abs(cx - pcx) > DROP_R || Math.abs(cz - pcz) > DROP_R) {
+      if (Math.abs(cx - pcx) > this.dropR || Math.abs(cz - pcz) > this.dropR) {
         if (mesh) {
           this.scene.remove(mesh);
           mesh.geometry.dispose();

@@ -133,7 +133,8 @@ export class Game {
 
     // sky, fog, lights — pastel day, drives the day/night cycle each frame
     this.scene.background = new THREE.Color(0xa5d5f5);
-    this.scene.fog = new THREE.Fog(0xc3e4f8, 110, 280);
+    // fog is set from the real view distance once chunks exist, below
+    this.scene.fog = new THREE.Fog(0xc3e4f8, 165, 420);
     this.hemi = new THREE.HemisphereLight(0xe6f6ff, 0x8a9a86, 1.25);
     this.sun = new THREE.DirectionalLight(0xfff4dd, 1.35);
     this.sun.position.set(0.6, 1, 0.35);
@@ -141,7 +142,11 @@ export class Game {
     this.sky = new Sky();
     this.scene.add(this.sky.group);
 
-    this.chunks = new ChunkManager(this.world, this.scene);
+    this.chunks = new ChunkManager(this.world, this.scene, isTouchDevice());
+    // fade out just short of the drawn edge so the boundary is never visible
+    this.scene.fog.near = this.chunks.viewDistance * 0.55;
+    this.scene.fog.far = this.chunks.viewDistance * 1.5;
+
     this.player = new Player(this.world);
     this.player.respawn();
     this.scene.add(this.player.model.group);
