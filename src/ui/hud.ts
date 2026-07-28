@@ -109,8 +109,20 @@ export class Hud {
                    text-shadow:0 0 26px #39e6e0aa; }
         .card .body { color:#cfe3f5; font-size:15px; line-height:2; letter-spacing:1px;
                       max-width:640px; }
-        .card .go { margin-top:34px; color:#8fb4d8; font-size:12px; letter-spacing:4px;
-                    animation:pulse 1.8s infinite; }
+        /* the continue prompt should glow enough to read as the way out */
+        .card .go { margin-top:36px; color:#d6f7ff; font-size:13px; letter-spacing:5px;
+                    padding:10px 26px; border:1px solid #39e6e0aa; border-radius:4px;
+                    background:#0a2029aa; animation:goGlow 1.7s ease-in-out infinite; }
+        @keyframes goGlow {
+          0%, 100% { color:#bfeef7;
+                     text-shadow:0 0 8px #39e6e0aa;
+                     box-shadow:0 0 14px #39e6e044, inset 0 0 12px #39e6e015;
+                     border-color:#39e6e066; }
+          50%      { color:#ffffff;
+                     text-shadow:0 0 14px #7ffcff, 0 0 30px #39e6e0cc;
+                     box-shadow:0 0 34px #39e6e099, 0 0 62px #39e6e044, inset 0 0 18px #39e6e033;
+                     border-color:#7ffcffcc; }
+        }
         .minimap { position:absolute; right:24px; top:150px; width:168px; height:168px;
                    border-radius:50%; background:#08111ecc; border:2px solid #7fdcff55;
                    overflow:hidden; box-shadow:0 2px 14px #0007; }

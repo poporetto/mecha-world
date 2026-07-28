@@ -304,3 +304,71 @@ export const BARKS: Record<string, Line[]> = {
     { who: AYA, text: 'I know what you meant, Kuroki.' },
   ],
 };
+
+// ----------------------------------------------------------- monster gossip
+// Aya cannot help editorialising about whatever is currently wrecking her
+// city. Fired at intervals while a given kaiju is alive, keyed by its name.
+
+export const MONSTER_BARKS: Record<string, Line[]> = {
+  GORGOSAUR: [
+    { who: AYA, text: 'Please do not let that thing near my apartment block! Quickly, Kuroki, beat it!' },
+    { who: AYA, text: 'It just ate a bus shelter. An entire bus shelter. Why?' },
+    { who: KUROKI, text: 'Roughage.' },
+    { who: AYA, text: 'Look at the SIZE of those teeth. How is that even structurally possible?' },
+    { who: KUROSAWA, text: 'Jaw pressure is off my scale. Do not let it close on you.' },
+  ],
+  'MISSILE MAW': [
+    { who: AYA, text: 'It fires without aiming. It does not even LOOK. Who builds that?' },
+    { who: KUROKI, text: 'Someone who does not pay for the ammunition.' },
+    { who: AYA, text: 'Two more volleys inbound — Kuroki, MOVE!' },
+    { who: KUROSAWA, text: 'Fascinating reload cycle. Terrible for everyone underneath it.' },
+  ],
+  'VOLT SERPENT': [
+    { who: AYA, text: 'Yuck. That worm is far too slimy for my liking.' },
+    { who: KUROKI, text: 'You are describing it like a menu item.' },
+    { who: AYA, text: 'It is dripping on the ROAD, Kuroki! Someone has to clean that!' },
+    { who: AYA, text: 'It went under again — I hate it when it does that. I HATE it.' },
+  ],
+  'IRON COLOSSUS': [
+    { who: AYA, text: 'Every step it takes registers on the seismographs. Every single one.' },
+    { who: KUROKI, text: 'Big and slow. My favourite combination.' },
+    { who: AYA, text: 'It is slow until it is NOT. Stop standing in front of it!' },
+    { who: KUROSAWA, text: 'The plating is bolted. Bolted! Somebody assembled this by hand.' },
+  ],
+  'SKY REAVER': [
+    { who: AYA, text: 'It keeps circling my sector like it is choosing a table.' },
+    { who: KUROKI, text: 'Tell it the kitchen is closed.' },
+    { who: AYA, text: 'Incoming dive — pull up, PULL UP!' },
+    { who: AYA, text: 'I do not like things that watch you before they attack.' },
+  ],
+  'CRIMSON MANTIS': [
+    { who: AYA, text: 'Oh, I hate this one. Look at those arms. Look at them!' },
+    { who: KUROKI, text: 'You said that about the worm too.' },
+    { who: AYA, text: 'The worm was slimy! This one is POINTY! Different problems!' },
+    { who: KUROSAWA, text: 'Its reflexes exceed yours by a comfortable margin. Sorry.' },
+  ],
+  'MAGMA GOLEM': [
+    { who: AYA, text: 'It is melting the tram lines. The tram lines, Kuroki!' },
+    { who: KUROKI, text: 'I will buy the city new trams.' },
+    { who: AYA, text: 'With WHAT? You do not even do your paperwork!' },
+    { who: KUROSAWA, text: 'Surface temperature is absurd. Do not touch it. Obviously.' },
+  ],
+  'DEEP MAW': [
+    { who: AYA, text: 'I lost it on sensors again. I hate that. Keep moving, please keep moving.' },
+    { who: KUROKI, text: 'Relax. I can feel it coming.' },
+    { who: AYA, text: 'You CANNOT feel it coming, you are guessing!' },
+    { who: AYA, text: 'Tremors under the eastern blocks — it is surfacing, brace!' },
+  ],
+  'CINDER WYRM': [
+    { who: AYA, text: 'It is burning the market district. That is where I get my lunch!' },
+    { who: KUROKI, text: 'Priorities, Aya.' },
+    { who: AYA, text: 'THAT IS A PRIORITY!' },
+    { who: AYA, text: 'Fire crews cannot get within two blocks of it. Put it out. Please.' },
+  ],
+  'TIDE LEVIATHAN': [
+    { who: AYA, text: 'The whole bay is rising with it. It is dragging the sea inland.' },
+    { who: KUROSAWA, text: 'Displacement readings like nothing on record. This is the source.' },
+    { who: AYA, text: 'Kuroki, this is the one. Whatever you have left, use it now.' },
+    { who: KUROKI, text: 'I always have something left.' },
+  ],
+};

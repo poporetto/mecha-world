@@ -19,7 +19,7 @@ import { buildFallingChunk, FallingChunk, updateFallingChunk } from './fx/collap
 import { Explosions } from './fx/explosions';
 import { Sky } from './fx/sky';
 import { sfx } from './fx/sound';
-import { BARKS, CHAPTERS, ENDLESS_LINES, EPILOGUE, PROLOGUE } from './core/story';
+import { BARKS, CHAPTERS, ENDLESS_LINES, EPILOGUE, MONSTER_BARKS, PROLOGUE } from './core/story';
 import { Hud, WEAPONS, WeaponId } from './ui/hud';
 import { isTouchDevice, TouchControls } from './ui/touch';
 
@@ -101,6 +101,8 @@ export class Game {
   private lastBark = '';
   private idleChatterT = 30;
   private blocksWrecked = 0;
+  private monsterBarkT = 0;   // gap between remarks about the current kaiju
+  private monsterBarkFor = ''; // which kaiju those remarks are about
   private paused = false;
 
   private monster: Monster | null = null;
@@ -1051,6 +1053,15 @@ export class Game {
     this.hud.say([pool[Math.floor(Math.random() * pool.length)]]);
   }
 
+  /** One remark about the named kaiju, if we have any written for it. */
+  private sayAbout(name: string): void {
+    if (this.hud.busy || this.hud.cardOpen) return;
+    const pool = MONSTER_BARKS[name];
+    if (!pool || pool.length === 0) return;
+    this.hud.say([pool[Math.floor(Math.random() * pool.length)]]);
+    this.barkT = Math.max(this.barkT, 8); // don't stack with a generic bark
+  }
+
   /** Watch the fight and let Command comment on it. */
   private updateChatter(dt: number): void {
     this.barkT -= dt;
@@ -1065,6 +1076,19 @@ export class Game {
       if (this.monster.hp / this.monster.maxHp < 0.2) this.bark('bossHurt');
       const d = this.monster.group.position.distanceTo(this.player.pos);
       if (d > 320) this.bark('bossFar');
+
+      // Aya editorialising about whatever is currently wrecking her city
+      if (this.monster.name !== this.monsterBarkFor) {
+        this.monsterBarkFor = this.monster.name;
+        this.monsterBarkT = 12; // let the chapter briefing land first
+      }
+      this.monsterBarkT -= dt;
+      if (this.monsterBarkT <= 0) {
+        this.monsterBarkT = 20 + Math.random() * 14;
+        this.sayAbout(this.monster.name);
+      }
+    } else {
+      this.monsterBarkFor = '';
     }
 
     // Aya scolds early, then loses patience entirely if you keep wrecking.
@@ -1144,6 +1168,7 @@ export class Game {
     this.barkT = 0;
     this.lastBark = '';
     this.blocksWrecked = 0;
+    this.monsterBarkFor = '';
     this.hud.closeCard();
     this.hud.clearComms();
     this.campaignOver = false;
