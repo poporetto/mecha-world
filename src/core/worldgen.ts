@@ -29,6 +29,8 @@ interface Landmark {
   x: number;
   z: number;
   r: number; // half-size of cleared plaza square
+  /** Surface under the landmark. Defaults to paved plaza. */
+  ground?: (dx: number, dz: number) => number;
   build: (dx: number, dz: number, set: (y: number, id: number) => void) => void;
 }
 
@@ -176,23 +178,51 @@ function buildCastle(dx: number, dz: number, set: (y: number, id: number) => voi
   if (ax <= 1 && az <= 1) { set(y, B.Gold); set(y + 1, B.Gold); }
 }
 
-// Rainbow-bridge style suspension span with twin towers over the river.
+// Rainbow Bridge: white double-deck suspension span on twin portal towers,
+// with the coloured lighting strip that gives it its name.
 function buildBayBridge(dx: number, dz: number, set: (y: number, id: number) => void) {
-  const ax = Math.abs(dx);
-  // deck carried across the whole span
-  if (Math.abs(dz) <= 3) {
-    set(9, B.BridgeDeck);
-    if (Math.abs(dz) === 3) set(10, B.White); // railings
+  const ax = Math.abs(dx), az = Math.abs(dz);
+  const TOWER = 11;   // towers stand this far either side of centre
+  const TOP = 30;     // tower height
+  const UPPER = 15;   // expressway deck
+  const LOWER = 10;   // road + rail deck
+
+  // both decks run the full span
+  if (az <= 4) {
+    set(LOWER, B.BridgeDeck);
+    set(UPPER, B.BridgeDeck);
+    if (az === 4) {
+      set(LOWER + 1, B.White);
+      set(UPPER + 1, B.White);
+      // the rainbow strip along the outer edge
+      const band = mod(Math.floor((dx + 90) / 5), 3);
+      set(UPPER + 2, band === 0 ? B.NeonPink : band === 1 ? B.NeonCyan : B.Lantern);
+    }
   }
-  // two towers
-  if (ax === 8 && Math.abs(dz) <= 3) {
-    for (let y = 1; y <= 26; y++) set(y, B.White);
+
+  // portal towers: two legs joined by cross beams above the decks
+  if (ax === TOWER && az <= 4) {
+    for (let y = 1; y <= TOP; y++) set(y, B.White);
   }
-  // main cables sagging between the towers
-  if (Math.abs(dz) === 3 && ax <= 8) {
-    const sag = Math.round(26 - 12 * (1 - (ax / 8) * (ax / 8)));
-    set(sag, B.Red);
+  if (ax === TOWER && az <= 4 && (az === 4 || az === 0)) set(TOP, B.White);
+  if (ax === TOWER) {
+    // cross bracing between the legs
+    if (az <= 4 && (Math.abs(UPPER + 6 - 0) >= 0)) { set(UPPER + 6, B.White); set(TOP - 2, B.White); }
   }
+
+  // main cables sweeping between the towers and down to the anchorages
+  if (az === 4 && ax <= TOWER) {
+    const t = ax / TOWER;
+    set(Math.round(TOP - (TOP - UPPER - 3) * (1 - t * t)), B.Steel);
+  }
+  // hangers dropping from the cable to the upper deck
+  if (az === 4 && ax < TOWER && mod(dx, 3) === 0) {
+    const t = ax / TOWER;
+    const cable = Math.round(TOP - (TOP - UPPER - 3) * (1 - t * t));
+    for (let y = UPPER + 2; y < cable; y++) set(y, B.Steel);
+  }
+  // piers carrying the deck down to the water
+  if (az <= 3 && mod(dx, 9) === 0) for (let y = 1; y < LOWER; y++) set(y, B.WallGray);
 }
 
 // A pagoda perched on a levelled summit platform, reached by stone steps.
@@ -229,10 +259,137 @@ function buildSummitTemple(dx: number, dz: number, set: (y: number, id: number) 
   if ((dx === -8 || dx === 8) && az <= 1) { set(base + 1, B.Stone); set(base + 2, B.Lantern); }
 }
 
+// Shibuya scramble: a wide crossing with diagonal stripes, ringed by towers
+// wearing floor-to-roof screens and a curved glass department store.
+function buildShibuya(dx: number, dz: number, set: (y: number, id: number) => void) {
+  const ax = Math.abs(dx), az = Math.abs(dz);
+
+  // the crossing itself — straight bars plus the famous diagonals
+  if (ax <= 11 && az <= 11) {
+    const straight = (az <= 9 && mod(dx, 2) === 0 && ax > 5) || (ax <= 9 && mod(dz, 2) === 0 && az > 5);
+    const diagonal = Math.abs(ax - az) <= 1 && mod(dx + dz, 2) === 0;
+    set(0, straight || diagonal ? B.RoadLine : B.Road);
+    return;
+  }
+
+  // ring of screen towers around the junction
+  const block = ax > 12 && az > 12;
+  if (block) {
+    const lx = mod(dx + 100, 11), lz = mod(dz + 100, 11);
+    if (lx < 9 && lz < 9) {
+      const h = 20 + ((Math.abs(dx * 7 + dz * 3) % 5) * 6);
+      const face = lx === 0 || lz === 0 || lx === 8 || lz === 8;
+      for (let y = 1; y <= h; y++) {
+        if (!face) { set(y, B.WallGray); continue; }
+        // giant billboards on the lower storeys, windows above
+        if (y < 14) {
+          const band = Math.floor(y / 4);
+          set(y, band % 3 === 0 ? B.NeonPink : band % 3 === 1 ? B.NeonCyan : B.WindowLit);
+        } else {
+          set(y, y % 4 === 1 ? B.WallGray : B.Window);
+        }
+      }
+      set(h + 1, B.Roof);
+      // rooftop signage catching the light
+      if (lx === 4 && lz === 4) { set(h + 2, B.NeonPink); set(h + 3, B.NeonPink); }
+    }
+  }
+
+  // curved glass department store on one corner
+  const cx = dx + 15, cz = dz - 15;
+  const rr = Math.sqrt(cx * cx + cz * cz);
+  if (rr > 6 && rr < 8.5) {
+    for (let y = 1; y <= 26; y++) set(y, y % 5 === 0 ? B.White : B.Glass);
+    set(27, B.White);
+  }
+}
+
+// Senso-ji at Asakusa: the Kaminarimon gate with its great red lantern, the
+// Nakamise shopping street, the main hall, and the five-storey pagoda.
+function buildAsakusa(dx: number, dz: number, set: (y: number, id: number) => void) {
+  const ax = Math.abs(dx);
+
+  // Kaminarimon — the outer gate, at the south end of the approach
+  if (dz >= 15 && dz <= 17) {
+    if (ax === 6) for (let y = 1; y <= 11; y++) set(y, B.Red);
+    if (ax <= 7) { set(12, B.Red); set(13, B.TempleRoof); }
+    if (ax <= 8) set(14, B.TempleRoof);
+    // the lantern hanging in the middle of the gate
+    if (ax <= 2 && dz === 16) for (let y = 5; y <= 9; y++) set(y, ax <= 1 ? B.Red : B.Lantern);
+  }
+
+  // Nakamise-dori — a covered shopping lane running up to the temple
+  if (dz > -2 && dz < 15 && ax <= 5) {
+    set(0, B.Sidewalk);
+    if (ax === 5) {
+      for (let y = 1; y <= 4; y++) set(y, B.Wood);
+      set(5, B.TempleRoof);
+    }
+    // paper lanterns strung along the lane
+    if (ax === 4 && mod(dz, 3) === 0) set(4, B.Lantern);
+  }
+
+  // main hall on a raised stone platform
+  if (ax <= 10 && dz >= -12 && dz <= -3) {
+    set(1, B.Sidewalk);
+    set(2, B.Wood);
+    const wall = ax === 10 || dz === -12 || dz === -3;
+    for (let y = 3; y <= 9; y++) set(y, wall ? B.Red : B.White);
+    set(10, B.TempleRoof);
+    if (ax <= 9 && dz >= -11 && dz <= -4) set(11, B.TempleRoof);
+    if (ax <= 6 && dz >= -9 && dz <= -6) set(12, B.TempleRoof);
+    if (ax <= 1 && dz >= -9 && dz <= -6) set(13, B.Gold);
+  }
+
+  // five-storey pagoda off to one side
+  const px = dx + 14, pz = dz + 4;
+  const pax = Math.abs(px), paz = Math.abs(pz);
+  if (pax <= 6 && paz <= 6) {
+    let y = 1;
+    for (let t = 0; t < 5; t++) {
+      const body = 3.4 - t * 0.4;
+      for (let by = 0; by < 3; by++) {
+        if (pax <= body && paz <= body) set(y + by, (pax >= body - 1 || paz >= body - 1) ? B.Red : B.White);
+      }
+      y += 3;
+      const eave = body + 1.6;
+      if (pax <= eave && paz <= eave) set(y, B.TempleRoof);
+      y += 1;
+    }
+    if (pax === 0 && paz === 0) for (let i = 0; i < 5; i++) set(y + i, B.Gold);
+  }
+}
+
+// Tokyo Station: long red-brick facade with domed pavilions at each end.
+function buildStation(dx: number, dz: number, set: (y: number, id: number) => void) {
+  const ax = Math.abs(dx), az = Math.abs(dz);
+  if (ax <= 20 && az <= 6) {
+    const wall = az === 6 || ax === 20;
+    for (let y = 1; y <= 9; y++) {
+      // brick with pale stone banding and arched windows
+      const band = y === 4 || y === 8;
+      set(y, band ? B.White : (wall && mod(dx + y, 3) === 0 ? B.Window : B.WallBrick));
+    }
+    set(10, B.Roof);
+  }
+  // domed pavilions at both ends and over the centre
+  for (const cx of [-14, 0, 14]) {
+    const ox = dx - cx;
+    const d = Math.sqrt(ox * ox + dz * dz);
+    const big = cx === 0;
+    const rad = big ? 7 : 5.5;
+    if (d <= rad) {
+      const dome = Math.round(Math.sqrt(Math.max(0, rad * rad - d * d)));
+      for (let y = 10; y <= 10 + dome; y++) set(y, y === 10 + dome ? B.Roof : B.WallBrick);
+      if (d < 1) set(11 + dome, B.Gold);
+    }
+  }
+}
+
 export const LANDMARKS: Landmark[] = [
   { x: 55, z: -45, r: 17, build: buildTower },
   { x: -70, z: -100, r: 15, build: buildSpire },
-  { x: 6, z: 58, r: 16, build: buildTorii },
+  { x: 6, z: 58, r: 16, build: buildTorii, ground: (_dx, dz) => (Math.abs(dz) <= 1 ? B.Sand : B.Grass) },
   { x: -40, z: 70, r: 13, build: buildTemple },
   { x: 96, z: 74, r: 14, build: buildShrine },
   { x: -128, z: 24, r: 16, build: buildCastle },
@@ -240,6 +397,11 @@ export const LANDMARKS: Landmark[] = [
   { x: -152, z: -128, r: 13, build: buildTemple },
   { x: 150, z: 40, r: 14, build: buildShrine },
   { x: -352, z: -46, r: 15, build: buildSummitTemple },
+  // iconic Tokyo, scattered across the districts
+  { x: -96, z: -34, r: 24, build: buildShibuya, ground: () => B.Road },
+  { x: 132, z: 118, r: 22, build: buildAsakusa, ground: () => B.Plaza },
+  { x: -14, z: -118, r: 23, build: buildStation },
+  { x: -190, z: 196, r: 26, build: buildBayBridge, ground: () => B.Water },
 ];
 
 // ------------------------------------------------------------- column logic
@@ -539,9 +701,9 @@ export function generateChunkData(cx: number, cz: number): Uint8Array {
         }
         case ColKind.Landmark: {
           const lm = info.lm!;
-          const nearTorii = lm === LANDMARKS[2];
-          setY(0, nearTorii ? (Math.abs(z - lm.z) <= 1 ? B.Sand : B.Grass) : B.Plaza);
-          lm.build(x - lm.x, z - lm.z, setY);
+          const dx = x - lm.x, dz = z - lm.z;
+          setY(0, lm.ground ? lm.ground(dx, dz) : B.Plaza);
+          lm.build(dx, dz, setY);
           break;
         }
         case ColKind.Park: {

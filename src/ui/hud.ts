@@ -96,6 +96,24 @@ export class Hud {
                       min-height:2.6em; }
         .comms-next { position:absolute; right:14px; bottom:8px; color:#7fdcff99;
                       font-size:10px; letter-spacing:2px; }
+        /* On touch the bottom of the screen belongs to the joystick and the
+           action buttons, so radio traffic moves up under the objective bar
+           and stops short of the radar rather than hiding behind controls. */
+        .tc-on .comms { left:10px; right:158px; bottom:auto; top:104px;
+                        width:auto; transform:none; padding:10px 14px 12px; }
+        .tc-on .comms-avatar { width:52px; height:52px; flex-basis:52px; }
+        .tc-on .comms-text { font-size:13px; min-height:2.2em; }
+        .tc-on .comms-who { font-size:9.5px; letter-spacing:2px; }
+        .tc-on .comms-next { display:none; }
+        /* touch already has its own WEAPON button on the pad — the desktop
+           dial would only collide with the radar */
+        .tc-on .wbtn { display:none !important; }
+        /* keep the objective compact so it clears the radar and the comms */
+        .tc-on .obj { top:56px; font-size:10px; letter-spacing:1.5px; padding:4px 12px;
+                      max-width:62vw; overflow:hidden; text-overflow:ellipsis; }
+        /* a smaller dial on touch, so dialogue has room beside it */
+        .tc-on .minimap { width:132px; height:132px; right:12px; top:100px; }
+        .tc-on .mm-label { font-size:8px; bottom:2px; }
         @media (max-width:600px) { .comms { width:calc(100vw - 30px); bottom:96px; padding:9px 12px 12px; }
           .comms-avatar { width:44px; height:44px; flex-basis:44px; } .comms-text { font-size:13px; }
           .comms-who { font-size:9px; letter-spacing:2px; } }
@@ -490,7 +508,10 @@ export class Hud {
     range: number,
   ): void {
     const map = document.getElementById('minimap')!;
-    const R = 78; // usable radius in px
+    // the dial shrinks on touch, so derive the geometry from its real size
+    const size = map.clientWidth || 168;
+    const C = size / 2;
+    const R = size * 0.46; // usable radius in px
     // reuse blip elements so we are not churning DOM every frame
     while (this.blips.length < contacts.length) {
       const el = document.createElement('div');
@@ -505,8 +526,8 @@ export class Hud {
       // clamp far contacts to the rim so they still show a bearing
       const d = Math.hypot(c.dx, c.dz);
       const k = d > range ? range / d : 1;
-      const px = 84 + (c.dx / range) * R * k;
-      const py = 84 + (c.dz / range) * R * k;
+      const px = C + (c.dx / range) * R * k;
+      const py = C + (c.dz / range) * R * k;
       const boss = c.kind === 'boss';
       const size = boss ? 13 : c.kind === 'pickup' ? 7 : 8;
       el.style.display = 'block';
@@ -526,8 +547,8 @@ export class Hud {
     for (const [id, offset] of marks) {
       const ang = camYaw + offset;
       const el = document.getElementById(id) as HTMLElement;
-      el.style.left = (84 + Math.sin(ang) * 70) + 'px';
-      el.style.top = (84 - Math.cos(ang) * 70) + 'px';
+      el.style.left = (C + Math.sin(ang) * (C * 0.83)) + 'px';
+      el.style.top = (C - Math.cos(ang) * (C * 0.83)) + 'px';
     }
   }
 
