@@ -14,14 +14,16 @@ import { Plane, PlaneManager } from './entities/planes';
 import { DroneManager } from './entities/drones';
 import { TrafficManager } from './entities/traffic';
 import { Ally } from './entities/ally';
+import { Tank } from './entities/tank';
 import { Shelter, ShelterManager } from './entities/shelters';
+import { EvacueeManager } from './entities/evacuees';
 import { RepairManager } from './core/repair';
 import { Debris } from './fx/debris';
 import { buildFallingChunk, FallingChunk, updateFallingChunk } from './fx/collapse';
 import { Explosions } from './fx/explosions';
 import { Sky } from './fx/sky';
 import { sfx } from './fx/sound';
-import { BARKS, CHAPTERS, ENDLESS_LINES, EPILOGUE, HINATA_CHAPTER, LATE_MEMORIES, MEMORIES, MONSTER_BARKS, PROLOGUE } from './core/story';
+import { AYA_HINATA, BARKS, CHAPTERS, ENDLESS_LINES, EPILOGUE, HINATA_CHAPTER, KOTETSU_BARKS, LATE_MEMORIES, MEMORIES, MONSTER_BARKS, PROLOGUE } from './core/story';
 import { Hud, RadarKind, WEAPONS, WeaponId } from './ui/hud';
 import { isTouchDevice, TouchControls } from './ui/touch';
 
@@ -29,7 +31,7 @@ interface Projectile {
   pos: THREE.Vector3;
   vel: THREE.Vector3;
   life: number;
-  kind: 'laser' | 'rocket' | 'boulder' | 'missile' | 'charge' | 'ally';
+  kind: 'laser' | 'rocket' | 'boulder' | 'missile' | 'charge' | 'ally' | 'shell';
   mesh: THREE.Mesh;
   dmg?: number; // override damage / blast radius for player weapons
 }
@@ -50,8 +52,13 @@ export class Game {
   private drones = new DroneManager();
   private traffic = new TrafficManager();
   private ally = new Ally();
+  private tank = new Tank();
   private shelters!: ShelterManager;
+  private evacuees!: EvacueeManager;
   private lateMemoryIdx = 0;
+  private ayaHinataIdx = 0;
+  private kotetsuCursor = new Map<string, number>();
+  private mechanicT = 40;
   private ridingPlane: Plane | null = null;
   private hud = new Hud();
   private touch: TouchControls | null = null;
@@ -105,6 +112,7 @@ export class Game {
   // reactive radio chatter, rate-limited so Command never talks over itself
   private barkT = 0;
   private lastBark = '';
+  private barkCursor = new Map<string, number>();
   private idleChatterT = 30;
   private blocksWrecked = 0;
   private monsterBarkT = 0;   // gap between remarks about the current kaiju
@@ -163,8 +171,10 @@ export class Game {
     this.repair = new RepairManager(this.world);
     this.shelters = new ShelterManager((x, z) => this.world.groundHeight(x, z, 60));
     this.scene.add(this.shelters.group);
+    this.evacuees = new EvacueeManager(this.shelters.shelters.length);
+    this.scene.add(this.evacuees.group);
     this.scene.add(this.npcs.group, this.cars.group, this.debris.mesh, this.explosions.group, this.fire.group);
-    this.scene.add(this.planes.group, this.drones.group, this.traffic.group, this.ally.group);
+    this.scene.add(this.planes.group, this.drones.group, this.traffic.group, this.ally.group, this.tank.group);
 
 
     // beam (unlockable): a long emissive box scaled to hit distance
@@ -804,6 +814,14 @@ export class Game {
       this.chunks.markDirty(res.dirty);
       this.repair.noteDamage(res.dirty, this.time);
       this.blocksWrecked += res.count;
+      // wrecking a block turns it into people who need somewhere to go
+      if (res.count > 12) {
+        this.evacuees.displace(
+          p, res.count / 26,
+          this.shelters.shelters.map((s) => s.pos),
+          this.world,
+        );
+      }
       this.debris.burst(p, res.ids, Math.min(26, 6 + res.count / 3));
       if (res.count > 4) this.explosions.boom(p, Math.min(9, 2 + r));
       // explosion loudness falls off with distance from the player
@@ -993,7 +1011,67 @@ export class Game {
     });
   }
 
-  /** A shell from KOTETSU's shoulder cannon — hers, not the player's. */
+  /** Kotetsu trundling along behind, missing a lot. */
+  private updateTank(dt: number): void {
+    if (!this.tank.active) return;
+    let target: THREE.Vector3 | null = null;
+    let best = 230;
+    if (this.monster && !this.monster.dying) {
+      const d = this.monster.group.position.distanceTo(this.tank.group.position);
+      if (d < best) { best = d; target = this.monster.group.position.clone().setY(this.monster.group.position.y + 14); }
+    }
+    for (const d of this.drones.group.children) {
+      const dist = d.position.distanceTo(this.tank.group.position);
+      if (dist < best) { best = dist; target = d.position.clone(); }
+    }
+    this.tank.update(dt, this.time, {
+      world: this.world,
+      playerPos: this.player.pos,
+      target,
+      fire: (from, toward) => this.tankShell(from, toward),
+    });
+  }
+
+  /**
+   * A shell from KUROGANE. Heavy, slow, and thrown off aim on purpose —
+   * Kotetsu is a mechanic who was handed a gun, and the misses are half the
+   * reason Aya spends the campaign shouting.
+   */
+  private tankShell(from: THREE.Vector3, toward: THREE.Vector3): void {
+    const dir = toward.clone().sub(from).normalize();
+    // scatter the shot: he really cannot shoot
+    const a = (Math.random() - 0.5) * this.tank.spread * 2;
+    const b = (Math.random() - 0.5) * this.tank.spread;
+    const cos = Math.cos(a), sin = Math.sin(a);
+    dir.set(dir.x * cos - dir.z * sin, dir.y + b, dir.x * sin + dir.z * cos).normalize();
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(0.7, 0.7, 2.0),
+      new THREE.MeshBasicMaterial({ color: 0xffe08a })
+    );
+    mesh.position.copy(from);
+    mesh.lookAt(from.clone().add(dir));
+    this.scene.add(mesh);
+    this.projectiles.push({
+      pos: from.clone(), vel: dir.multiplyScalar(54), life: 4,
+      kind: 'shell', mesh, dmg: 34,
+    });
+    sfx.explode(0.45, 1 - Math.min(1, from.distanceTo(this.player.pos) / 140));
+    // he knows. everyone knows.
+    if (Math.random() < 0.3) this.sayKotetsu('missed');
+  }
+
+  /** One of Kotetsu's lines, cycled so they do not repeat. */
+  private sayKotetsu(key: string): void {
+    if (!this.started || this.hud.busy || this.hud.cardOpen || this.barkT > 0) return;
+    const pool = KOTETSU_BARKS[key];
+    if (!pool || pool.length === 0) return;
+    const at = this.kotetsuCursor.get(key) ?? 0;
+    this.kotetsuCursor.set(key, (at + 1) % pool.length);
+    this.barkT = 14;
+    this.hud.say([pool[at]]);
+  }
+
+  /** A shell from TSUBAKI's shoulder cannon — hers, not the player's. */
   private allyShot(from: THREE.Vector3, toward: THREE.Vector3): void {
     const dir = toward.clone().sub(from).normalize();
     const mesh = new THREE.Mesh(
@@ -1118,7 +1196,11 @@ export class Game {
     this.barkT = urgent ? 9 : 16;
     this.lastBark = key;
     this.idleChatterT = 34;
-    this.hud.say([pool[Math.floor(Math.random() * pool.length)]]);
+    // walk each pool in order rather than sampling, so a player never hears
+    // the same line twice in a row out of a pool this large
+    const at = this.barkCursor.get(key) ?? Math.floor(Math.random() * pool.length);
+    this.barkCursor.set(key, (at + 1) % pool.length);
+    this.hud.say([pool[at]]);
   }
 
   /** One remark about the named kaiju, if we have any written for it. */
@@ -1174,7 +1256,11 @@ export class Game {
     // Only once the fighting has actually stopped, so it never lands mid-brawl.
     if (this.idleChatterT <= 0 && !this.monster && this.drones.count === 0) {
       this.idleChatterT = 45;
-      if (this.memoryIdx < MEMORIES.length && !this.hud.busy && !this.hud.cardOpen) {
+      if (this.ally.active && this.ayaHinataIdx < AYA_HINATA.length
+          && this.memoryIdx % 2 === 1 && !this.hud.busy && !this.hud.cardOpen) {
+        this.hud.say(AYA_HINATA[this.ayaHinataIdx++]);
+        this.barkT = 20;
+      } else if (this.memoryIdx < MEMORIES.length && !this.hud.busy && !this.hud.cardOpen) {
         this.hud.say(MEMORIES[this.memoryIdx++]);
         this.barkT = 20; // give the scene room to breathe
       } else {
@@ -1185,27 +1271,40 @@ export class Game {
 
   /** Aya calls it out the moment something settles on a ward. */
   private warnShelters(): void {
-    const s = this.shelters.anyUnderAttack;
-    if (!s) return;
-    this.hud.setObjective('DEFEND ' + s.name + ' — ' + Math.round(s.hp) + '%');
-    this.bark(s.hp < 40 ? 'shelterCritical' : 'shelterAttacked', s.hp < 40);
+    const hit = this.shelters.anyUnderAttack;
+    if (hit) {
+      this.hud.setObjective('DEFEND ' + hit.name + ' — ' + Math.round(hit.hp) + '%');
+      this.bark(hit.hp < 40 ? 'shelterCritical' : 'shelterAttacked', hit.hp < 40);
+      return;
+    }
+    // otherwise keep an eye on how full the wards are getting
+    const full = this.shelters.fullest;
+    const load = full.people / full.capacity;
+    if (load > 0.6) {
+      this.hud.setObjective(
+        full.name + ' — ' + Math.round(full.people) + '/' + Math.round(full.capacity) + ' SHELTERED'
+      );
+      if (load > 0.8) this.bark('shelterFilling', load > 0.92);
+    }
   }
 
-  /** A shelter has fallen. The run is over. */
-  private endRun(s: Shelter): void {
+  /** A ward is lost — either flattened or swamped. Either way the run ends. */
+  private endRun(s: Shelter, cause: 'destroyed' | 'overfull'): void {
     this.gameOver = true;
     this.slowmo = 1.6;
     this.shake = 1.6;
     sfx.explode(1, 1);
     // drop whatever was queued — nothing matters now except this
     this.hud.clearComms();
-    this.hud.say(BARKS.shelterLost);
-    void this.hud.showCard(
-      'THE LINE BROKE',
-      s.name + ' IS GONE',
-      'The shelter could not hold.<br/><br/>' +
-      `Score <b>${this.score.toLocaleString()}</b> · Wave <b>${this.wave}</b><br/><br/>` +
-      'Neo Tokyo needed you somewhere else.'
+    this.hud.say(cause === 'destroyed' ? BARKS.shelterLost : BARKS.shelterOverfull);
+    const stats = `Score <b>${this.score.toLocaleString()}</b> · Wave <b>${this.wave}</b>`;
+    void this.hud.showGameOver(
+      cause === 'destroyed' ? 'THE LINE BROKE' : 'NO ROOM LEFT',
+      cause === 'destroyed' ? s.name + ' IS GONE' : s.name + ' IS OVERWHELMED',
+      cause === 'destroyed'
+        ? `The shelter could not hold.<br/><br/>${stats}<br/><br/>Neo Tokyo needed you somewhere else.`
+        : `Too many people, too little city left standing.<br/>` +
+          `They had nowhere to put them.<br/><br/>${stats}`
     ).then(() => this.restart());
   }
 
@@ -1271,12 +1370,17 @@ export class Game {
 
     this.barkT = 0;
     this.lastBark = '';
+    this.barkCursor.clear();
     this.blocksWrecked = 0;
     this.monsterBarkFor = '';
     this.memoryIdx = 0;
     this.lateMemoryIdx = 0;
+    this.ayaHinataIdx = 0;
+    this.kotetsuCursor.clear();
     this.ally.retire();
+    this.tank.retire();
     this.shelters.reset();
+    this.evacuees.reset();
     this.gameOver = false;
     this.hud.closeCard();
     this.hud.clearComms();
@@ -1430,6 +1534,13 @@ export class Game {
         at.x -= 14;
         at.z += 10;
         this.ally.deploy(at);
+      }
+      // Kotetsu turns up a chapter later, having overslept
+      if (chapterNo >= HINATA_CHAPTER + 1 && !this.tank.active) {
+        const at = this.player.pos.clone();
+        at.x += 22;
+        at.z += 18;
+        this.tank.deploy(at);
       }
       const ch = CHAPTERS[chapterNo];
       // title card first, then Command talks you through the contact
@@ -1664,10 +1775,21 @@ export class Game {
     const bossPos = this.monster && !this.monster.dying ? this.monster.group.position : null;
     const fallen = this.shelters.update(dt, this.time, bossPos, dronePos);
     this.shelters.mend(dt);
-    if (fallen && !this.gameOver) this.endRun(fallen);
+    // Kotetsu extends the wards while he is out there — he is a mechanic
+    // first, and it is the only thing keeping capacity ahead of the rubble
+    if (this.tank.active) {
+      this.shelters.expand(dt);
+      this.mechanicT -= dt;
+      if (this.mechanicT <= 0) { this.mechanicT = 55; this.sayKotetsu('mechanic'); }
+    }
+    const reached = this.evacuees.update(dt, this.time, this.world);
+    const burst = this.shelters.admit(reached);
+    if (fallen && !this.gameOver) this.endRun(fallen, 'destroyed');
+    else if (burst && !this.gameOver) this.endRun(burst, 'overfull');
     this.warnShelters();
 
     this.updateAlly(dt);
+    this.updateTank(dt);
     this.drones.update(dt, this.time, {
       world: this.world,
       playerPos: this.player.pos,
@@ -1740,7 +1862,7 @@ export class Game {
   private updateProjectiles(dt: number): void {
     // friendly ordnance — the player's own plus KOTETSU's covering fire
     const playerShot = (k: Projectile['kind']) =>
-      k === 'laser' || k === 'missile' || k === 'charge' || k === 'ally';
+      k === 'laser' || k === 'missile' || k === 'charge' || k === 'ally' || k === 'shell';
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const p = this.projectiles[i];
       p.life -= dt;
@@ -1776,7 +1898,9 @@ export class Game {
         this.damagePlayer(p.kind === 'boulder' ? 22 : 16);
       }
       if (boom) {
-        const r = p.kind === 'charge' ? 4.5 : p.kind === 'laser' ? 2.4 : p.kind === 'missile' ? 3 : p.kind === 'boulder' ? 5 : 3.6;
+        const r = p.kind === 'shell' ? 7   // his misses take out whole frontages
+          : p.kind === 'charge' ? 4.5 : p.kind === 'laser' ? 2.4
+          : p.kind === 'missile' ? 3 : p.kind === 'boulder' ? 5 : 3.6;
         this.destroyAt(p.pos, r, 0.2);
       }
       if (boom || p.life <= 0) {

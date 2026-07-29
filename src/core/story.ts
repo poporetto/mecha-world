@@ -125,6 +125,12 @@ export const CHAPTERS: Chapter[] = [
       { who: KUROSAWA, text: 'It has been mapping us. Flight paths in a perfect survey grid.' },
       { who: AYA, text: 'It is scouting. Something is using it to look at our city.' },
       { who: KUROKI, text: 'Then let us give it something to look at.' },
+      { who: KOTETSU, text: '…Morning, everyone.' },
+      { who: AYA, text: 'MORNING? Kotetsu, you were due out FOUR HOURS AGO!' },
+      { who: KOTETSU, text: 'I overslept. In my defence I was up all night finishing his suit.' },
+      { who: HINATA, text: 'Kotetsu! You made it! Everyone, this is Kotetsu, he fixes everything!' },
+      { who: KOTETSU, text: 'I am a mechanic. They put me in a tank. I want that on the record.' },
+      { who: AYA, text: 'It is on the record. Get moving.' },
     ],
     debrief: [
       { who: KUROSAWA, text: 'Its spine houses a rail accelerator. That is yours now.' },
@@ -273,6 +279,22 @@ export const BARKS: Record<string, Line[]> = {
     { who: AYA, text: 'We are DEFENDING Neo Tokyo. Defending! Say it with me!' },
     { who: KUROKI, text: 'It was in my way.' },
     { who: AYA, text: 'Everything is in your way!' },
+    { who: AYA, text: 'Those were HOMES, Kuroki. People lived in those.' },
+    { who: AYA, text: 'Every block you drop is another hundred people at a ward door!' },
+    { who: AYA, text: 'The wards are filling up because of YOU, not the kaiju!' },
+    { who: AYA, text: 'Stop. Just— stop swinging at things that are not the target!' },
+    { who: AYA, text: 'That was a school! Tell me you did not just hit a school!' },
+    { who: KUROKI, text: 'It was empty. They evacuated it on day one.' },
+    { who: AYA, text: 'That is not the POINT and you know it is not the point!' },
+    { who: AYA, text: 'I am watching the damage bill climb in real time.' },
+    { who: AYA, text: 'You have cost this city more than the last three kaiju combined.' },
+    { who: HINATA, text: 'Senpai, maybe fight it in the park? There is a park right there!' },
+    { who: KUROKI, text: 'The park is full of trees.' },
+    { who: HINATA, text: 'Trees grow BACK!' },
+    { who: KOTETSU, text: 'Every building you drop is another week of my life. Just so you know.' },
+    { who: AYA, text: 'Kuroki, I have the reconstruction office on the other line and they are CRYING.' },
+    { who: AYA, text: 'One district. Give me ONE district you have not touched.' },
+    { who: KUROKI, text: '…I will get back to you on that.' },
   ],
   heavyDestruction: [
     { who: AYA, text: 'You are levelling the district faster than the kaiju is!' },
@@ -364,6 +386,18 @@ export const BARKS: Record<string, Line[]> = {
     { who: AYA, text: 'The shelter is caving in! KUROKI!' },
     { who: AYA, text: 'They cannot evacuate in time — you are the evacuation!' },
     { who: HINATA, text: 'It is going to break! SENPAI!' },
+  ],
+  shelterFilling: [
+    { who: AYA, text: 'The wards are filling up fast. Where do you think these people are coming from?' },
+    { who: KOTETSU, text: 'I am extending the frames as fast as I can weld.' },
+    { who: AYA, text: 'Weld faster. Kuroki, STOP KNOCKING THINGS DOWN.' },
+    { who: HINATA, text: 'There is a queue at the east ward door. A real queue.' },
+    { who: AYA, text: 'If a ward overflows we have nowhere to put them. Nowhere, Kuroki.' },
+  ],
+  shelterOverfull: [
+    { who: AYA, text: '…They could not get in. There was no room left.' },
+    { who: KOTETSU, text: 'I ran out of ward to build. I am sorry. I ran out.' },
+    { who: KUROKI, text: 'That one is on me. All of it is on me.' },
   ],
   shelterLost: [
     { who: AYA, text: '…The ward is gone. Kuroki. It is gone.' },
@@ -543,5 +577,75 @@ export const LATE_MEMORIES: Line[][] = [
     { who: HINATA, text: 'I know he followed it because he trusted you. Those are different sentences.' },
     { who: KUROKI, text: '…' },
     { who: HINATA, text: 'I am going to keep following them too, by the way. Just so you know.' },
+  ],
+];
+
+// ------------------------------------------------------------ the mechanic
+// Kotetsu is not a pilot. He built half the hardware in this campaign and
+// Command handed him a gun platform because there was nothing else left.
+
+export const KOTETSU_BARKS: Record<string, Line[]> = {
+  arrival: [
+    { who: KOTETSU, text: 'KUROGANE rolling. Slowly. Everything about this is slow.' },
+  ],
+  missed: [
+    { who: KOTETSU, text: '…That was close. To something. Not the target.' },
+    { who: AYA, text: 'That was a BANK, Kotetsu!' },
+    { who: KOTETSU, text: 'The bank was between me and the kaiju. Physics.' },
+    { who: KOTETSU, text: 'In fairness nobody asked whether I could aim.' },
+    { who: AYA, text: 'I ASSUMED, Kotetsu! I assumed!' },
+    { who: HINATA, text: 'Kotetsu that was my side! That was MY side!' },
+    { who: KOTETSU, text: 'Noted. Adjusting. Probably.' },
+  ],
+  hit: [
+    { who: KOTETSU, text: 'Oh! That one connected. Nobody make a fuss.' },
+    { who: HINATA, text: 'THAT WAS AMAZING! Do it again!' },
+    { who: KOTETSU, text: 'I would rather not press my luck.' },
+  ],
+  mechanic: [
+    { who: KOTETSU, text: 'Reinforcing the east ward while you two argue. Do carry on.' },
+    { who: KOTETSU, text: 'I have extended the ward frames. They will hold more people now.' },
+    { who: AYA, text: 'How much more?' },
+    { who: KOTETSU, text: 'More than yesterday. Less than you would like.' },
+    { who: KOTETSU, text: 'If you all stopped flattening buildings I would have less to do.' },
+  ],
+};
+
+// -------------------------------------------------------- Aya and Hinata
+// They get on. Aya is warmer with Hinata than with anyone, which Kuroki has
+// definitely noticed and will definitely not mention.
+
+export const AYA_HINATA: Line[][] = [
+  [
+    { who: HINATA, text: 'Aya, can I ask you something? About senpai.' },
+    { who: AYA, text: 'You can ask. He will not answer, but you can ask.' },
+    { who: HINATA, text: 'Does he ever sleep?' },
+    { who: AYA, text: 'No. I have three years of logs proving it.' },
+  ],
+  [
+    { who: AYA, text: 'Hinata. Your shield took forty percent that pass. Are you all right?' },
+    { who: HINATA, text: 'Totally fine! That is what it is for!' },
+    { who: AYA, text: 'That is what he says. I do not like hearing it from you as well.' },
+    { who: HINATA, text: '…Sorry, Aya.' },
+    { who: AYA, text: 'Do not be sorry. Just be careful. One of you is enough.' },
+  ],
+  [
+    { who: HINATA, text: 'You shout at him a lot.' },
+    { who: AYA, text: 'He earns it a lot.' },
+    { who: HINATA, text: 'You do not shout at me.' },
+    { who: AYA, text: '…You listen the first time.' },
+  ],
+  [
+    { who: HINATA, text: 'Aya, when this is over, can I buy you lunch?' },
+    { who: AYA, text: 'Only if it is not in the market district. He levelled it.' },
+    { who: KUROKI, text: 'That was the kaiju.' },
+    { who: AYA, text: 'That was HALF the kaiju!' },
+  ],
+  [
+    { who: AYA, text: 'You are good at this, Hinata. I do not say that often.' },
+    { who: HINATA, text: 'You do not say it EVER, Aya!' },
+    { who: AYA, text: 'Then treasure it.' },
+    { who: KOTETSU, text: 'She has never said it to me.' },
+    { who: AYA, text: 'You overslept.' },
   ],
 ];

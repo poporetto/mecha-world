@@ -1,18 +1,29 @@
-// KOTETSU — Hinata's support unit. Deliberately the opposite of the hero
-// suit: short, wide and heavy where that one is tall and lean. Big shoulders,
-// stubby legs, a slab shield on one arm and a shoulder cannon on the other.
+// Support frames that fight alongside the player. Deliberately the opposite
+// of the hero suit: short, wide and heavy where that one is tall and lean.
+// Big shoulders, stubby legs, a slab shield on one arm, shoulder cannon on
+// the other.
 //
-// It tags along near the player, plants itself when something is in range and
-// puts fire on it. It cannot die; it is company, not a second health bar.
+// Hinata's TSUBAKI is the one of these. It takes a palette so other frames
+// can reuse the chassis later. It tags along near the player, plants itself
+// when something is in range and puts fire on it. It cannot die; it is
+// company, not an extra health bar.
 
 import * as THREE from 'three';
 import { World } from '../core/world';
 
-const ORANGE = 0xf0a23c;
-const CREAM = 0xf6efe0;
-const STEEL = 0x8d949f;
+export interface AllyPalette {
+  main: number;  // shoulders, shins, skirt
+  trim: number;  // chest shells, head
+  metal: number;
+  glass: number;
+}
+
+/** Hinata's frame: bright red, loud and eager like its pilot. */
+export const TSUBAKI: AllyPalette = {
+  main: 0xe0403c, trim: 0xf6efe0, metal: 0x8d949f, glass: 0x7fd8e8,
+};
+
 const DARK = 0x2f333b;
-const GLASS = 0x7fd8e8;
 
 function box(w: number, h: number, d: number, color: number, emissive = 0): THREE.Mesh {
   return new THREE.Mesh(
@@ -40,7 +51,8 @@ export class Ally {
   private fireT = 2;
   private bob = 0;
 
-  constructor() {
+  constructor(private pal: AllyPalette = TSUBAKI) {
+    const ORANGE = pal.main, CREAM = pal.trim, STEEL = pal.metal, GLASS = pal.glass;
     const g = this.group;
     g.scale.setScalar(2.0);
 
@@ -115,6 +127,7 @@ export class Ally {
   }
 
   private makeLeg(x: number): THREE.Group {
+    const CREAM = this.pal.trim, ORANGE = this.pal.main, STEEL = this.pal.metal;
     const leg = new THREE.Group();
     leg.position.set(x, 1.3, 0);
     const thigh = box(0.66, 0.6, 0.72, CREAM);
@@ -127,7 +140,7 @@ export class Ally {
     return leg;
   }
 
-  /** Bring KOTETSU into the fight beside the player. */
+  /** Bring the frame into the fight beside the player. */
   deploy(at: THREE.Vector3): void {
     this.active = true;
     this.group.visible = true;

@@ -20,7 +20,12 @@ export interface Shelter {
   /** true while something hostile is close enough to be hurting it */
   underAttack: boolean;
   ring: THREE.Mesh;
+  /** How many people are inside, and how many it can hold. */
+  people: number;
+  capacity: number;
 }
+
+const BASE_CAPACITY = 120;
 
 export class ShelterManager {
   group = new THREE.Group();
@@ -48,6 +53,8 @@ export class ShelterManager {
         hp: MAX_HP,
         underAttack: false,
         ring,
+        people: 0,
+        capacity: BASE_CAPACITY,
       });
     }
   }
@@ -59,6 +66,35 @@ export class ShelterManager {
 
   get anyUnderAttack(): Shelter | null {
     return this.shelters.find((s) => s.underAttack) ?? null;
+  }
+
+  /** The ward closest to bursting, for the HUD. */
+  get fullest(): Shelter {
+    return this.shelters.reduce((a, b) =>
+      a.people / a.capacity >= b.people / b.capacity ? a : b);
+  }
+
+  /** Take in evacuees. Returns a shelter if one has just overflowed. */
+  admit(counts: number[]): Shelter | null {
+    let burst: Shelter | null = null;
+    for (let i = 0; i < counts.length && i < this.shelters.length; i++) {
+      if (counts[i] <= 0) continue;
+      const s = this.shelters[i];
+      s.people += counts[i];
+      if (s.people > s.capacity && !burst) burst = s;
+    }
+    return burst;
+  }
+
+  /**
+   * Kotetsu is a mechanic before he is a gunner. While he is deployed he
+   * quietly extends the wards, which is the only thing keeping the population
+   * ahead of the demolition.
+   */
+  expand(dt: number): void {
+    for (const s of this.shelters) {
+      if (s.hp > 0) s.capacity += dt * 3.2;
+    }
   }
 
   /**
@@ -114,6 +150,8 @@ export class ShelterManager {
     for (const s of this.shelters) {
       s.hp = MAX_HP;
       s.underAttack = false;
+      s.people = 0;
+      s.capacity = BASE_CAPACITY;
     }
   }
 }

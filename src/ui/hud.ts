@@ -126,6 +126,18 @@ export class Hud {
                 pointer-events:auto; z-index:40; text-align:center; padding:0 8vw; }
         .card.show { display:flex; }
         .card .ch { color:#39e6e0; font-size:13px; letter-spacing:8px; margin-bottom:10px; }
+        /* a loss should not read like a chapter break */
+        .card.over { background:#120608; }
+        .card.over .ch { color:#ff6b7f; }
+        .card.over h1 { color:#ffd9df; text-shadow:0 0 26px #ff4d6aaa; }
+        .card.over .go { border-color:#ff6b7faa; background:#2a0d13aa;
+                         animation:overGlow 1.7s ease-in-out infinite; }
+        @keyframes overGlow {
+          0%,100% { color:#ffc2cc; text-shadow:0 0 8px #ff4d6a99;
+                    box-shadow:0 0 14px #ff4d6a44; border-color:#ff6b7f66; }
+          50%     { color:#ffffff; text-shadow:0 0 14px #ff8fa3,0 0 30px #ff4d6acc;
+                    box-shadow:0 0 34px #ff4d6a99,0 0 62px #ff4d6a44; border-color:#ff9bb0cc; }
+        }
         .card h1 { color:#fff; font-size:clamp(26px,5vw,46px); letter-spacing:10px; margin:0 0 26px;
                    text-shadow:0 0 26px #39e6e0aa; }
         .card .body { color:#cfe3f5; font-size:15px; line-height:2; letter-spacing:1px;
@@ -467,6 +479,40 @@ export class Hud {
         if (this.commsQueue.length === 0) box.classList.remove('show');
       }
     }
+  }
+
+  /**
+   * Terminal game-over screen. Unlike a story card this does not let you
+   * carry on where you were — the only way out is a fresh campaign, so it
+   * asks for a deliberate press rather than any key.
+   */
+  showGameOver(heading: string, title: string, body: string): Promise<void> {
+    const card = document.getElementById('card')!;
+    document.getElementById('card-ch')!.textContent = heading;
+    document.getElementById('card-title')!.textContent = title;
+    document.getElementById('card-body')!.innerHTML =
+      body + '<br/><br/><span style="color:#ff9bb0">CAMPAIGN OVER</span>';
+    document.querySelector('.card .go')!.textContent =
+      this.isTouch ? 'TAP TO RESTART FROM CHAPTER 1' : 'PRESS SPACE TO RESTART FROM CHAPTER 1';
+    card.classList.add('show', 'over');
+    this.cardOpen = true;
+
+    return new Promise((resolve) => {
+      const done = () => {
+        card.removeEventListener('click', done);
+        window.removeEventListener('keydown', onKey, true);
+        card.classList.remove('show', 'over');
+        this.cardOpen = false;
+        resolve();
+      };
+      const onKey = (e: KeyboardEvent) => {
+        if (e.code !== 'Space' && e.code !== 'Enter') return;
+        e.preventDefault();
+        done();
+      };
+      card.addEventListener('click', done);
+      window.addEventListener('keydown', onKey, true);
+    });
   }
 
   /** Full-screen story card. Resolves once the player clicks through. */
