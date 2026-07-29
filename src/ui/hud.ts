@@ -83,20 +83,20 @@ export class Hud {
         .obj b { color:#ffcf4f; }
         /* radio traffic from Command — speaker tag + typed-out line */
         .comms { position:absolute; left:50%; bottom:110px; transform:translateX(-50%);
-                 width:min(660px, 76vw); background:#06121fee; border:1px solid #39e6e088;
+                 width:min(760px, 80vw); background:#06121fee; border:1px solid #39e6e088;
                  border-left:4px solid #39e6e0; border-radius:6px; padding:12px 18px 14px;
                  box-shadow:0 6px 26px #0009; display:none; }
         .comms.show { display:block; }
-        .comms-row { display:flex; align-items:flex-start; gap:12px; }
-        .comms-avatar { width:58px; height:58px; flex:0 0 58px; object-fit:cover; object-position:center;
+        .comms-row { display:flex; align-items:center; gap:16px; }
+        .comms-avatar { width:92px; height:92px; flex:0 0 92px; object-fit:cover; object-position:center;
                          border:1px solid #7fdcffaa; border-radius:50%; box-shadow:0 0 14px #39e6e066; }
         .comms-copy { min-width:0; flex:1; }
         .comms-who { color:#39e6e0; font-size:11px; letter-spacing:3px; margin-bottom:6px; }
         /* the pilot's own replies read back warm, so the exchange is legible */
         .comms.self { border-color:#ffcf4f88; border-left-color:#ffcf4f; }
         .comms.self .comms-who { color:#ffcf4f; }
-        .comms-text { color:#e8f4ff; font-size:15px; line-height:1.55; letter-spacing:.4px;
-                      min-height:2.6em; }
+        .comms-text { color:#e8f4ff; font-size:16px; line-height:1.6; letter-spacing:.4px;
+                      min-height:2.8em; }
         .comms-next { position:absolute; right:14px; bottom:8px; color:#7fdcff99;
                       font-size:10px; letter-spacing:2px; }
         /* On touch the bottom of the screen belongs to the joystick and the

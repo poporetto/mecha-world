@@ -27,7 +27,7 @@ interface Npc {
   life?: number; // workers despawn when the job is done
 }
 
-function makePerson(seed: number, worker = false): { group: THREE.Group; armL: THREE.Mesh; armR: THREE.Mesh } {
+export function makePerson(seed: number, worker = false): { group: THREE.Group; armL: THREE.Mesh; armR: THREE.Mesh } {
   const g = new THREE.Group();
   const shirt = worker ? 0xf28c3a : SHIRT[Math.floor(hash2(seed, 1) * SHIRT.length)];
   const skin = SKIN[Math.floor(hash2(seed, 2) * SKIN.length)];
