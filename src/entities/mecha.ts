@@ -1,24 +1,35 @@
-// Hero mobile suit: a deliberately bold, original super-robot silhouette with
-// white ceramic armour, primary-colour blocks, a V-fin and oversized gear.
+// TERRA-ARMOR: Neo Tokyo's original close-combat defence frame. Its visual
+// language is white ceramic armour, red impact plating, cyan optics and a
+// green plasma edge over a compact dark mechanical skeleton.
 
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
 export const MECHA_SCALE = 2.2;
+export const MECHA_NAME = 'TERRA-ARMOR';
 
 const WHITE = 0xf4f5f8;
-const BLUE = 0x2b5fc7;
 const RED = 0xd8352a;
-const YELLOW = 0xf7c948;
+const CYAN = 0x28dff2;
 const JOINT = 0x3a3d45;
 const DARK = 0x23262b;
-const SABER = 0xff8ad8; // pink beam
-const EYE = 0xf7e06a;
+const SABER = 0x63ff83;
 const STEEL = 0x89919d;
 
 function box(w: number, h: number, d: number, color: number, emissive = 0): THREE.Mesh {
+  // Terra-Armor uses smooth, toyetic anime armour rather than literal voxel
+  // cubes. A restrained bevel keeps the silhouette readable at game distance
+  // while catching highlights along every plate edge.
+  const radius = Math.min(w, h, d) * 0.18;
   return new THREE.Mesh(
-    new THREE.BoxGeometry(w, h, d),
-    new THREE.MeshLambertMaterial({ color, emissive, emissiveIntensity: emissive ? 1 : 0 })
+    new RoundedBoxGeometry(w, h, d, 3, radius),
+    new THREE.MeshStandardMaterial({
+      color,
+      emissive,
+      emissiveIntensity: emissive ? 1.35 : 0,
+      metalness: color === JOINT || color === DARK || color === STEEL ? 0.55 : 0.12,
+      roughness: color === WHITE ? 0.32 : 0.42,
+    })
   );
 }
 
@@ -77,8 +88,8 @@ export class MechaModel {
     pelvis.position.y = 2.0;
     const crotch = box(0.45, 0.5, 0.5, RED);
     crotch.position.set(0, 1.95, 0.28);
-    // yellow V mark on the front skirt, the RX-78 waist emblem
-    const vMarkL = box(0.3, 0.08, 0.06, YELLOW);
+    // split red waist chevrons repeat the chest armour language
+    const vMarkL = box(0.3, 0.08, 0.06, RED);
     vMarkL.position.set(-0.12, 2.06, 0.52);
     vMarkL.rotation.z = -0.5;
     const vMarkR = vMarkL.clone();
@@ -110,18 +121,18 @@ export class MechaModel {
     this.torso.position.y = 2.25;
     g.add(this.torso);
 
-    // chest: blue plate over white core, yellow vents, red abdomen
-    const abdomen = box(0.95, 0.5, 0.75, RED);
+    // Terra-Armor chest: white shell over a dark core with red impact plates
+    const abdomen = box(0.95, 0.5, 0.75, DARK);
     abdomen.position.y = 0.25;
-    const chest = plate(1.75, 1.05, 1.05, BLUE);
+    const chest = plate(1.72, 1.05, 1.02, WHITE);
     chest.position.y = 1.0;
-    const chestTop = box(1.3, 0.35, 1.1, BLUE);
+    const chestTop = box(1.28, 0.35, 1.08, WHITE);
     chestTop.position.set(0, 1.55, 0.05);
-    const ventL = box(0.42, 0.3, 0.12, YELLOW);
+    const ventL = box(0.42, 0.3, 0.12, RED);
     ventL.position.set(-0.42, 1.18, 0.56);
     const ventR = ventL.clone();
     ventR.position.x = 0.42;
-    const cockpit = box(0.3, 0.3, 0.14, RED);
+    const cockpit = box(0.24, 0.34, 0.14, CYAN, CYAN);
     cockpit.position.set(0, 0.72, 0.56);
     // white collar plates flanking the neck
     const collarL = box(0.35, 0.18, 0.7, WHITE);
@@ -129,19 +140,19 @@ export class MechaModel {
     const collarR = collarL.clone();
     collarR.position.x = 0.55;
     this.torso.add(collarL, collarR);
-    // White pectoral shells and blue centre keel: a recognisable heroic chest.
-    const chestShellL = plate(0.55, 0.62, 0.14, WHITE);
+    // Paired red pectoral plates form the frame's distinctive shielded heart.
+    const chestShellL = plate(0.55, 0.62, 0.14, RED);
     chestShellL.position.set(-0.52, 1.1, 0.58);
     chestShellL.rotation.z = 0.12;
     const chestShellR = chestShellL.clone();
     chestShellR.position.x = 0.52;
     chestShellR.rotation.z = -0.12;
-    const chestKeel = plate(0.22, 0.72, 0.16, BLUE);
+    const chestKeel = plate(0.22, 0.72, 0.16, DARK);
     chestKeel.position.set(0, 1.12, 0.62);
     this.torso.add(chestShellL, chestShellR, chestKeel);
 
     // backpack with twin thrusters
-    const backpack = box(1.15, 0.95, 0.5, RED);
+    const backpack = box(1.15, 0.95, 0.5, DARK);
     backpack.position.set(0, 1.0, -0.72);
     // twin beam-saber hilts racked on top of the backpack
     const hiltRackL = box(0.13, 0.6, 0.13, 0x8a8d96);
@@ -157,12 +168,11 @@ export class MechaModel {
     this.thrusterR.position.x = 0.34;
     this.torso.add(abdomen, chest, chestTop, ventL, ventR, cockpit, backpack, this.thrusterL, this.thrusterR);
 
-    // Head, matched to the reference build: a wide stepped yellow V-fin, a
-    // tall red crest up the centre of the forehead, yellow ear pods, and
-    // horizontal vent slats on the cheeks and mouth.
+    // Terra-Armor head: compact helmet, continuous cyan visor and two red
+    // sensor horns. The twin rails are its most recognisable silhouette.
     const head = new THREE.Group();
-    head.position.y = 2.34;
-    head.scale.setScalar(1.52);
+    head.position.y = 2.25;
+    head.scale.setScalar(1.28);
 
     // helmet shell — wider than tall, with a raised centre ridge
     const helmet = plate(0.72, 0.46, 0.6, WHITE);
@@ -172,10 +182,10 @@ export class MechaModel {
     const browGuard = plate(0.66, 0.11, 0.13, WHITE);
     browGuard.position.set(0, 0.16, 0.29);
 
-    // tall red crest running up the middle of the forehead, stepped back
-    const crestLow = box(0.21, 0.24, 0.16, RED);
+    // central white sensor bridge between the visor and crown
+    const crestLow = box(0.18, 0.2, 0.16, WHITE);
     crestLow.position.set(0, 0.19, 0.29);
-    const crestTop = box(0.21, 0.22, 0.22, RED);
+    const crestTop = box(0.18, 0.18, 0.2, WHITE);
     crestTop.position.set(0, 0.38, 0.22);
     head.add(crestLow, crestTop);
 
@@ -183,13 +193,11 @@ export class MechaModel {
     const mask = box(0.5, 0.3, 0.14, DARK);
     mask.position.set(0, -0.02, 0.29);
 
-    // eyes: angled slabs set into the mask
-    const eyeL = box(0.17, 0.08, 0.05, EYE, EYE);
-    eyeL.position.set(-0.135, 0.03, 0.36);
-    eyeL.rotation.z = -0.24; // outer corner rides high
-    const eyeR = box(0.17, 0.08, 0.05, EYE, EYE);
-    eyeR.position.set(0.135, 0.03, 0.36);
-    eyeR.rotation.z = 0.24;
+    // continuous luminous visor, split only by the narrow sensor bridge
+    const eyeL = box(0.25, 0.11, 0.05, CYAN, CYAN);
+    eyeL.position.set(-0.13, 0.04, 0.36);
+    const eyeR = box(0.25, 0.11, 0.05, CYAN, CYAN);
+    eyeR.position.set(0.13, 0.04, 0.36);
 
     // mouth: a white vent block scored with dark horizontal lines
     const vent = box(0.3, 0.15, 0.05, WHITE);
@@ -217,8 +225,8 @@ export class MechaModel {
       head.add(slitL, slitR);
     }
 
-    // bright yellow ear pods at the temples
-    const earL = box(0.09, 0.2, 0.2, YELLOW, 0x8a6b00);
+    // dark comms pods sit inside white temple armour
+    const earL = box(0.09, 0.2, 0.2, DARK);
     earL.position.set(-0.37, 0.02, 0.04);
     const earR = earL.clone();
     earR.position.x = 0.37;
@@ -227,16 +235,17 @@ export class MechaModel {
     const earRimR = earRimL.clone();
     earRimR.position.x = 0.41;
 
-    // V-fin: wide and swept nearly flat, built from stepped voxel blocks
+    // Twin red sensor horns rise almost vertically from the crown.
     for (const side of [-1, 1]) {
       for (let i = 0; i < 4; i++) {
-        const seg = box(0.16, 0.075, 0.1, YELLOW);
-        seg.position.set(side * (0.16 + i * 0.15), 0.3 + i * 0.075, 0.26 - i * 0.03);
+        const seg = box(0.095, 0.17, 0.1, RED);
+        seg.position.set(side * (0.23 + i * 0.025), 0.39 + i * 0.15, 0.08 - i * 0.015);
+        seg.rotation.z = side * -0.12;
         head.add(seg);
       }
-      // outer tip flicks up a little further
-      const tip = box(0.13, 0.075, 0.09, YELLOW);
-      tip.position.set(side * 0.76, 0.63, 0.14);
+      const tip = box(0.085, 0.14, 0.085, RED);
+      tip.position.set(side * 0.31, 0.94, 0.03);
+      tip.rotation.z = side * -0.12;
       head.add(tip);
     }
 
@@ -257,7 +266,7 @@ export class MechaModel {
     this.armR = this.makeArm(1.25, false); // saber arm
     this.torso.add(this.armL, this.armR);
 
-    // saber hilt always in the right fist; pink blade ignites on swing
+    // plasma hilt always in the right fist; green blade ignites on swing
     const hilt = box(0.14, 0.55, 0.14, 0x8a8d96);
     hilt.position.set(0, -2.05, 0.3);
     this.armR.add(hilt);
@@ -280,7 +289,7 @@ export class MechaModel {
     leg.position.set(x, 2.1, 0);
     const thigh = plate(0.5, 1.12, 0.6, WHITE);
     thigh.position.y = -0.56;
-    const kneePad = box(0.54, 0.4, 0.18, WHITE);
+    const kneePad = box(0.54, 0.4, 0.18, RED);
     kneePad.position.set(0, -1.14, 0.36);
     leg.add(thigh, kneePad);
 
@@ -293,7 +302,7 @@ export class MechaModel {
     ankle.position.y = -1.24;
     const foot = box(0.78, 0.34, 1.24, RED);
     foot.position.set(0, -1.12, 0.2);
-    // white ankle guard plate over the red foot, RX-78 style
+    // white ankle guard floats over the red impact sole
     const ankleGuard = box(0.8, 0.26, 0.56, WHITE);
     ankleGuard.position.set(0, -0.94, 0.38);
     // Raised shin blade, side verniers and split toe cap improve the read at a distance.
@@ -314,15 +323,15 @@ export class MechaModel {
   private makeArm(x: number, rifle: boolean): THREE.Group {
     const arm = new THREE.Group();
     arm.position.set(x * 1.02, 1.26, 0);
-    // RX-78 shoulders are large squared blocks that flare past the chest
+    // Rounded-looking layered shoulder armour with a red impact cap
     const pauldron = plate(0.8, 0.66, 0.84, WHITE);
     pauldron.position.set(0, 0.1, 0);
-    const pauldronFace = plate(0.14, 0.54, 0.74, WHITE);
+    const pauldronFace = plate(0.14, 0.54, 0.74, RED);
     pauldronFace.position.set(x > 0 ? 0.44 : -0.44, 0.1, 0);
-    const pauldronVent = box(0.09, 0.14, 0.42, YELLOW);
+    const pauldronVent = box(0.09, 0.14, 0.42, DARK);
     pauldronVent.position.set(x > 0 ? 0.5 : -0.5, 0.26, 0);
     arm.add(pauldronFace, pauldronVent);
-    // RX-78 upper arms are white with dark joint rings
+    // white limb shells are separated by exposed dark joint rings
     const upper = box(0.42, 0.75, 0.46, WHITE);
     upper.position.y = -0.52;
     const shoulderRing = box(0.46, 0.16, 0.5, JOINT);
@@ -333,9 +342,9 @@ export class MechaModel {
     const fore = box(0.5, 0.85, 0.54, WHITE);
     fore.position.y = -1.42;
     // Add a shoulder cap and edge plate; the asymmetrical loadout remains readable.
-    const shoulderCap = plate(0.86, 0.18, 0.88, WHITE);
+    const shoulderCap = plate(0.86, 0.18, 0.88, RED);
     shoulderCap.position.set(0, 0.44, 0);
-    const foreGuard = plate(0.34, 0.45, 0.12, WHITE);
+    const foreGuard = plate(0.34, 0.45, 0.12, RED);
     foreGuard.position.set(0, -1.4, 0.34);
     arm.add(pauldron, shoulderCap, upper, elbow, fore, foreGuard);
     if (rifle) {
@@ -344,7 +353,7 @@ export class MechaModel {
       body.position.set(0, -1.95, 0.1);
       const scope = box(0.14, 0.2, 0.5, JOINT);
       scope.position.set(0, -1.7, 0.35);
-      const sensor = box(0.1, 0.12, 0.1, YELLOW, YELLOW);
+      const sensor = box(0.1, 0.12, 0.1, CYAN, CYAN);
       sensor.position.set(0, -1.7, 0.62);
       arm.add(sensor);
       this.muzzle = box(0.16, 0.35, 0.16, 0xffb0e8, 0xffb0e8);
@@ -355,16 +364,10 @@ export class MechaModel {
       const rifleStock = box(0.22, 0.36, 0.46, STEEL);
       rifleStock.position.set(0, -1.55, -0.18);
       arm.add(barrel, rifleStock);
-      // shield strapped to the outside of the rifle arm
-      const shield = plate(0.14, 2.15, 1.1, RED);
-      shield.position.set(-0.42, -1.35, 0);
-      const shieldTrim = box(0.06, 2.15, 0.2, WHITE);
-      shieldTrim.position.set(-0.5, -1.35, 0);
-      const crossV = box(0.06, 0.85, 0.2, YELLOW);
-      crossV.position.set(-0.51, -1.3, 0);
-      const crossH = box(0.06, 0.2, 0.7, YELLOW);
-      crossH.position.set(-0.51, -1.3, 0);
-      arm.add(shield, shieldTrim, crossV, crossH);
+      // Compact red wrist armour keeps the rifle profile close to the body.
+      const wristRail = plate(0.12, 0.72, 0.58, RED);
+      wristRail.position.set(-0.31, -1.48, 0);
+      arm.add(wristRail);
     } else {
       const fist = box(0.46, 0.42, 0.46, JOINT);
       fist.position.y = -1.95;

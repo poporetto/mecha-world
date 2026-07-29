@@ -64,7 +64,8 @@ export class Hud {
         .cross { position:absolute; left:50%; top:50%; width:6px; height:6px; margin:-3px; border-radius:50%;
                  background:#7fdcffcc; box-shadow:0 0 6px #39e6e0; }
         .vig { position:absolute; inset:0; box-shadow:inset 0 0 140px #ff2020; opacity:0; transition:opacity .4s; }
-        .start { position:absolute; inset:0; background:#060a14ee; display:flex; flex-direction:column;
+        .start { position:absolute; inset:0; background:linear-gradient(90deg,#030815d9 0%,#07101abb 47%,#030815d9 100%),
+                 url('/title-screen.png') center/cover no-repeat; display:flex; flex-direction:column;
                  align-items:center; justify-content:center; pointer-events:auto; cursor:pointer; }
         .start h1 { color:#fff; font-size:52px; letter-spacing:14px; margin:0 0 6px; text-shadow:0 0 30px #39e6e0; }
         .start h2 { color:#ff4fa3; font-size:15px; letter-spacing:8px; margin:0 0 34px; font-weight:400; }
@@ -681,7 +682,7 @@ export class Hud {
          <b>LEFT CLICK</b> beam saber &nbsp; <b>R (hold)</b> charge rifle &nbsp; <b>T</b> missiles<br/>`;
     el.innerHTML = `
       <h1>MECHA CITY</h1>
-      <h2>NEO TOKYO · THE LAST SORTIE OF KUROKI</h2>
+      <h2>NEO TOKYO · TERRA-ARMOR DEPLOYMENT</h2>
       <div class="keys">
         ${keys}
         Everything breaks. Citizens can't be hurt — but they will run.<br/>

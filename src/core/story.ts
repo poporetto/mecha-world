@@ -25,12 +25,13 @@ export interface Chapter {
 export const AYA = 'AYA · COMMAND';
 export const KUROSAWA = 'DR. KUROSAWA';
 export const KUROKI = 'KUROKI'; // the pilot — you
-export const REI = 'REI · MEMORIAL'; // Aya's late brother; heard only in archived recordings
+export const REI = 'REI · MEMORIAL'; // Aya's late sister; heard only in archived recordings
 export const HINATA = 'HINATA · PILOT'; // second unit, joins mid-campaign
 export const KOTETSU = 'KOTETSU · SUPPORT'; // mechanic and mission-control ally
 
-/** Chapter index (0-based) that Hinata's second unit first drops into the fight. */
-export const HINATA_CHAPTER = 3;
+/** Zero-based campaign chapters where each ally enters the fight. */
+export const HINATA_CHAPTER = 1;  // Chapter 2
+export const KOTETSU_CHAPTER = 3; // Chapter 4
 
 export const PROLOGUE: Line[] = [
   { who: AYA, text: 'Kuroki, are you even listening? The bay tore open fourteen hours ago.' },
@@ -153,7 +154,7 @@ export const CHAPTERS: Chapter[] = [
       { who: AYA, text: 'Casualty reports are dropping. People are starting to believe again.' },
       { who: AYA, text: 'They are painting your suit on the shelter walls. Do not tell him, doctor.' },
       { who: KUROKI, text: 'Too late. Heard it. I am going to be unbearable now.' },
-      { who: AYA, text: 'They painted my brother up there too. Years ago. It is still there.' },
+      { who: AYA, text: 'They painted my sister up there too. Years ago. It is still there.' },
       { who: KUROKI, text: '…I know. I walk past it every morning.' },
     ],
   },
@@ -517,17 +518,18 @@ export const MEMORIES: Line[][] = [
   ],
   [
     { who: AYA, text: 'Rei used to fly the pattern you just pulled. Almost exactly.' },
-    { who: KUROKI, text: 'I know. He taught it to me.' },
-    { who: AYA, text: '…He taught it to me first. He taught me everything first.' },
-    { who: KUROKI, text: 'He would. Older brothers are like that.' },
+    { who: KUROKI, text: 'I know. She taught it to me.' },
+    { who: AYA, text: '…She taught it to me first. She taught me everything first.' },
+    { who: KUROKI, text: 'She would. Older sisters are like that.' },
   ],
   [
     { who: KUROKI, text: 'You never ask about that day.' },
     { who: AYA, text: 'I was on comms that day, Kuroki. I do not need to ask.' },
-    { who: AYA, text: 'I heard my brother go quiet. I do not need anybody to describe it to me.' },
+    { who: REI, text: '[ARCHIVED TRANSMISSION] Aya, get the shelters clear. I will catch up.' },
+    { who: AYA, text: 'I heard my sister go quiet. I do not need anybody to describe it to me.' },
   ],
   [
-    { who: KUROKI, text: 'I was lead. I called the turn. He followed it.' },
+    { who: KUROKI, text: 'I was lead. I called the turn. She followed it.' },
     { who: AYA, text: 'I know exactly what you called. I was listening.' },
     { who: KUROKI, text: 'Then say it. Whatever it is you have not said for three years.' },
     { who: AYA, text: '…That I do not blame you. And that some mornings I do anyway.' },
@@ -536,7 +538,7 @@ export const MEMORIES: Line[][] = [
   [
     { who: AYA, text: 'You think I shout because you break things.' },
     { who: KUROKI, text: 'I break a LOT of things.' },
-    { who: AYA, text: 'I shout because the last time a signal went quiet on me it was my brother, and it stayed quiet.' },
+    { who: AYA, text: 'I shout because the last time a signal went quiet on me it was my sister, and it stayed quiet.' },
     { who: KUROKI, text: '…' },
     { who: AYA, text: 'So keep talking out there. That is all I am asking.' },
   ],
@@ -561,8 +563,10 @@ export const LATE_MEMORIES: Line[][] = [
   [
     { who: HINATA, text: 'Aya says you flew with someone before me.' },
     { who: KUROKI, text: 'Aya talks too much.' },
-    { who: HINATA, text: 'She said he was better than you. She smiled when she said it.' },
-    { who: KUROKI, text: '…He was her brother. Of course she smiled.' },
+    { who: HINATA, text: 'She said Rei was better than you. She smiled when she said it.' },
+    { who: KUROKI, text: 'Rei was her sister. And my wingwoman.' },
+    { who: HINATA, text: 'And your ex. That part was not in the flight report.' },
+    { who: KUROKI, text: 'That part is not for the flight report.' },
   ],
   [
     { who: HINATA, text: 'Senpai, why do you always put yourself between me and it?' },
@@ -573,8 +577,8 @@ export const LATE_MEMORIES: Line[][] = [
   ],
   [
     { who: HINATA, text: 'I read the report from three years ago. The whole thing.' },
-    { who: KUROKI, text: 'Then you know I called the turn. And whose brother followed it.' },
-    { who: HINATA, text: 'I know he followed it because he trusted you. Those are different sentences.' },
+    { who: KUROKI, text: 'Then you know I called the turn. And whose sister followed it.' },
+    { who: HINATA, text: 'I know she followed it because she trusted you. Those are different sentences.' },
     { who: KUROKI, text: '…' },
     { who: HINATA, text: 'I am going to keep following them too, by the way. Just so you know.' },
   ],

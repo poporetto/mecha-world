@@ -23,7 +23,7 @@ import { buildFallingChunk, FallingChunk, updateFallingChunk } from './fx/collap
 import { Explosions } from './fx/explosions';
 import { Sky } from './fx/sky';
 import { sfx } from './fx/sound';
-import { AYA_HINATA, BARKS, CHAPTERS, ENDLESS_LINES, EPILOGUE, HINATA_CHAPTER, KOTETSU_BARKS, LATE_MEMORIES, MEMORIES, MONSTER_BARKS, PROLOGUE } from './core/story';
+import { AYA_HINATA, BARKS, CHAPTERS, ENDLESS_LINES, EPILOGUE, HINATA_CHAPTER, KOTETSU_BARKS, KOTETSU_CHAPTER, LATE_MEMORIES, MEMORIES, MONSTER_BARKS, PROLOGUE } from './core/story';
 import { Hud, RadarKind, WEAPONS, WeaponId } from './ui/hud';
 import { isTouchDevice, TouchControls } from './ui/touch';
 
@@ -230,7 +230,7 @@ export class Game {
         'THE BAY SPLIT OPEN',
         'Fourteen hours ago something came through the water.<br/>' +
         'The defence line is gone. The shelters are full.<br/><br/>' +
-        'You are the last mobile suit standing.'
+        'You are the last Terra-Armor standing.'
       ).then(() => {
         this.started = true;
         if (!this.touch) this.renderer.domElement.requestPointerLock();
@@ -1308,6 +1308,21 @@ export class Game {
     ).then(() => this.restart());
   }
 
+  /** A full shelter is a failed evacuation, not the end of the campaign. */
+  private retryCurrentChapter(s: Shelter): void {
+    // bossIndex advances as soon as a boss spawns, so the active chapter is
+    // one slot behind it. Restarting restores the city and puts that chapter
+    // back in the launch queue without showing a game-over screen.
+    const chapter = Math.max(0, this.bossIndex - 1);
+    this.restart();
+    this.bossIndex = chapter;
+    this.bossTimer = 2;
+    this.wave = chapter;
+    this.hud.setWave(this.wave);
+    this.hud.setObjective(`RETRY CHAPTER ${chapter + 1} — EVACUATE ${s.name}`);
+    this.hud.toast('SHELTER OVERFLOW', `Returning to Chapter ${chapter + 1}`, 3.5);
+  }
+
   // ------------------------------------------------------------ pause / run
 
   private setPaused(on: boolean): void {
@@ -1528,15 +1543,15 @@ export class Game {
       const chapterNo = this.bossIndex;
       const entry = campaign[this.bossIndex++];
       this.monster = entry.make(x, z);
-      // KOTETSU joins from her chapter onward
+      // Hinata joins from Chapter 2 onward.
       if (chapterNo >= HINATA_CHAPTER && !this.ally.active) {
         const at = this.player.pos.clone();
         at.x -= 14;
         at.z += 10;
         this.ally.deploy(at);
       }
-      // Kotetsu turns up a chapter later, having overslept
-      if (chapterNo >= HINATA_CHAPTER + 1 && !this.tank.active) {
+      // Kotetsu and his support frame arrive in Chapter 4.
+      if (chapterNo >= KOTETSU_CHAPTER && !this.tank.active) {
         const at = this.player.pos.clone();
         at.x += 22;
         at.z += 18;
@@ -1785,7 +1800,7 @@ export class Game {
     const reached = this.evacuees.update(dt, this.time, this.world);
     const burst = this.shelters.admit(reached);
     if (fallen && !this.gameOver) this.endRun(fallen, 'destroyed');
-    else if (burst && !this.gameOver) this.endRun(burst, 'overfull');
+    else if (burst && !this.gameOver) this.retryCurrentChapter(burst);
     this.warnShelters();
 
     this.updateAlly(dt);

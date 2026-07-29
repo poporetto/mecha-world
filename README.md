@@ -1,6 +1,6 @@
 # MECHA CITY — Neo Tokyo
 
-An infinite, fully destructible voxel open world. You pilot a mecha through a
+An infinite, fully destructible voxel open world. You pilot the Terra-Armor through a
 procedurally generated Tokyo-inspired city — carve through skyscrapers with a
 light saber and laser cannon, scatter (unharmable) citizens and their dogs,
 and hunt kaiju-class bosses. Every boss you defeat teaches you a new power.
