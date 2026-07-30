@@ -429,8 +429,10 @@ export class Kaiju extends Monster {
       if (this.group.position.distanceTo(ctx.playerPos) < 20) {
         ctx.damagePlayer(14);
       }
-      // every third stomp it overcommits and has to haul itself back upright
-      if (Math.random() < 0.34) this.openWindow(1.5);
+      // now and then it overcommits and has to haul itself back upright.
+      // Kept low: the stomp cycle is only ~1.1s, so a frequent window would
+      // leave the campaign's first boss immobile for a third of the fight.
+      if (Math.random() < 0.2) this.openWindow(1.2);
     }
   }
 }
@@ -486,13 +488,15 @@ export class RocketBeast extends Monster {
     this.updateFlash(dt);
     if (this.updateDeath(dt)) return;
 
-    // hover-orbit around the player
-    this.orbitA += dt * 0.15;
-    const R = 34;
-    const tx = ctx.playerPos.x + Math.sin(this.orbitA) * R;
-    const tz = ctx.playerPos.z + Math.cos(this.orbitA) * R;
-    this.group.position.x += (tx - this.group.position.x) * Math.min(1, dt * 0.8);
-    this.group.position.z += (tz - this.group.position.z) * Math.min(1, dt * 0.8);
+    // hover-orbit around the player — stalls out while venting heat
+    if (!this.vulnerable) {
+      this.orbitA += dt * 0.15 * this.pace;
+      const R = 34;
+      const tx = ctx.playerPos.x + Math.sin(this.orbitA) * R;
+      const tz = ctx.playerPos.z + Math.cos(this.orbitA) * R;
+      this.group.position.x += (tx - this.group.position.x) * Math.min(1, dt * 0.8);
+      this.group.position.z += (tz - this.group.position.z) * Math.min(1, dt * 0.8);
+    }
     const gy = ctx.world.groundHeight(this.group.position.x, this.group.position.z, 40);
     const targetY = gy + 9 + Math.sin(t * 1.3) * 2.5;
     this.group.position.y += (targetY - this.group.position.y) * Math.min(1, dt * 2);
@@ -504,7 +508,7 @@ export class RocketBeast extends Monster {
 
     this.telegraph = this.fireT < 0.7 && this.fireT > 0;
     this.fireT -= dt;
-    if (this.fireT <= 0 && ctx.fireRocket) {
+    if (this.fireT <= 0 && ctx.fireRocket && !this.vulnerable) {
       this.fireT = 3.2 / this.tempo;
       const from = this.group.position.clone();
       from.y += 9.6 * MONSTER_SCALE;
@@ -1299,15 +1303,19 @@ export class CinderWyrm extends Monster {
     this.updateFlash(dt);
     if (this.updateDeath(dt)) return;
 
-    // circle the player at mid altitude
-    this.orbitA += dt * 0.3;
-    const R = 40;
-    const tx = ctx.playerPos.x + Math.sin(this.orbitA) * R;
-    const tz = ctx.playerPos.z + Math.cos(this.orbitA) * R;
-    this.group.position.x += (tx - this.group.position.x) * Math.min(1, dt * 1.1);
-    this.group.position.z += (tz - this.group.position.z) * Math.min(1, dt * 1.1);
+    // circle the player at mid altitude — a spent drake coasts instead
+    if (!this.vulnerable) {
+      this.orbitA += dt * 0.3 * this.pace;
+      const R = 40;
+      const tx = ctx.playerPos.x + Math.sin(this.orbitA) * R;
+      const tz = ctx.playerPos.z + Math.cos(this.orbitA) * R;
+      this.group.position.x += (tx - this.group.position.x) * Math.min(1, dt * 1.1);
+      this.group.position.z += (tz - this.group.position.z) * Math.min(1, dt * 1.1);
+    }
     const gy = ctx.world.groundHeight(this.group.position.x, this.group.position.z, 40);
-    const targetY = gy + 20 + Math.sin(t * 0.8) * 3;
+    // it sinks toward the rooftops while refilling, which is the only time a
+    // flier this high is reachable
+    const targetY = gy + (this.vulnerable ? 9 : 20) + Math.sin(t * 0.8) * 3;
     this.group.position.y += (targetY - this.group.position.y) * Math.min(1, dt * 1.5);
 
     const dx = ctx.playerPos.x - this.group.position.x;
@@ -1319,7 +1327,7 @@ export class CinderWyrm extends Monster {
     // flamethrower: sweep a line of fire from the maw toward the player
     this.telegraph = this.breathT < 0.8 && this.breathT > 0;
     this.breathT -= dt;
-    if (this.breathT <= 0 && this.breathing <= 0) {
+    if (this.breathT <= 0 && this.breathing <= 0 && !this.vulnerable) {
       // longer, hotter breaths as it burns down
       this.breathing = this.phase === 3 ? 2.6 : this.phase === 2 ? 2.0 : 1.6;
       this.breathT = (5 + Math.random() * 2) / this.tempo;
