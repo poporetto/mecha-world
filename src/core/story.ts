@@ -420,6 +420,37 @@ export const CHAPTERS: Chapter[] = [
   },
 ];
 
+/**
+ * Beats that fire during the Revenant fight itself, at the two gear changes.
+ * The realisation has to happen while the player is still swinging — it is
+ * the fight, not a cutscene bolted onto the end of it.
+ */
+export const REVENANT_BEATS: Record<string, Line[]> = {
+  // ~60% — the first crack. It notices the city is the wrong shape.
+  phase2: [
+    { who: REI, text: 'You have changed the approach. You never came in that low.' },
+    { who: KUROKI, text: 'I learned it after.' },
+    { who: REI, text: 'After what?' },
+    { who: KUROKI, text: '…' },
+    { who: REI, text: 'Kuroki. The bay. The bay is the wrong shape. Those towers are not— when did they build those?' },
+    { who: KUROSAWA, text: 'It is comparing what it sees against what it remembers. Do not answer that.' },
+    { who: AYA, text: 'Doctor, shut up.' },
+    { who: REI, text: 'Aya. Aya, how long have I been out here?' },
+  ],
+  // ~25% — it works it out, and asks the only question it has ever had
+  phase3: [
+    { who: REI, text: 'I have been counting. I counted the whole time.' },
+    { who: REI, text: 'I got to four hundred and something and then I started again.' },
+    { who: AYA, text: 'Rei—' },
+    { who: REI, text: 'Do not. I know what you are going to say and I do not want it yet.' },
+    { who: REI, text: 'I want the shelters first. Tell me about the shelters.' },
+    { who: HINATA, text: '…Senpai, I am so sorry. I am so sorry, I did not know.' },
+    { who: REI, text: 'Who is that? Kuroki, who IS that?' },
+    { who: KUROKI, text: 'That is my wing. You would like her.' },
+    { who: REI, text: '…Then I have been gone a long time.' },
+  ],
+};
+
 /** Played once the Revenant is down and the seam has closed for good. */
 export const RIFT_EPILOGUE: Line[] = [
   { who: KUROSAWA, text: 'The seam is gone. Not sealed — gone. There is nothing there to reopen.' },

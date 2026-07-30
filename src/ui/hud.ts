@@ -17,10 +17,16 @@ export type WeaponId = (typeof WEAPONS)[number]['id'];
 /** What a radar blip represents. */
 export type RadarKind = 'boss' | 'drone' | 'pickup' | 'shelter' | 'shelterHit';
 
+/** Characters a degraded transmission resolves through before it settles. */
+const STATIC = '▓▒░#%&/\\|=+*<>';
+
 export class Hud {
   // --- radio traffic -------------------------------------------------------
   private commsQueue: { who: string; text: string }[] = [];
   private typed = 0;      // characters revealed so far
+  /** True while the current line is arriving on Rei's dead channel. */
+  private bled = false;
+  private bledT = 0;
   private holdT = 0;      // seconds to linger once a line is fully typed
   private commsOn = false;
   private isTouch = false;
@@ -131,6 +137,20 @@ export class Hud {
         /* the pilot's own replies read back warm, so the exchange is legible */
         .comms.self { border-color:#ffcf4f88; border-left-color:#ffcf4f; }
         .comms.self .comms-who { color:#ffcf4f; }
+        /* A transmission coming out of the seam. Rei's channel is three years
+           dead, so it reads as something being pulled through rather than
+           spoken: violet, unstable, and never quite locked. */
+        .comms.bled { border-color:#8a5cff88; box-shadow:0 0 30px #6a2fbf44, inset 0 0 40px #2a0f4566; }
+        .comms.bled .comms-who { color:#c79bff; }
+        .comms.bled .comms-who::after { content:' · SIGNAL UNVERIFIED'; color:#8a5cff88; letter-spacing:2px; }
+        .comms.bled .comms-text { color:#e8dbff; text-shadow:0 0 10px #8a5cff66; }
+        .comms.bled .comms-avatar { filter:grayscale(.75) contrast(1.15) brightness(.72); }
+        .comms.bled .comms-next { color:#c79bffaa; }
+        /* a slow band of interference crawling down the panel */
+        .comms.bled::after { content:''; position:absolute; inset:0; pointer-events:none; border-radius:inherit;
+          background:linear-gradient(180deg, transparent 0%, #b078ff22 46%, #ffffff18 50%, #b078ff22 54%, transparent 100%);
+          background-size:100% 260%; animation:bleed 3.4s linear infinite; }
+        @keyframes bleed { from { background-position:0 -130%; } to { background-position:0 130%; } }
         .comms-text { color:#e8f4ff; font-size:16px; line-height:1.6; letter-spacing:.4px;
                       min-height:2.8em; }
         .comms-next { position:absolute; right:14px; bottom:8px; color:#7fdcff99;
@@ -516,7 +536,10 @@ export class Hud {
     this.typed = 0;
     this.holdT = 0;
     this.commsOn = false;
-    document.getElementById('comms')!.classList.remove('show');
+    this.bled = false;
+    const box = document.getElementById('comms')!;
+    box.classList.remove('show');
+    box.classList.remove('bled');
   }
 
   private updateComms(dt: number): void {
@@ -544,15 +567,38 @@ export class Hud {
       document.getElementById('comms-text')!.textContent = '';
       // the pilot's own transmissions read back warm
       box.classList.toggle('self', line.who.includes('KUROKI'));
+      // anything arriving on Rei's channel is coming through the seam
+      this.bled = line.who.includes('REI');
+      box.classList.toggle('bled', this.bled);
       box.classList.add('show');
     }
     const line = this.commsQueue[0];
     if (!line) { this.commsOn = false; box.classList.remove('show'); return; }
 
     if (this.typed < line.text.length) {
-      this.typed += dt * 46; // characters per second
-      document.getElementById('comms-text')!.textContent =
-        line.text.slice(0, Math.floor(this.typed));
+      if (this.bled) {
+        // A dead channel does not type evenly. It stalls, then arrives in a
+        // rush, and the leading edge is still resolving into characters.
+        this.bledT -= dt;
+        if (this.bledT <= 0) {
+          // Averages out near the normal 46 characters a second, but arrives
+          // in uneven bursts — a stall then a rush, rather than simply slower.
+          this.bledT = 0.03 + Math.random() * 0.17;
+          this.typed += 2 + Math.floor(Math.random() * 8);
+        }
+        const n = Math.min(line.text.length, Math.floor(this.typed));
+        const solid = line.text.slice(0, Math.max(0, n - 2));
+        // the last couple of characters flicker through static before settling
+        const edge = line.text.slice(Math.max(0, n - 2), n)
+          .split('')
+          .map((c) => (c === ' ' ? c : Math.random() < 0.5 ? c : STATIC[Math.floor(Math.random() * STATIC.length)]))
+          .join('');
+        document.getElementById('comms-text')!.textContent = solid + edge;
+      } else {
+        this.typed += dt * 46; // characters per second
+        document.getElementById('comms-text')!.textContent =
+          line.text.slice(0, Math.floor(this.typed));
+      }
       // linger longer on longer lines so there is time to read
       this.holdT = 1.1 + line.text.length * 0.028;
     } else {

@@ -26,7 +26,7 @@ import { buildFallingChunk, FallingChunk, updateFallingChunk } from './fx/collap
 import { Explosions } from './fx/explosions';
 import { Sky } from './fx/sky';
 import { sfx } from './fx/sound';
-import { ACT2_START, AYA_HINATA, BARKS, CHAPTERS, ENDLESS_LINES, EPILOGUE, HINATA_CHAPTER, JOTETSU_BARKS, JOTETSU_CHAPTER, KOTETSU_BARKS, KOTETSU_CHAPTER, LATE_MEMORIES, MEMORIES, MONSTER_BARKS, PROLOGUE, RIFT_EPILOGUE } from './core/story';
+import { ACT2_START, AYA_HINATA, BARKS, CHAPTERS, ENDLESS_LINES, EPILOGUE, HINATA_CHAPTER, JOTETSU_BARKS, JOTETSU_CHAPTER, KOTETSU_BARKS, KOTETSU_CHAPTER, LATE_MEMORIES, MEMORIES, MONSTER_BARKS, PROLOGUE, REVENANT_BEATS, RIFT_EPILOGUE } from './core/story';
 import { Hud, RadarKind, WEAPONS, WeaponId } from './ui/hud';
 import { isTouchDevice, TouchControls } from './ui/touch';
 
@@ -142,6 +142,8 @@ export class Game {
   /** Act II: where the line currently is. Null for the whole of Act I. */
   private frontLine: THREE.Vector3 | null = null;
   private notedReiPattern = false;
+  /** Which of the Revenant's mid-fight beats have already played. */
+  private revenantBeats = new Set<string>();
   /** Swarm size for the current wave, before the lull's ramp is applied. */
   private droneBase = 3;
   private warnedContact = false;
@@ -1568,6 +1570,7 @@ export class Game {
     this.lastSpawnFar = false;
     this.frontLine = null;
     this.notedReiPattern = false;
+    this.revenantBeats.clear();
     this.unlockedWeapons = new Set<WeaponId>(['saber', 'rifle', 'missiles']);
     this.player.abilities = {
       beam: false, boots: true, thrust: false, nova: false,
@@ -1682,6 +1685,18 @@ export class Game {
     this.slowmo = phase === 3 ? 0.55 : 0.35;
     this.shake = phase === 3 ? 1.25 : 0.85;
     this.hitStop = Math.max(this.hitStop, 0.06);
+    // TA-00 gets its own beat instead of the generic kaiju gear-change lines
+    if (m instanceof Revenant) {
+      this.revenantBeat(phase);
+      this.hud.toast(
+        phase === 3 ? 'IT HAS WORKED IT OUT' : 'IT IS REMEMBERING',
+        phase === 3
+          ? 'TA-00 has stopped defending itself entirely.'
+          : 'TA-00 is comparing what it sees against what it remembers.',
+        3.5,
+      );
+      return;
+    }
     sfx.explode(0.8, 1);
     const at = m.group.position.clone().setY(m.group.position.y + 14);
     this.explosions.boom(at, phase === 3 ? 13 : 9);
@@ -1701,6 +1716,20 @@ export class Game {
       3,
     );
     this.bark(phase === 3 ? 'bossEnrage' : 'bossPhase', phase === 3);
+  }
+
+  /**
+   * The Revenant's gear changes are story beats, not just stat changes. It
+   * works out what has happened to it mid-fight, while the player is still
+   * swinging — that is the fight, not a cutscene after it. The line jumps the
+   * queue because nothing being said is more important than this.
+   */
+  private revenantBeat(phase: Phase): void {
+    const key = phase === 3 ? 'phase3' : 'phase2';
+    if (this.revenantBeats.has(key)) return;
+    this.revenantBeats.add(key);
+    this.hud.clearComms();
+    this.hud.say(REVENANT_BEATS[key]);
   }
 
   /**
