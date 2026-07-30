@@ -6,7 +6,7 @@ import { World } from './core/world';
 import { ChunkManager } from './render/chunkManager';
 import { Player } from './entities/player';
 import { NpcManager } from './entities/npcs';
-import { CinderWyrm, CrimsonMantis, DeepMaw, IronColossus, Kaiju, MagmaGolem, Monster, MonsterCtx, Reward, RocketBeast, SkyReaver, TideLeviathan, VoltSerpent } from './entities/monsters';
+import { CinderWyrm, CrimsonMantis, DeepMaw, IronColossus, Kaiju, MagmaGolem, Monster, MonsterCtx, Phase, Reward, RocketBeast, SkyReaver, TideLeviathan, VoltSerpent } from './entities/monsters';
 import { FireManager } from './fx/fire';
 import { FloodManager } from './fx/flood';
 import { CarManager } from './entities/cars';
@@ -773,16 +773,20 @@ export class Game {
       if (_v.distanceTo(p) < radius + m.hitRadius) {
         const bonus = this.weakPointBonus(p);
         if (bonus > 1) this.bark('weakPoint');
-        m.takeDamage(dmg * bonus);
-        const strength = Math.min(1.5, Math.max(0.25, dmg / 28) * impactScale);
-        this.hitStop = Math.max(this.hitStop, 0.012 + strength * 0.03 + (bonus > 1 ? 0.018 : 0));
+        // catching it mid-recovery is the big payoff, so the feedback for it
+        // has to be louder than an ordinary weak-point hit
+        const open = m.vulnerable;
+        const dealt = m.takeDamage(dmg * bonus);
+        const big = bonus > 1 || open;
+        const strength = Math.min(1.9, Math.max(0.25, dealt / 28) * impactScale);
+        this.hitStop = Math.max(this.hitStop, 0.012 + strength * 0.03 + (big ? 0.018 : 0) + (open ? 0.022 : 0));
         this.shake = Math.max(this.shake, 0.18 + strength * 0.34);
-        this.impactZoom = Math.max(this.impactZoom, strength + (bonus > 1 ? 0.35 : 0));
-        this.hud.impactFeedback(bonus > 1, strength);
-        sfx.impact(strength, bonus > 1);
-        this.debris.burst(p, [15], 6);
-        this.addScore(Math.round(dmg * 2), true);
-        this.hud.popDamage(dmg * bonus);
+        this.impactZoom = Math.max(this.impactZoom, strength + (big ? 0.35 : 0));
+        this.hud.impactFeedback(big, strength);
+        sfx.impact(strength, big);
+        this.debris.burst(p, [15], open ? 12 : 6);
+        this.addScore(Math.round(dealt * 2), true);
+        this.hud.popDamage(dealt, open);
         hit = true;
       }
     }
@@ -813,9 +817,10 @@ export class Game {
     if (along < 0 || along > maxDist) return;
     const perp = toM.sub(dir.clone().multiplyScalar(along)).length();
     if (perp < m.hitRadius) {
-      m.takeDamage(dmg);
-      this.addScore(Math.round(dmg * 2), true);
-      this.hud.popDamage(dmg);
+      const open = m.vulnerable;
+      const dealt = m.takeDamage(dmg);
+      this.addScore(Math.round(dealt * 2), true);
+      this.hud.popDamage(dealt, open);
     }
   }
 
@@ -1615,6 +1620,39 @@ export class Game {
     return _v.distanceTo(p) < 8 ? 2.5 : 1;
   }
 
+  /**
+   * A boss changing gear is a beat, not a stat change. It roars, the ground
+   * shakes, the world slows for a moment, and the shockwave shoves the player
+   * back — so the shift is felt before the health bar is read.
+   */
+  private announcePhase(phase: Phase): void {
+    const m = this.monster;
+    if (!m) return;
+    m.phaseAnnounce = 0;
+    if (phase === 1) return; // never announced: it is where every fight starts
+    this.slowmo = phase === 3 ? 0.55 : 0.35;
+    this.shake = phase === 3 ? 1.25 : 0.85;
+    this.hitStop = Math.max(this.hitStop, 0.06);
+    sfx.explode(0.8, 1);
+    const at = m.group.position.clone().setY(m.group.position.y + 14);
+    this.explosions.boom(at, phase === 3 ? 13 : 9);
+    // the roar throws the player clear rather than damaging them — this is a
+    // punctuation mark, not an unavoidable hit
+    const away = this.player.pos.clone().sub(m.group.position).setY(0);
+    const d = away.length();
+    if (d > 0.001 && d < 70) {
+      this.player.knockback(away, 30 + (1 - d / 70) * 34, 9);
+    }
+    this.hud.toast(
+      phase === 3 ? '⚠ ENRAGED ⚠' : 'IT IS CHANGING',
+      phase === 3
+        ? `${m.name} has nothing left to lose — it is faster and it is not stopping.`
+        : `${m.name} is taking this seriously now.`,
+      3,
+    );
+    this.bark(phase === 3 ? 'bossEnrage' : 'bossPhase', phase === 3);
+  }
+
   // ------------------------------------------------------------ boss cycle
 
   private updateBosses(dt: number): void {
@@ -1634,7 +1672,8 @@ export class Game {
         },
       };
       this.monster.update(dt, this.time, ctx);
-      this.hud.setBossHP(this.monster.hp / this.monster.maxHp);
+      this.hud.setBossHP(this.monster.hp / this.monster.maxHp, this.monster.phase, this.monster.vulnerable);
+      if (this.monster.phaseAnnounce) this.announcePhase(this.monster.phaseAnnounce);
 
       if (this.monster.dying && this.monster.hp <= 0 && !this.monster.dead) {
         // reward is granted once, at the start of the death animation

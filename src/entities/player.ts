@@ -176,6 +176,18 @@ export class Player {
     this.yaw = Math.atan2(dir.x, dir.z);
   }
 
+  /**
+   * Shoved by something bigger than you. Rides the same decaying impulse as a
+   * dash, because per-frame input overwrites plain velocity — and unlike a
+   * dash it does not turn the mecha to face the direction of travel, so you
+   * get knocked back still looking at whatever hit you.
+   */
+  knockback(dir: THREE.Vector3, force: number, lift = 0): void {
+    this.dashVel.set(dir.x, 0, dir.z).normalize().multiplyScalar(force);
+    this.dashTime = Math.max(this.dashTime, 0.34);
+    if (lift) this.vel.y = Math.max(this.vel.y, lift);
+  }
+
   damage(amount: number): void {
     this.hp = Math.max(0, this.hp - amount);
   }

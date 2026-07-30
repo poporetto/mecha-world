@@ -49,8 +49,20 @@ export class Hud {
         .hud-fill { height:100%; background:linear-gradient(90deg,#26e0a8,#7fdcff); transition:width .15s; }
         .boss { position:absolute; top:26px; left:50%; transform:translateX(-50%); width:min(560px,60vw); display:none; text-align:center; }
         .boss-name { color:#ffd0d0; font-size:14px; letter-spacing:6px; margin-bottom:5px; text-shadow:0 1px 4px #000; }
-        .boss-track { height:12px; background:#0009; border:1px solid #ff5a5a66; border-radius:6px; overflow:hidden; }
-        .boss-fill { height:100%; background:linear-gradient(90deg,#ff3b3b,#ff9a3b); transition:width .15s; }
+        .boss-track { position:relative; height:12px; background:#0009; border:1px solid #ff5a5a66; border-radius:6px; overflow:hidden; }
+        .boss-fill { height:100%; background:linear-gradient(90deg,#ff3b3b,#ff9a3b); transition:width .15s, background .25s; }
+        /* the track itself reacts, so the fight state is readable even when
+           the bar is nearly empty and there is no fill left to colour */
+        .boss.enraged .boss-track { border-color:#ff3b5c; box-shadow:0 0 16px #ff3b5c66; }
+        .boss.open .boss-track { border-color:#7ff0ff; box-shadow:0 0 20px #4de2ff88; }
+        /* Sits on top of the track rather than below it — the objective line
+           lives directly under the bar and cannot be pushed around. */
+        .boss-open { display:none; position:absolute; inset:0; line-height:12px;
+                     color:#eaffff; font-size:9px; letter-spacing:4px; font-weight:700;
+                     text-shadow:0 0 6px #003a4a, 0 1px 2px #000;
+                     animation:openPulse .5s ease-in-out infinite alternate; }
+        .boss.open .boss-open { display:block; }
+        @keyframes openPulse { from { opacity:.6; } to { opacity:1; } }
         .chips { position:absolute; left:24px; bottom:18px; display:flex; gap:7px; flex-wrap:wrap;
                  max-width:min(62vw, 760px); }
         .chip { padding:6px 10px; border-radius:6px; font-size:11px; letter-spacing:1px; color:#eaf6ff;
@@ -278,7 +290,10 @@ export class Hud {
       <div class="obj" id="obj">OBJECTIVE · <b>Explore Neo Tokyo</b></div>
       <div class="boss" id="boss">
         <div class="boss-name" id="bossname"></div>
-        <div class="boss-track"><div class="boss-fill" id="bossfill" style="width:100%"></div></div>
+        <div class="boss-track">
+          <div class="boss-fill" id="bossfill" style="width:100%"></div>
+          <div class="boss-open">OPENING · STRIKE THE CORE</div>
+        </div>
       </div>
       <div class="chips">
         <div class="chip" id="chip-weapon"><b>A</b> ATTACK · <b>1-7</b> or WHEEL to switch</div>
@@ -722,12 +737,15 @@ export class Hud {
     c.style.transform = on ? 'scale(1.6)' : 'scale(1)';
   }
 
-  popDamage(dmg: number): void {
+  popDamage(dmg: number, punish = false): void {
     const el = document.getElementById('dmgpop')!;
-    el.textContent = '-' + Math.round(dmg);
+    el.textContent = punish ? '-' + Math.round(dmg) + '!' : '-' + Math.round(dmg);
+    // a punish hit reads cyan and lands bigger than an ordinary one
+    el.style.color = punish ? '#7ff0ff' : '';
+    el.style.textShadow = punish ? '0 0 18px #4de2ff' : '';
     el.style.animation = 'none';
     void el.offsetWidth; // restart the animation
-    el.style.animation = 'dmgpop .6s ease-out';
+    el.style.animation = punish ? 'dmgpop .75s ease-out' : 'dmgpop .6s ease-out';
   }
 
   impactFeedback(weakPoint: boolean, strength = 1): void {
@@ -798,8 +816,20 @@ export class Hud {
     this.bossName.textContent = '⚠ ' + name + ' ⚠';
   }
 
-  setBossHP(frac: number): void {
+  /**
+   * The boss bar carries the state of the fight, not just a number: it shifts
+   * colour as the boss changes gear, and flares cyan with an OPENING prompt
+   * whenever the boss is caught in a punish window.
+   */
+  setBossHP(frac: number, phase: 1 | 2 | 3 = 1, open = false): void {
     this.bossFill.style.width = Math.max(0, frac * 100) + '%';
+    this.bossFill.style.background = open
+      ? 'linear-gradient(90deg,#7ff0ff,#4de2ff)'
+      : phase === 3 ? 'linear-gradient(90deg,#ff3b5c,#ff8a3d)'
+      : phase === 2 ? 'linear-gradient(90deg,#ff7a3d,#ffc44f)'
+      : 'linear-gradient(90deg,#ff4d6a,#ff9bb0)';
+    this.bossWrap.classList.toggle('open', open);
+    this.bossWrap.classList.toggle('enraged', !open && phase === 3);
   }
 
   hideBoss(): void {

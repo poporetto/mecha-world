@@ -28,14 +28,51 @@ function box(w: number, h: number, d: number, color: number, emissive = 0): THRE
   );
 }
 
+/** 1 = opening, 2 = pressured, 3 = cornered and enraged. */
+export type Phase = 1 | 2 | 3;
+
 export abstract class Monster {
   group = new THREE.Group();
   hp: number;
   maxHp: number;
   dead = false; // true once death animation done (remove from scene)
   dying = false;
+
+  /**
+   * Fights escalate instead of running one loop until the HP bar empties.
+   * Crossing 60% and 25% shifts the boss up a gear: it moves faster, attacks
+   * come closer together, and it announces the change with a roar the player
+   * has to respect. Individual bosses read `tempo` and `pace` rather than each
+   * reimplementing the curve.
+   */
+  phase: Phase = 1;
+  /** Set to the new phase for one frame on a transition, for the game to read. */
+  phaseAnnounce: Phase | 0 = 0;
+  /** Multiplies attack cadence — higher means attacks land closer together. */
+  get tempo(): number {
+    return this.phase === 1 ? 1 : this.phase === 2 ? 1.3 : 1.7;
+  }
+  /** Multiplies movement speed. */
+  get pace(): number {
+    return this.phase === 1 ? 1 : this.phase === 2 ? 1.18 : 1.42;
+  }
+
+  /**
+   * Seconds left in a punish window. A boss that has just committed to a heavy
+   * attack is open: the core is exposed, it cannot start another attack, and
+   * everything hurts it more. This is what turns dodging into an opportunity
+   * rather than just survival.
+   */
+  vulnT = 0;
+  get vulnerable(): boolean {
+    return this.vulnT > 0;
+  }
+  /** Damage multiplier applied to hits landed inside a punish window. */
+  static readonly PUNISH = 1.9;
+
   protected deathT = 0;
   protected flashT = 0;
+  private roarT = 0;
   /** Set while a heavy attack winds up — renders a warning tint so the
    *  player can read the tell and dash out of the way. */
   protected telegraph = false;
@@ -54,33 +91,76 @@ export abstract class Monster {
     this.maxHp = hp;
   }
 
-  takeDamage(amount: number): void {
-    if (this.dying) return;
-    this.hp = Math.max(0, this.hp - amount);
+  /**
+   * Apply damage. Returns what actually landed, which is more than was asked
+   * for if the boss was caught inside a punish window — the caller needs the
+   * real number for score and for the damage readout.
+   */
+  takeDamage(amount: number): number {
+    if (this.dying) return 0;
+    const dealt = this.vulnerable ? amount * Monster.PUNISH : amount;
+    this.hp = Math.max(0, this.hp - dealt);
     this.flashT = 0.14;
     this.staggerT = Math.max(this.staggerT, 0.16);
-    this.staggerStrength = Math.max(this.staggerStrength, Math.min(1, amount / 42));
-    if (this.hp <= 0) this.dying = true;
+    this.staggerStrength = Math.max(this.staggerStrength, Math.min(1, dealt / 42));
+    if (this.hp <= 0) {
+      this.dying = true;
+      return dealt;
+    }
+    // gear changes at 60% and 25% — only ever upward
+    const frac = this.hp / this.maxHp;
+    const want: Phase = frac <= 0.25 ? 3 : frac <= 0.6 ? 2 : 1;
+    if (want > this.phase) {
+      this.phase = want;
+      this.phaseAnnounce = want;
+      this.roarT = 1.1;
+      // the roar cancels whatever opening it had — no free damage off a tell
+      this.vulnT = 0;
+      this.onPhase(want);
+    }
+    return dealt;
+  }
+
+  /** Bosses override to swap in phase-specific behaviour. */
+  protected onPhase(_p: Phase): void {}
+
+  /**
+   * Open the boss up. Call straight after committing to a heavy attack: it is
+   * planted, the core is lit, and hits do PUNISH times damage until it
+   * recovers.
+   */
+  protected openWindow(sec: number): void {
+    this.vulnT = Math.max(this.vulnT, sec);
   }
 
   protected updateFlash(dt: number): void {
     this.coreT += dt;
     this.updateCore(this.coreT);
     this.flashT -= dt;
+    this.vulnT = Math.max(0, this.vulnT - dt);
+    this.roarT = Math.max(0, this.roarT - dt);
     this.staggerT = Math.max(0, this.staggerT - dt);
     const stagger = this.staggerT > 0
       ? Math.sin((this.staggerT / 0.16) * Math.PI) * this.staggerStrength
       : 0;
+    // A punish window reads in the silhouette too: it sags, knees buckled,
+    // so an open boss is recognisable from behind or at distance.
+    const sag = this.vulnerable ? Math.min(1, this.vulnT * 2.5) * 0.06 : 0;
+    // A roar swells it up to full height — the opposite shape, so the two
+    // states can never be mistaken for one another.
+    const swell = this.roarT > 0 ? Math.sin((this.roarT / 1.1) * Math.PI) * 0.07 : 0;
     // A short compression makes hits register on the entire silhouette while
     // preserving each boss's authored movement and heading.
     this.group.scale.set(
-      MONSTER_SCALE * (1 + stagger * 0.018),
-      MONSTER_SCALE * (1 - stagger * 0.035),
-      MONSTER_SCALE * (1 + stagger * 0.018),
+      MONSTER_SCALE * (1 + stagger * 0.018 + sag * 0.7 + swell),
+      MONSTER_SCALE * (1 - stagger * 0.035 - sag + swell),
+      MONSTER_SCALE * (1 + stagger * 0.018 + sag * 0.7 + swell),
     );
     if (this.staggerT === 0) this.staggerStrength = 0;
     const flash = this.flashT > 0;
-    const warn = !flash && this.telegraph;
+    const roar = !flash && this.roarT > 0;
+    const open = !flash && !roar && this.vulnerable;
+    const warn = !flash && !roar && !open && this.telegraph;
     this.group.traverse((o) => {
       const m = o as THREE.Mesh;
       if (m.isMesh) {
@@ -88,6 +168,13 @@ export abstract class Monster {
         if (flash) {
           mat.emissive.setHex(0xff2222);
           mat.emissiveIntensity = 0.8;
+        } else if (roar) {
+          // white-hot gear change, pulsing
+          mat.emissive.setHex(0xfff0d0);
+          mat.emissiveIntensity = 0.5 + Math.sin(this.coreT * 34) * 0.35;
+        } else if (open) {
+          mat.emissive.setHex(0x4de2ff); // cyan: hit it NOW
+          mat.emissiveIntensity = 0.55 + Math.sin(this.coreT * 18) * 0.2;
         } else if (warn) {
           mat.emissive.setHex(0xffa32f); // amber wind-up
           mat.emissiveIntensity = 0.65;
@@ -119,7 +206,17 @@ export abstract class Monster {
 
   protected updateCore(t: number): void {
     if (!this.weakCore) return;
-    this.weakCore.scale.setScalar(0.85 + Math.sin(t * 6) * 0.15);
+    const mat = this.weakCore.material as THREE.MeshLambertMaterial;
+    if (this.vulnerable) {
+      // wide open: the core swells and flares cyan so it is unmissable
+      this.weakCore.scale.setScalar(1.5 + Math.sin(t * 20) * 0.3);
+      mat.color.setHex(0xbdf4ff);
+      mat.emissive.setHex(0x4de2ff);
+    } else {
+      this.weakCore.scale.setScalar(0.85 + Math.sin(t * 6) * 0.15);
+      mat.color.setHex(0xffe45c);
+      mat.emissive.setHex(0xffc61a);
+    }
   }
 
   protected rememberEmissives(): void {
@@ -302,8 +399,9 @@ export class Kaiju extends Monster {
     this.heading += dd * Math.min(1, dt * 1.5);
     this.group.rotation.y = this.heading;
 
-    if (dist > 4) {
-      const speed = 4.5;
+    // rooted through a punish window: a committed stomp cannot be walked off
+    if (dist > 4 && !this.vulnerable) {
+      const speed = 4.5 * this.pace;
       this.group.position.x += Math.sin(this.heading) * speed * dt;
       this.group.position.z += Math.cos(this.heading) * speed * dt;
     }
@@ -311,15 +409,16 @@ export class Kaiju extends Monster {
     this.group.position.y += ((gy > 12 ? 0 : gy) - this.group.position.y) * Math.min(1, dt * 3);
 
     // animate
-    this.legL.rotation.x = Math.sin(t * 4) * 0.5;
-    this.legR.rotation.x = -Math.sin(t * 4) * 0.5;
+    const gait = 4 * this.pace;
+    this.legL.rotation.x = Math.sin(t * gait) * 0.5;
+    this.legR.rotation.x = -Math.sin(t * gait) * 0.5;
     this.tail.rotation.y = Math.sin(t * 1.7) * 0.25;
 
     // stomp: carve the city under and ahead of it
     this.telegraph = this.stompT < 0.5 && this.stompT > 0;
     this.stompT -= dt;
-    if (this.stompT <= 0) {
-      this.stompT = 1.1;
+    if (this.stompT <= 0 && !this.vulnerable) {
+      this.stompT = 1.1 / this.tempo;
       const fwd = new THREE.Vector3(Math.sin(this.heading), 0, Math.cos(this.heading));
       const p = this.group.position.clone().addScaledVector(fwd, 11);
       p.y = this.group.position.y + 8;
@@ -330,6 +429,8 @@ export class Kaiju extends Monster {
       if (this.group.position.distanceTo(ctx.playerPos) < 20) {
         ctx.damagePlayer(14);
       }
+      // every third stomp it overcommits and has to haul itself back upright
+      if (Math.random() < 0.34) this.openWindow(1.5);
     }
   }
 }
@@ -342,6 +443,8 @@ export class RocketBeast extends Monster {
   hitRadius = 15;
   private orbitA = Math.random() * Math.PI * 2;
   private fireT = 3;
+  private salvo = 0;   // rockets left in the current burst
+  private salvoT = 0;
   private podL: THREE.Mesh;
   private podR: THREE.Mesh;
 
@@ -402,10 +505,27 @@ export class RocketBeast extends Monster {
     this.telegraph = this.fireT < 0.7 && this.fireT > 0;
     this.fireT -= dt;
     if (this.fireT <= 0 && ctx.fireRocket) {
-      this.fireT = 3.2;
+      this.fireT = 3.2 / this.tempo;
       const from = this.group.position.clone();
       from.y += 9.6 * MONSTER_SCALE;
       ctx.fireRocket(from, ctx.playerPos.clone().setY(ctx.playerPos.y + 2));
+      // in the later gears it empties both pods in a salvo, then hangs there
+      // venting heat with nothing left to shoot back with
+      if (this.phase > 1) {
+        this.salvo = this.phase === 3 ? 3 : 2;
+        this.salvoT = 0.22;
+      }
+    }
+    if (this.salvo > 0) {
+      this.salvoT -= dt;
+      if (this.salvoT <= 0 && ctx.fireRocket) {
+        this.salvoT = 0.22;
+        this.salvo--;
+        const from = this.group.position.clone();
+        from.y += 9.6 * MONSTER_SCALE;
+        ctx.fireRocket(from, ctx.playerPos.clone().setY(ctx.playerPos.y + 2));
+        if (this.salvo === 0) this.openWindow(1.9);
+      }
     }
   }
 }
@@ -491,8 +611,8 @@ export class VoltSerpent extends Monster {
     while (dd < -Math.PI) dd += Math.PI * 2;
     this.heading += dd * Math.min(1, dt * 2.5);
     this.group.rotation.y = this.heading;
-    if (dist > 14) {
-      const speed = 9;
+    if (dist > 14 && !this.vulnerable) {
+      const speed = 9 * this.pace;
       this.group.position.x += Math.sin(this.heading) * speed * dt;
       this.group.position.z += Math.cos(this.heading) * speed * dt;
     }
@@ -520,12 +640,22 @@ export class VoltSerpent extends Monster {
     // lightning strike at the player's position
     this.telegraph = this.zapT < 0.7 && this.zapT > 0;
     this.zapT -= dt;
-    if (this.zapT <= 0 && dist < 70) {
-      this.zapT = 4;
-      const strike = ctx.playerPos.clone();
-      if (ctx.zapAt) ctx.zapAt(strike);
-      ctx.destroyAt(strike, 3.2, 0.3);
-      if (ctx.playerPos.distanceTo(strike) < 8) ctx.damagePlayer(12);
+    if (this.zapT <= 0 && dist < 70 && !this.vulnerable) {
+      this.zapT = 4 / this.tempo;
+      // enraged it forks the strike across a spread, but the discharge leaves
+      // it earthed and twitching
+      const bolts = this.phase === 3 ? 3 : 1;
+      for (let i = 0; i < bolts; i++) {
+        const strike = ctx.playerPos.clone();
+        if (i > 0) {
+          strike.x += (Math.random() - 0.5) * 26;
+          strike.z += (Math.random() - 0.5) * 26;
+        }
+        if (ctx.zapAt) ctx.zapAt(strike);
+        ctx.destroyAt(strike, 3.2, 0.3);
+        if (ctx.playerPos.distanceTo(strike) < 8) ctx.damagePlayer(12);
+      }
+      if (bolts > 1) this.openWindow(1.6);
     }
   }
 }
@@ -597,22 +727,23 @@ export class IronColossus extends Monster {
     this.heading += dd * Math.min(1, dt * 1.2);
     this.group.rotation.y = this.heading;
 
-    if (dist > 26) {
-      const speed = 2.6;
+    if (dist > 26 && !this.vulnerable) {
+      const speed = 2.6 * this.pace;
       this.group.position.x += Math.sin(this.heading) * speed * dt;
       this.group.position.z += Math.cos(this.heading) * speed * dt;
     }
     const gy = ctx.world.groundHeight(this.group.position.x, this.group.position.z, 20);
     this.group.position.y += ((gy > 14 ? 0 : gy) - this.group.position.y) * Math.min(1, dt * 2.5);
 
-    this.legL.rotation.x = Math.sin(t * 2.2) * 0.3;
-    this.legR.rotation.x = -Math.sin(t * 2.2) * 0.3;
+    const gait = 2.2 * this.pace;
+    this.legL.rotation.x = Math.sin(t * gait) * 0.3;
+    this.legR.rotation.x = -Math.sin(t * gait) * 0.3;
 
     // slow devastating stomps
     this.telegraph = this.stompT < 0.6 && this.stompT > 0;
     this.stompT -= dt;
-    if (this.stompT <= 0) {
-      this.stompT = 1.6;
+    if (this.stompT <= 0 && !this.vulnerable) {
+      this.stompT = 1.6 / this.tempo;
       const feet = this.group.position.clone();
       feet.y += 2;
       ctx.destroyAt(feet, 7, 0.4);
@@ -622,12 +753,14 @@ export class IronColossus extends Monster {
     // hurl a boulder in a high arc
     this.telegraph = this.throwT < 0.8 && this.throwT > 0;
     this.throwT -= dt;
-    if (this.throwT <= 0 && ctx.throwBoulder && dist < 90) {
-      this.throwT = 5;
+    if (this.throwT <= 0 && ctx.throwBoulder && dist < 90 && !this.vulnerable) {
+      this.throwT = 5 / this.tempo;
       this.armR.rotation.x = -2.2; // wind-up pose, relaxes over time
       const from = this.group.position.clone();
       from.y += 13 * MONSTER_SCALE / 2.2 * 2.2;
       ctx.throwBoulder(from, ctx.playerPos.clone());
+      // all that mass goes into the throw — it is wide open on the follow-through
+      this.openWindow(2.2);
     }
     this.armR.rotation.x *= 1 - Math.min(1, dt * 2);
   }
@@ -701,20 +834,25 @@ export class SkyReaver extends Monster {
       const gy = ctx.world.groundHeight(this.group.position.x, this.group.position.z, 40);
       if (this.diveLife <= 0 || this.group.position.y < gy + 6) {
         this.diving = false;
-        this.diveT = 5 + Math.random() * 3;
+        this.diveT = (5 + Math.random() * 3) / this.tempo;
+        // pulling out of a dive costs it all its speed — this is the one
+        // moment a flier is reachable, so it is a generous window
+        this.openWindow(2.4);
       }
       return;
     }
 
     // high circling
-    this.orbitA += dt * 0.35;
+    this.orbitA += dt * 0.35 * this.pace;
     const R = 46;
     const tx = ctx.playerPos.x + Math.sin(this.orbitA) * R;
     const tz = ctx.playerPos.z + Math.cos(this.orbitA) * R;
     this.group.position.x += (tx - this.group.position.x) * Math.min(1, dt * 1.2);
     this.group.position.z += (tz - this.group.position.z) * Math.min(1, dt * 1.2);
     const gy = ctx.world.groundHeight(this.group.position.x, this.group.position.z, 40);
-    const targetY = gy + 30 + Math.sin(t * 0.9) * 3;
+    // it labours back up to altitude after a dive instead of snapping there,
+    // which is what makes the punish window actually reachable
+    const targetY = gy + (this.vulnerable ? 11 : 30) + Math.sin(t * 0.9) * 3;
     this.group.position.y += (targetY - this.group.position.y) * Math.min(1, dt * 1.5);
 
     const dx = ctx.playerPos.x - this.group.position.x;
@@ -747,6 +885,7 @@ export class CrimsonMantis extends Monster {
   private legPhase = 0;
   private lungeT = 3;
   private slashT = -1; // 0..1 while slashing
+  private combo = 0;   // swings left in the current flurry
   private heading = 0;
 
   constructor(x: number, z: number) {
@@ -821,11 +960,11 @@ export class CrimsonMantis extends Monster {
     this.group.rotation.y = this.heading;
 
     // sprint in, keep a slight standoff
-    if (dist > 16) {
-      const speed = 11;
+    if (dist > 16 && !this.vulnerable) {
+      const speed = 11 * this.pace;
       this.group.position.x += Math.sin(this.heading) * speed * dt;
       this.group.position.z += Math.cos(this.heading) * speed * dt;
-      this.legPhase += dt * 10;
+      this.legPhase += dt * 10 * this.pace;
     }
     const gy = ctx.world.groundHeight(this.group.position.x, this.group.position.z, 20);
     this.group.position.y += ((gy > 14 ? 0 : gy) - this.group.position.y) * Math.min(1, dt * 4);
@@ -849,13 +988,24 @@ export class CrimsonMantis extends Monster {
         ctx.destroyAt(p, 4, 0.25);
         if (dist < 26) ctx.damagePlayer(13);
       }
-      if (this.slashT >= 1) this.slashT = -1;
+      if (this.slashT >= 1) {
+        this.slashT = -1;
+        this.combo--;
+        if (this.combo > 0) {
+          this.slashT = 0; // chain straight into the next swing
+        } else {
+          // scythes buried in the road at the end of a flurry
+          this.openWindow(1.4);
+        }
+      }
     } else {
       this.scytheL.rotation.x = -0.6 + Math.sin(t * 2) * 0.1;
       this.scytheR.rotation.x = -0.6 - Math.sin(t * 2) * 0.1;
       this.lungeT -= dt;
-      if (this.lungeT <= 0 && dist < 30) {
-        this.lungeT = 2.2;
+      if (this.lungeT <= 0 && dist < 30 && !this.vulnerable) {
+        this.lungeT = 2.2 / this.tempo;
+        // one swing at first, a three-hit flurry once it is cornered
+        this.combo = this.phase === 3 ? 3 : this.phase === 2 ? 2 : 1;
         this.slashT = 0;
       }
     }
@@ -940,12 +1090,12 @@ export class MagmaGolem extends Monster {
     this.heading += dd * Math.min(1, dt * 1.1);
     this.group.rotation.y = this.heading;
 
-    if (dist > 22) {
-      const speed = 3.4;
+    if (dist > 22 && !this.vulnerable) {
+      const speed = 3.4 * this.pace;
       this.group.position.x += Math.sin(this.heading) * speed * dt;
       this.group.position.z += Math.cos(this.heading) * speed * dt;
-      this.legL.rotation.x = Math.sin(t * 3) * 0.4;
-      this.legR.rotation.x = -Math.sin(t * 3) * 0.4;
+      this.legL.rotation.x = Math.sin(t * 3 * this.pace) * 0.4;
+      this.legR.rotation.x = -Math.sin(t * 3 * this.pace) * 0.4;
     }
     const gy = ctx.world.groundHeight(this.group.position.x, this.group.position.z, 20);
     this.group.position.y += ((gy > 14 ? 0 : gy) - this.group.position.y) * Math.min(1, dt * 2.5);
@@ -956,21 +1106,26 @@ export class MagmaGolem extends Monster {
     // ground slam: both fists down, ring of destruction around the feet
     this.telegraph = this.slamT < 0.7 && this.slamT > 0;
     this.slamT -= dt;
-    if (this.slamT <= 0 && dist < 40) {
-      this.slamT = 3.5;
+    if (this.slamT <= 0 && dist < 40 && !this.vulnerable) {
+      this.slamT = 3.5 / this.tempo;
       this.armL.rotation.x = 1.4;
       this.armR.rotation.x = 1.4;
       const c = this.group.position.clone();
       c.y += 2;
       ctx.destroyAt(c, 8, 0.5);
-      for (let i = 0; i < 6; i++) {
-        const a = (i / 6) * Math.PI * 2;
+      // the shockwave ring widens as it heats up
+      const spokes = this.phase === 3 ? 10 : 6;
+      const reach = this.phase === 3 ? 20 : 14;
+      for (let i = 0; i < spokes; i++) {
+        const a = (i / spokes) * Math.PI * 2;
         const p = c.clone();
-        p.x += Math.sin(a) * 14;
-        p.z += Math.cos(a) * 14;
+        p.x += Math.sin(a) * reach;
+        p.z += Math.cos(a) * reach;
         ctx.destroyAt(p, 4, 0.3);
       }
       if (dist < 30) ctx.damagePlayer(18);
+      // fists buried to the wrist in the road
+      this.openWindow(1.8);
     }
     this.armL.rotation.x *= 1 - Math.min(1, dt * 2.5);
     this.armR.rotation.x *= 1 - Math.min(1, dt * 2.5);
@@ -978,8 +1133,8 @@ export class MagmaGolem extends Monster {
     // lob a molten boulder at range
     this.telegraph = this.throwT < 0.8 && this.throwT > 0;
     this.throwT -= dt;
-    if (this.throwT <= 0 && ctx.throwBoulder && dist > 24 && dist < 95) {
-      this.throwT = 4.5;
+    if (this.throwT <= 0 && ctx.throwBoulder && dist > 24 && dist < 95 && !this.vulnerable) {
+      this.throwT = 4.5 / this.tempo;
       const from = this.group.position.clone();
       from.y += 26;
       ctx.throwBoulder(from, ctx.playerPos.clone());
@@ -1047,7 +1202,7 @@ export class DeepMaw extends Monster {
       const dz = ctx.playerPos.z - this.group.position.z;
       const d = Math.hypot(dx, dz);
       if (d > 2) {
-        const speed = 13;
+        const speed = 13 * this.pace;
         this.group.position.x += (dx / d) * speed * dt;
         this.group.position.z += (dz / d) * speed * dt;
       }
@@ -1060,6 +1215,9 @@ export class DeepMaw extends Monster {
         // erupt: burst the ground open beneath it
         ctx.destroyAt(this.group.position.clone().setY(this.surfaceY + 2), 7, 0.5);
         if (d < 22) ctx.damagePlayer(20);
+        // beached on the surface until it can worm back under — the whole
+        // surfaced stretch is the punish
+        this.openWindow(3.5);
       }
     } else {
       // surfaced: rear up, then dive back down
@@ -1072,7 +1230,8 @@ export class DeepMaw extends Monster {
       }
       if (this.phaseT <= 0) {
         this.submerged = true;
-        this.phaseT = 2 + Math.random() * 1.5;
+        // it stays under for less and less time as the fight turns
+        this.phaseT = (2 + Math.random() * 1.5) / this.tempo;
       }
     }
   }
@@ -1158,14 +1317,19 @@ export class CinderWyrm extends Monster {
     this.wingR.rotation.z = -Math.sin(t * 3) * 0.4;
 
     // flamethrower: sweep a line of fire from the maw toward the player
+    this.telegraph = this.breathT < 0.8 && this.breathT > 0;
     this.breathT -= dt;
     if (this.breathT <= 0 && this.breathing <= 0) {
-      this.breathing = 1.6;
-      this.breathT = 5 + Math.random() * 2;
+      // longer, hotter breaths as it burns down
+      this.breathing = this.phase === 3 ? 2.6 : this.phase === 2 ? 2.0 : 1.6;
+      this.breathT = (5 + Math.random() * 2) / this.tempo;
     }
     (this.maw.material as THREE.MeshLambertMaterial).emissiveIntensity = this.breathing > 0 ? 1.4 : 1;
     if (this.breathing > 0) {
+      const wasBreathing = this.breathing;
       this.breathing -= dt;
+      // out of breath: it has to glide and refill before it can burn again
+      if (wasBreathing > 0 && this.breathing <= 0) this.openWindow(2.0);
       const from = this.group.position.clone();
       from.y += 8;
       const dir = ctx.playerPos.clone().setY(ctx.playerPos.y + 4).sub(from).normalize();
@@ -1195,6 +1359,7 @@ export class TideLeviathan extends Monster {
   private heading = 0;
   private fireT = 2.5;
   private burst = 0;
+  private shotT = 0;
 
   constructor(x: number, z: number) {
     super(230);
@@ -1252,8 +1417,8 @@ export class TideLeviathan extends Monster {
     this.heading += dd * Math.min(1, dt * 1.3);
     this.group.rotation.y = this.heading;
 
-    if (dist > 30) {
-      const speed = 4;
+    if (dist > 30 && !this.vulnerable) {
+      const speed = 4 * this.pace;
       this.group.position.x += Math.sin(this.heading) * speed * dt;
       this.group.position.z += Math.cos(this.heading) * speed * dt;
     }
@@ -1265,20 +1430,32 @@ export class TideLeviathan extends Monster {
     // aqua blaster: a rapid burst of water shots that flood where they land
     this.telegraph = this.fireT < 0.7 && this.fireT > 0;
     this.fireT -= dt;
-    if (this.fireT <= 0 && this.burst <= 0) {
-      this.burst = 1.2;
-      this.fireT = 4.5;
+    if (this.fireT <= 0 && this.burst <= 0 && !this.vulnerable) {
+      this.burst = this.phase === 3 ? 2.0 : this.phase === 2 ? 1.6 : 1.2;
+      this.shotT = 0;
+      this.fireT = 4.5 / this.tempo;
     }
     (this.cannon.material as THREE.MeshLambertMaterial).emissiveIntensity = this.burst > 0 ? 1.5 : 1;
     if (this.burst > 0) {
+      const wasBurst = this.burst;
       this.burst -= dt;
-      if (Math.random() < 0.4) {
+      // the cannon has to repressurise between bursts
+      if (wasBurst > 0 && this.burst <= 0) this.openWindow(1.7);
+      this.shotT -= dt;
+      // A burst is five readable splashes, not a damage roll every render
+      // frame. The previous frame-based check could land dozens of invisible
+      // overlapping hits during one cannon animation.
+      if (this.shotT <= 0) {
+        this.shotT = 0.24;
         const target = ctx.playerPos.clone();
         target.x += (Math.random() - 0.5) * 24;
         target.z += (Math.random() - 0.5) * 24;
         if (ctx.floodAt) ctx.floodAt(target, 5);
-        ctx.destroyAt(target.clone().setY(gy + 4), 3.5, 0.2);
-        if (target.distanceTo(ctx.playerPos) < 12) ctx.damagePlayer(10);
+        const targetGround = ctx.world.groundHeight(target.x, target.z, 20);
+        ctx.destroyAt(target.clone().setY(targetGround + 4), 3.5, 0.2);
+        // Only the initial high-pressure splash hurts. Standing in the
+        // shallow water afterwards is safe for a sealed Terra-Armor.
+        if (target.distanceTo(ctx.playerPos) < 6) ctx.damagePlayer(7);
       }
     }
   }

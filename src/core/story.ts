@@ -362,6 +362,29 @@ export const BARKS: Record<string, Line[]> = {
     { who: KUROKI, text: 'Say please.' },
     { who: AYA, text: 'FINISH IT!' },
   ],
+  // it has just changed gear — half warning, half respect
+  bossPhase: [
+    { who: AYA, text: 'Its output just jumped. Whatever it was doing before, that was not all of it.' },
+    { who: KUROSAWA, text: 'It was measuring you. Now it has finished measuring.' },
+    { who: KUROKI, text: 'Good. I was getting bored.' },
+    { who: AYA, text: 'Pattern change — it is moving differently. Do not fight the old one.' },
+    { who: KUROSAWA, text: 'That is not desperation. That is a second gear. Be careful.' },
+    { who: AYA, text: 'Kuroki, it just stopped holding back. Please read that as the warning it is.' },
+    { who: HINATA, text: 'Whoa — it got FAST. Captain, did you see that?' },
+    { who: KUROKI, text: 'I saw it.' },
+    { who: KOTETSU, text: 'It sped up. Wonderful. I could barely hit it at the old speed.' },
+  ],
+  // final quarter: it has nothing left to protect
+  bossEnrage: [
+    { who: AYA, text: 'It is dying and it knows it. That makes it more dangerous, not less.' },
+    { who: KUROSAWA, text: 'A cornered animal spends everything. Do not trade blows now.' },
+    { who: KUROKI, text: 'Then I will not miss.' },
+    { who: AYA, text: 'Vitals critical — and it has stopped defending itself entirely. It is all attack now.' },
+    { who: HINATA, text: 'It is throwing everything at you! Captain, break off, break off!' },
+    { who: KUROKI, text: 'No. This is where it ends.' },
+    { who: AYA, text: 'Last quarter. Whatever it does next, it only gets to do once.' },
+    { who: KOTETSU, text: 'If it is going to explode, tell me BEFORE and not after.' },
+  ],
   bossFar: [
     { who: AYA, text: 'Target is a long way out. Follow the marker, I will keep it lit.' },
     { who: KUROKI, text: 'You always know where I am going.' },
