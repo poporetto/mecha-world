@@ -142,6 +142,11 @@ export class Game {
   private combo = 1;
   private comboTimer = 0;
   private shake = 0; // camera shake magnitude, decays
+  /** Directional camera shove, world space. Decays; read by updateCamera. */
+  private kick = new THREE.Vector3();
+  /** Camera roll in radians — banking in turns, snapping on impacts. */
+  private camRoll = 0;
+  private rollTarget = 0;
   private slowmo = 0; // seconds of slow-motion remaining
   private hitStop = 0;
   private impactZoom = 0;
@@ -787,6 +792,8 @@ export class Game {
         this.shake = Math.max(this.shake, 0.18 + strength * 0.34);
         this.impactZoom = Math.max(this.impactZoom, strength + (big ? 0.35 : 0));
         this.hud.impactFeedback(big, strength);
+        // shove the camera along the line of the blow, into the target
+        this.addKick(p.clone().sub(this.player.pos), strength * (open ? 2.6 : 1.7));
         sfx.impact(strength, big);
         this.debris.burst(p, [15], open ? 12 : 6);
         this.addScore(Math.round(dealt * 2), true);
@@ -1541,6 +1548,9 @@ export class Game {
     this.hitStop = 0;
     this.impactZoom = 0;
     this.dashCameraT = 0;
+    this.kick.set(0, 0, 0);
+    this.camRoll = 0;
+    this.rollTarget = 0;
     this.bossIntroT = 0;
     this.shake = 0;
 
@@ -1650,6 +1660,7 @@ export class Game {
     const d = away.length();
     if (d > 0.001 && d < 70) {
       this.player.knockback(away, 30 + (1 - d / 70) * 34, 9);
+      this.addKick(away, 4);
     }
     this.hud.toast(
       phase === 3 ? '⚠ ENRAGED ⚠' : 'IT IS CHANGING',
@@ -1944,6 +1955,12 @@ export class Game {
     this.player.damage(amount);
     this.player.model.flinchT = 0.22; // visible recoil from the hit
     this.hud.damageFlash();
+    // knocked back from whatever hit you: the camera shoves away from the
+    // source, so a hit off-screen still tells you which way to look
+    const src = this.monster && !this.monster.dying ? this.monster.group.position : null;
+    if (src) this.addKick(this.player.pos.clone().sub(src), Math.min(3.4, 0.9 + amount * 0.09));
+    this.shake = Math.max(this.shake, Math.min(0.9, 0.25 + amount * 0.022));
+    this.hitStop = Math.max(this.hitStop, Math.min(0.05, amount * 0.0022));
     sfx.thud();
     if (this.player.hp <= 0) {
       // dying costs the run: the combo breaks, score is docked, and the mecha
@@ -1995,6 +2012,22 @@ export class Game {
     if (this.lockOn && (!this.monster || this.monster.dying)) { this.lockOn = false; this.hud.setLockOn(false); }
     // combo decay + camera-shake decay run on real time
     this.shake = Math.max(0, this.shake - rawDt * 2.2);
+    // the directional shove springs back faster than the shake fades, so a
+    // hit is a snap rather than a drift
+    this.kick.multiplyScalar(Math.max(0, 1 - rawDt * 7));
+    // Bank into hard turns: the camera leans with lateral movement, which is
+    // most of why running fast in a good third-person game feels fast.
+    const lateral = Math.hypot(this.player.vel.x, this.player.vel.z);
+    if (lateral > 1) {
+      const heading = Math.atan2(this.player.vel.x, this.player.vel.z);
+      let off = heading - this.camYaw;
+      while (off > Math.PI) off -= Math.PI * 2;
+      while (off < -Math.PI) off += Math.PI * 2;
+      this.rollTarget += (Math.sin(off) * Math.min(1, lateral / 34) * 0.05 - this.rollTarget) * Math.min(1, rawDt * 3);
+    } else {
+      this.rollTarget *= Math.max(0, 1 - rawDt * 4);
+    }
+    this.camRoll += (this.rollTarget - this.camRoll) * Math.min(1, rawDt * 8);
     if (this.comboTimer > 0) {
       this.comboTimer -= rawDt;
       if (this.comboTimer <= 0 && this.combo > 1) { this.combo = 1; this.hud.setScore(this.score, this.combo); }
@@ -2224,6 +2257,22 @@ export class Game {
     }
   }
 
+  /**
+   * Shove the camera along the line of a blow. Undirected jitter reads as
+   * noise; a kick that travels in the direction the force went reads as
+   * weight, and tells the player where the hit came from without a marker.
+   */
+  private addKick(dir: THREE.Vector3, amount: number): void {
+    if (dir.lengthSq() < 1e-6) return;
+    this.kick.addScaledVector(dir.clone().normalize(), amount);
+    // clamped: sustained weapons call this many times a second and an
+    // unbounded shove would leave the camera permanently displaced
+    if (this.kick.length() > 4.5) this.kick.setLength(4.5);
+    // roll away from the impact so the frame tilts with the blow
+    this.rollTarget += (Math.random() < 0.5 ? -1 : 1) * amount * 0.012;
+    this.rollTarget = THREE.MathUtils.clamp(this.rollTarget, -0.09, 0.09);
+  }
+
   private updateCamera(): void {
     const pivot = this.player.pos.clone();
     pivot.y += 9.9;
@@ -2258,6 +2307,8 @@ export class Game {
     const hit = this.world.raycast(pivot.x, pivot.y, pivot.z, dir.x, dir.y, dir.z, dist);
     const d = hit ? Math.max(3.5, hit.dist - 0.8) : dist;
     this.camera.position.copy(pivot).addScaledVector(dir, d);
+    // directional shove first, so a blow reads as a push rather than static
+    this.camera.position.add(this.kick);
     // additive shake — jitter the final camera position, never the input yaw/pitch
     if (this.shake > 0.01) {
       const s = this.shake * 1.6;
@@ -2266,5 +2317,8 @@ export class Game {
       this.camera.position.z += (Math.random() - 0.5) * s;
     }
     this.camera.lookAt(pivot);
+    // Roll last: lookAt zeroes it, so banking and impact tilt have to be
+    // applied to the already-oriented camera.
+    if (Math.abs(this.camRoll) > 0.0005) this.camera.rotateZ(this.camRoll);
   }
 }
