@@ -383,6 +383,54 @@ export const CHAPTERS: Chapter[] = [
       { who: KUROSAWA, text: 'It is powering weapons. Kuroki — it is powering weapons.' },
     ],
   },
+  {
+    no: 16,
+    title: 'THE FIRST PROTOTYPE',
+    advance: { frac: 0.98, name: 'STAGING · THE SEAM' },
+    brief: [
+      { who: KUROSAWA, text: 'Designation TA-00. That frame is not a copy of yours, Kuroki.' },
+      { who: KUROSAWA, text: 'Yours is the copy of it. She flew the first one.' },
+      { who: AYA, text: 'Doctor, I am asking you once. Is my sister in there.' },
+      { who: KUROSAWA, text: '…Everything she was up to a particular moment is in there.' },
+      { who: KUROSAWA, text: 'Nothing after it. The seam took an impression and it has been holding it since.' },
+      { who: HINATA, text: 'So it does not know. It does not know that it—' },
+      { who: AYA, text: 'It does not know.' },
+      { who: KUROKI, text: 'Then I will tell it. Everyone off this channel except Aya.' },
+      { who: HINATA, text: 'Senpai—' },
+      { who: KUROKI, text: 'Hinata. Off the channel. Please.' },
+    ],
+    debrief: [
+      { who: KUROKI, text: 'Rei. I did not leave.' },
+      { who: REI, text: '…' },
+      { who: KUROKI, text: 'I called the turn and you followed it and I came back for you.' },
+      { who: KUROKI, text: 'I came back four times. There was nothing to come back to.' },
+      { who: REI, text: 'That is not— I have been waiting. I have been waiting the whole time.' },
+      { who: KUROKI, text: 'I know. I am sorry it was this long.' },
+      { who: AYA, text: 'Rei. It is Aya.' },
+      { who: REI, text: 'Aya? Aya, are the shelters clear? Tell me the shelters are clear.' },
+      { who: AYA, text: '…The shelters are clear. Everyone got out. You did that.' },
+      { who: AYA, text: 'You can stop now. You are allowed to stop.' },
+      { who: REI, text: '…Good. That is good.' },
+      { who: REI, text: 'Kuroki. Do not call that turn again.' },
+      { who: KUROKI, text: 'I never have.' },
+      { who: KUROSAWA, text: 'The seam is closing. It is closing from the inside — she is closing it.' },
+      { who: AYA, text: 'Kuroki, GET OUT OF THERE.' },
+      { who: KUROKI, text: '…Understood, Commander.' },
+    ],
+  },
+];
+
+/** Played once the Revenant is down and the seam has closed for good. */
+export const RIFT_EPILOGUE: Line[] = [
+  { who: KUROSAWA, text: 'The seam is gone. Not sealed — gone. There is nothing there to reopen.' },
+  { who: AYA, text: 'Casualty report is zero. First one I have ever filed.' },
+  { who: HINATA, text: 'Senpai. Are you… is he alright? He has not said anything.' },
+  { who: AYA, text: 'Give him a minute, Hinata.' },
+  { who: KUROKI, text: '…She asked about the shelters. Three years in there and that is what she asked.' },
+  { who: AYA, text: 'That is who she was. That is exactly who she was.' },
+  { who: KUROKI, text: 'Yes. It was.' },
+  { who: AYA, text: 'Come home, Kuroki. That is not an order.' },
+  { who: KUROKI, text: 'I know. I am coming anyway.' },
 ];
 
 export const EPILOGUE: Line[] = [
@@ -520,6 +568,23 @@ export const BARKS: Record<string, Line[]> = {
     { who: KOTETSU, text: 'Give me ten more seconds. Please. Ten.' },
     { who: AYA, text: 'You do not have ten. Nobody has ten.' },
     { who: KUROSAWA, text: 'They are coming faster than they used to. That means something.' },
+  ],
+  // it has finished reading a weapon and stopped being hurt by it
+  revenantAdapt: [
+    { who: KUROSAWA, text: 'It is compensating. Every hit you land teaches it the shape of that weapon.' },
+    { who: AYA, text: 'Switch, Kuroki. Do not give it a pattern to read.' },
+    { who: KUROSAWA, text: 'It learned that one. Use something it has not seen yet.' },
+    { who: AYA, text: 'It is doing what you taught HER to do. Stop repeating yourself!' },
+    { who: HINATA, text: 'Senpai, it is reading you! Change it up!' },
+    { who: KUROSAWA, text: 'Its plating is reconfiguring mid-fight. Remarkable. Also very bad.' },
+  ],
+  // phase 3 — it stops fighting like a machine
+  reiPattern: [
+    { who: AYA, text: 'Kuroki. Kuroki, that is her approach. That is the pattern she flew.' },
+    { who: KUROSAWA, text: 'It has abandoned ranged engagement entirely. That is not a system decision.' },
+    { who: AYA, text: 'It is not calculating any more. It is just… coming at you.' },
+    { who: KUROKI, text: 'I know the pattern. I taught her half of it.' },
+    { who: AYA, text: 'And she taught you the other half. …Do not let that make you slow.' },
   ],
   bossFar: [
     { who: AYA, text: 'Target is a long way out. Follow the marker, I will keep it lit.' },

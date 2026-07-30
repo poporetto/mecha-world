@@ -96,7 +96,7 @@ export abstract class Monster {
    * for if the boss was caught inside a punish window — the caller needs the
    * real number for score and for the damage readout.
    */
-  takeDamage(amount: number): number {
+  takeDamage(amount: number, _src?: string): number {
     if (this.dying) return 0;
     const dealt = this.vulnerable ? amount * Monster.PUNISH : amount;
     this.hp = Math.max(0, this.hp - dealt);
@@ -165,6 +165,10 @@ export abstract class Monster {
       const m = o as THREE.Mesh;
       if (m.isMesh) {
         const mat = m.material as THREE.MeshLambertMaterial;
+        // Not every material is lit. The Revenant is built from the player's
+        // frame, which uses MeshBasicMaterial for the saber blade and the
+        // thruster flames — those have no emissive to drive.
+        if (!mat || !mat.emissive) return;
         if (flash) {
           mat.emissive.setHex(0xff2222);
           mat.emissiveIntensity = 0.8;
@@ -224,6 +228,8 @@ export abstract class Monster {
       const m = o as THREE.Mesh;
       if (m.isMesh) {
         const mat = m.material as THREE.MeshLambertMaterial;
+        // unlit materials (saber blade, thruster flames) have no emissive
+        if (!mat || !mat.emissive) return;
         mat.userData.baseEmissive = mat.emissive.getHex() || 0;
       }
     });

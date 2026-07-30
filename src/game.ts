@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { B } from './core/blocks';
 import { World } from './core/world';
 import { corruptionAt, RIFT_SITE } from './core/worldgen';
+import { Revenant } from './entities/revenant';
 import { ChunkManager } from './render/chunkManager';
 import { Player } from './entities/player';
 import { NpcManager } from './entities/npcs';
@@ -25,7 +26,7 @@ import { buildFallingChunk, FallingChunk, updateFallingChunk } from './fx/collap
 import { Explosions } from './fx/explosions';
 import { Sky } from './fx/sky';
 import { sfx } from './fx/sound';
-import { AYA_HINATA, BARKS, CHAPTERS, ENDLESS_LINES, EPILOGUE, HINATA_CHAPTER, JOTETSU_BARKS, JOTETSU_CHAPTER, KOTETSU_BARKS, KOTETSU_CHAPTER, LATE_MEMORIES, MEMORIES, MONSTER_BARKS, PROLOGUE } from './core/story';
+import { ACT2_START, AYA_HINATA, BARKS, CHAPTERS, ENDLESS_LINES, EPILOGUE, HINATA_CHAPTER, JOTETSU_BARKS, JOTETSU_CHAPTER, KOTETSU_BARKS, KOTETSU_CHAPTER, LATE_MEMORIES, MEMORIES, MONSTER_BARKS, PROLOGUE, RIFT_EPILOGUE } from './core/story';
 import { Hud, RadarKind, WEAPONS, WeaponId } from './ui/hud';
 import { isTouchDevice, TouchControls } from './ui/touch';
 
@@ -140,6 +141,7 @@ export class Game {
   private corruption = 0;
   /** Act II: where the line currently is. Null for the whole of Act I. */
   private frontLine: THREE.Vector3 | null = null;
+  private notedReiPattern = false;
   /** Swarm size for the current wave, before the lull's ramp is applied. */
   private droneBase = 3;
   private warnedContact = false;
@@ -647,7 +649,7 @@ export class Game {
     }
     if (this.monster && !this.monster.dying) {
       const d = this.monster.group.position.distanceTo(this.player.pos);
-      if (d < 40) this.monster.takeDamage(60 * this.power);
+      if (d < 40) this.monster.takeDamage(60 * this.power, 'quake');
     }
   }
 
@@ -706,7 +708,7 @@ export class Game {
     }
     if (this.monster && !this.monster.dying) {
       const d = this.monster.group.position.distanceTo(this.player.pos);
-      if (d < 34) this.monster.takeDamage(45 * this.power);
+      if (d < 34) this.monster.takeDamage(45 * this.power, 'nova');
     }
   }
 
@@ -772,13 +774,18 @@ export class Game {
       this.beamTick = 0.12;
       const end = from.clone().addScaledVector(dir, dist);
       if (hit) this.destroyAt(end, 3, 0.15);
-      this.hitMonsterRay(from, dir, dist + 8, 6 * this.power);
+      this.hitMonsterRay(from, dir, dist + 8, 6 * this.power, 'beam');
     }
   }
 
   // Every sphere-shaped hit funnels through here, so wiring the swarm in once
   // means all weapons damage drones without touching each weapon.
-  private hitMonster(p: THREE.Vector3, radius: number, dmg: number, impactScale = 0.7): boolean {
+  /**
+   * `src` names what dealt the damage. The Revenant learns whatever you lean
+   * on, so it has to be able to tell a saber from a railgun. Wheel weapons
+   * default to the current selection; abilities pass their own tag.
+   */
+  private hitMonster(p: THREE.Vector3, radius: number, dmg: number, impactScale = 0.7, src?: string): boolean {
     let hit = false;
     this.killDrones(this.drones.damageSphere(p, radius, dmg));
     this.notePlanesDowned(this.planes.damageSphere(p, radius, dmg));
@@ -792,7 +799,7 @@ export class Game {
         // catching it mid-recovery is the big payoff, so the feedback for it
         // has to be louder than an ordinary weak-point hit
         const open = m.vulnerable;
-        const dealt = m.takeDamage(dmg * bonus);
+        const dealt = m.takeDamage(dmg * bonus, src ?? this.selectedWeapon);
         const big = bonus > 1 || open;
         const strength = Math.min(1.9, Math.max(0.25, dealt / 28) * impactScale);
         this.hitStop = Math.max(this.hitStop, 0.012 + strength * 0.03 + (big ? 0.018 : 0) + (open ? 0.022 : 0));
@@ -823,7 +830,7 @@ export class Game {
     }
   }
 
-  private hitMonsterRay(from: THREE.Vector3, dir: THREE.Vector3, maxDist: number, dmg: number): void {
+  private hitMonsterRay(from: THREE.Vector3, dir: THREE.Vector3, maxDist: number, dmg: number, src?: string): void {
     this.killDrones(this.drones.damageRay(from, dir, maxDist, dmg));
     this.notePlanesDowned(this.planes.damageRay(from, dir, maxDist, dmg));
     const m = this.monster;
@@ -836,7 +843,7 @@ export class Game {
     const perp = toM.sub(dir.clone().multiplyScalar(along)).length();
     if (perp < m.hitRadius) {
       const open = m.vulnerable;
-      const dealt = m.takeDamage(dmg);
+      const dealt = m.takeDamage(dmg, src ?? this.selectedWeapon);
       this.addScore(Math.round(dealt * 2), true);
       this.hud.popDamage(dealt, open);
     }
@@ -1258,10 +1265,10 @@ export class Game {
       this.hud.say(MEMORIES[this.memoryIdx++]);
       this.idleChatterT = 60; // don't stack idle chatter straight after
     }
-    if (done === CHAPTERS.length - 1 && !this.campaignOver) {
-      this.campaignOver = true;
+    // End of Act I. The tear is sealed and the city is standing, but the seam
+    // is still there — which is what sends them out to it.
+    if (done === ACT2_START - 1) {
       this.hud.setObjective('The rift is sealed — hold the line');
-      // let the debrief play, then close the story out
       setTimeout(() => {
         void this.hud.showCard(
           'EPILOGUE',
@@ -1269,9 +1276,24 @@ export class Game {
           'The bay is quiet for the first time in weeks.<br/>' +
           'The rift is closed — but the seam it tore is still there,<br/>' +
           'and the fractures are spreading.<br/><br/>' +
-          '<b>Endless deployment begins now.</b>'
+          '<b>Sealing it from this side has stopped working.</b>'
         ).then(() => this.hud.say(EPILOGUE));
       }, 7000);
+    }
+    // End of Act II. This time it is actually over.
+    if (done === CHAPTERS.length - 1 && !this.campaignOver) {
+      this.campaignOver = true;
+      this.hud.setObjective('The seam is gone — nothing left to hold');
+      setTimeout(() => {
+        void this.hud.showCard(
+          'EPILOGUE',
+          'THE SHELTERS ARE CLEAR',
+          'The seam is gone. Not sealed — gone.<br/>' +
+          'Rei closed it from the inside, three years late,<br/>' +
+          'and she asked about the shelters first.<br/><br/>' +
+          '<b>Endless deployment begins now.</b>'
+        ).then(() => this.hud.say(RIFT_EPILOGUE));
+      }, 9000);
     }
   }
 
@@ -1545,6 +1567,7 @@ export class Game {
     this.warnedContact = false;
     this.lastSpawnFar = false;
     this.frontLine = null;
+    this.notedReiPattern = false;
     this.unlockedWeapons = new Set<WeaponId>(['saber', 'rifle', 'missiles']);
     this.player.abilities = {
       beam: false, boots: true, thrust: false, nova: false,
@@ -1705,6 +1728,35 @@ export class Game {
   }
 
   /**
+   * The adaptation has to be legible or it just reads as damage numbers
+   * quietly shrinking for no reason. The objective line carries how well it
+   * has learned the weapon in your hands, and Command calls out each one it
+   * finishes learning.
+   */
+  private updateRevenant(r: Revenant): void {
+    const learned = r.adaptionTo(this.selectedWeapon);
+    if (r.adaptedTo) {
+      const w = WEAPONS.find((x) => x.id === r.adaptedTo);
+      this.hud.toast('IT HAS LEARNED THAT', `${w?.label ?? r.adaptedTo.toUpperCase()} is barely scratching it now — switch.`, 3.5);
+      this.bark('revenantAdapt', true);
+      r.adaptedTo = null;
+    }
+    if (!this.shelters.anyUnderAttack && learned > 0.3) {
+      const pct = Math.round(learned * 100);
+      this.hud.setObjective(
+        learned > 0.85
+          ? `IT HAS READ YOUR ${(WEAPONS.find((x) => x.id === this.selectedWeapon)?.label ?? 'WEAPON')} — SWITCH`
+          : `ADAPTING TO YOUR LOADOUT — ${pct}%`
+      );
+    }
+    // once it drops ranged entirely, Aya recognises what she is watching
+    if (r.reiPattern && !this.notedReiPattern) {
+      this.notedReiPattern = true;
+      this.bark('reiPattern', true);
+    }
+  }
+
+  /**
    * Push the line toward the rift. The staging shelter comes up behind the
    * new front — close enough that it is still yours to lose, far enough back
    * that the fight is not standing on it — and the first advance is what
@@ -1763,6 +1815,7 @@ export class Game {
       this.monster.update(dt, this.time, ctx);
       this.hud.setBossHP(this.monster.hp / this.monster.maxHp, this.monster.phase, this.monster.vulnerable);
       if (this.monster.phaseAnnounce) this.announcePhase(this.monster.phaseAnnounce);
+      if (this.monster instanceof Revenant) this.updateRevenant(this.monster);
 
       if (this.monster.dying && this.monster.hp <= 0 && !this.monster.dead) {
         // reward is granted once, at the start of the death animation
@@ -1844,6 +1897,8 @@ export class Game {
       { make: (x2, z2) => new CrimsonMantis(x2, z2), toast: ['⚠ FAST MOVER ⚠', 'Contact on the dead ground — closing quickly.'] },
       { make: (x2, z2) => new SkyReaver(x2, z2), toast: ['⚠ OVERHEAD ⚠', 'It has been circling the approach since before you arrived.'] },
       { make: (x2, z2) => new MagmaGolem(x2, z2), toast: ['⚠ THE MOUTH ⚠', 'The seam is defending itself. Break through.'] },
+      // TA-00. Not a kaiju and not corrupted — it is the frame that came first.
+      { make: (x2, z2) => new Revenant(x2, z2), toast: ['⚠ TA-00 · REVENANT ⚠', 'It has your moveset and it learns. Do not lean on one weapon.'] },
     ];
 
     this.wave++;
@@ -1868,7 +1923,10 @@ export class Game {
         sz = at.z + Math.cos(ra) * rd;
       }
       this.monster = entry.make(sx, sz);
-      if (adv) this.corruptMonster(this.monster, adv.frac);
+      // the Revenant is not seam-rotted scenery; it arrives as itself
+      if (adv && !(this.monster instanceof Revenant)) {
+        this.corruptMonster(this.monster, adv.frac);
+      }
       // Support frames are deliberately held outside the map until every
       // introduction line has finished. This makes their descent an arrival,
       // instead of having the units silently present before anyone speaks.
