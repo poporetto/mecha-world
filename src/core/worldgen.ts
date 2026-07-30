@@ -630,23 +630,32 @@ function satelliteBoost(cx: number, cz: number): number {
   return Math.max(0, 1 - d / 230);
 }
 
-function zoneAt(cx: number, cz: number): Zone {
+export function zoneAt(cx: number, cz: number): Zone {
   const r = Math.hypot(cx, cz);
   const district = fbm(cx * 0.005 + 31.7, cz * 0.005 - 12.3, 3);
   // a second, broader field so character does not track height
   const flavor = fbm(cx * 0.0031 - 88.1, cz * 0.0031 + 51.4, 3);
   const sat = satelliteBoost(cx, cz);
-  // works and freight yards sit between the centres, never in one
-  if (r > 210 && flavor > 0.6 && sat < 0.3) return Zone.Industrial;
+  // works and freight yards sit between the centres, never in one. Kept to a
+  // narrower slice than before so the belt reads as a few depots rather than
+  // a second city of sheds.
+  if (r > 210 && flavor > 0.7 && sat < 0.3) return Zone.Industrial;
   // Downtown is a place, not a texture: the bar climbs as you leave the
   // middle, and drops again as you approach a satellite centre.
   const coreCut = 0.62 + Math.max(0, (r - 240) / 640) - sat * 0.62;
   if (district > coreCut) return Zone.Core;
-  if (district > 0.47 - sat * 0.2) return flavor < 0.4 ? Zone.Residential : Zone.Midrise;
-  // Detached housing fills the ring past the commercial belt and away from
-  // the satellite centres — the same place real suburbs sit. It takes over
-  // most of what used to be undifferentiated low-rise sprawl.
-  if (r > 190 && sat < 0.45 && flavor > 0.3) return Zone.Suburb;
+
+  // Anywhere outside the inner districts and clear of a satellite centre is
+  // house country. The suburbs used to only get whatever was left after the
+  // apartment and low-rise bands had taken their share, which kept them to a
+  // thin ring; now they claim most of the residential band out here too,
+  // because past the commercial belt people live in houses, not blocks.
+  const houseCountry = r > 95 && sat < 0.55;
+  if (district > 0.47 - sat * 0.2) {
+    if (flavor < 0.58) return houseCountry ? Zone.Suburb : Zone.Residential;
+    return Zone.Midrise;
+  }
+  if (houseCountry && flavor > 0.05) return Zone.Suburb;
   return Zone.Lowrise;
 }
 
@@ -1015,6 +1024,71 @@ export function generateChunkData(cx: number, cz: number): Uint8Array {
           const p = lotParams(info.lotX!, info.lotZ!);
           const lxm = mod(x, CELL), lzm = mod(z, CELL);
           const lo = ROAD_W + 1 + p.inset, hi = CELL - 2 - p.inset;
+
+          // A school takes a whole block, because that is how they are built:
+          // one long concrete teaching wing along the street, a gymnasium, a
+          // pool, and the big bare dirt ground that fills everything else.
+          // Scattered roughly one block in twenty across the housing.
+          const schoolZone = p.zone === Zone.Suburb || p.zone === Zone.Lowrise
+                          || p.zone === Zone.Residential;
+          if (schoolZone && hash2(info.lotX! * 17 - 5, info.lotZ! * 23 + 11) < 0.052) {
+            const a = lxm - (ROAD_W + 1), b = lzm - (ROAD_W + 1);
+            if (a < 0 || b < 0 || a > 18 || b > 18) { setY(0, B.Sidewalk); break; }
+
+            // the packed-earth ground everything else sits on
+            setY(0, B.Tarmac);
+
+            // perimeter fence with a gate on the street side
+            const fence = a === 0 || b === 0 || a === 18 || b === 18;
+            const gate = b === 0 && a >= 8 && a <= 10;
+            if (fence && !gate) {
+              setY(1, B.BlockWall);
+              if (mod(a + b, 3) !== 0) setY(2, B.Pole); // railings above the wall
+              break;
+            }
+
+            // four-storey teaching wing running the width of the plot
+            if (b >= 2 && b <= 6 && a >= 1 && a <= 17) {
+              const outer = b === 2 || b === 6 || a === 1 || a === 17;
+              for (let y = 1; y <= 12; y++) {
+                // a continuous band of classroom windows on every floor
+                const row = mod(y - 1, 3);
+                const win = outer && row === 1;
+                setY(y, win ? (hash3(x, y, z) < 0.4 ? B.WindowLit : B.Window) : B.WallGray);
+              }
+              setY(13, B.Roof);
+              if (outer) setY(14, B.Roof); // parapet
+              // a clock over the main entrance
+              if (b === 2 && a === 9) setY(11, B.Gold);
+              break;
+            }
+
+            // gymnasium: a hall with a shallow pitched roof
+            if (b >= 13 && b <= 17 && a >= 1 && a <= 7) {
+              const outer = b === 13 || b === 17 || a === 1 || a === 7;
+              for (let y = 1; y <= 6; y++) {
+                setY(y, outer ? (y === 3 && mod(a + b, 2) === 0 ? B.Window : B.WallTan) : B.Air);
+              }
+              const rise = Math.max(0, 2 - Math.abs(b - 15));
+              for (let y = 7; y <= 7 + rise; y++) setY(y, B.RoofTile);
+              break;
+            }
+
+            // the 25m pool, with a paved lip round it
+            if (b >= 13 && b <= 16 && a >= 10 && a <= 16) {
+              const lip = b === 13 || b === 16 || a === 10 || a === 16;
+              setY(0, lip ? B.Plaza : B.Water);
+              break;
+            }
+
+            // baseball backstop net at the far end of the ground
+            if (b === 11 && a >= 9 && a <= 15) {
+              for (let y = 1; y <= 5; y++) if (mod(a + y, 2) === 0) setY(y, B.Steel);
+              setY(6, B.Steel);
+              break;
+            }
+            break;
+          }
 
           // Japanese suburbia is not one building per block — it is four or
           // more houses crammed onto it, each with a metre of garden and a
