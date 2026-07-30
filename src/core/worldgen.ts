@@ -611,7 +611,7 @@ function columnInfo(x: number, z: number): ColInfo {
  * downtown forever. Zones give each area a job, and the core fades with
  * distance so the city genuinely thins into housing and then industry.
  */
-const enum Zone { Core, Midrise, Residential, Lowrise, Industrial }
+const enum Zone { Core, Midrise, Residential, Lowrise, Industrial, Suburb }
 
 /**
  * Satellite downtowns. Without these, pushing the core threshold up with
@@ -643,6 +643,10 @@ function zoneAt(cx: number, cz: number): Zone {
   const coreCut = 0.62 + Math.max(0, (r - 240) / 640) - sat * 0.62;
   if (district > coreCut) return Zone.Core;
   if (district > 0.47 - sat * 0.2) return flavor < 0.4 ? Zone.Residential : Zone.Midrise;
+  // Detached housing fills the ring past the commercial belt and away from
+  // the satellite centres — the same place real suburbs sit. It takes over
+  // most of what used to be undifferentiated low-rise sprawl.
+  if (r > 190 && sat < 0.45 && flavor > 0.3) return Zone.Suburb;
   return Zone.Lowrise;
 }
 
@@ -697,6 +701,18 @@ function lotParams(lotX: number, lotZ: number): LotParams {
   const awnings = [B.Red, B.Yellow, B.NeonCyan, B.NeonPink];
   const awning = awnings[Math.floor(hash2(lotX - 7, lotZ + 13) * 4) % 4];
   return { zone, height, wall, glassy, inset, neon, awning };
+}
+
+/**
+ * Where a suburban utility pole stands. Pure modular arithmetic on purpose —
+ * neighbouring columns test this to work out whether a pole's crossarm
+ * reaches them, the same way tree canopies are resolved, so it has to stay
+ * cheap enough to call a handful of times per column.
+ */
+function isPoleAnchor(x: number, z: number): boolean {
+  const lxm = mod(x, CELL), lzm = mod(z, CELL);
+  if (lxm !== ROAD_W && lzm !== ROAD_W) return false;
+  return mod(x * 2 + z, 13) === 0;
 }
 
 function isTreeAnchor(x: number, z: number): boolean {
@@ -872,6 +888,28 @@ export function generateChunkData(cx: number, cz: number): Uint8Array {
         case ColKind.Sidewalk: {
           setY(0, B.Sidewalk);
           const lxm = mod(x, CELL), lzm = mod(z, CELL);
+
+          // Concrete utility poles. Nothing says Japanese suburb more than
+          // these: leaning slightly, far too many of them, a crossarm and a
+          // transformer drum near the top. They stand on the kerb in place of
+          // the downtown streetlamps.
+          const subZone = zoneAt(Math.floor(x / CELL) * CELL + CELL / 2,
+                                 Math.floor(z / CELL) * CELL + CELL / 2) === Zone.Suburb;
+          if (subZone) {
+            if (isPoleAnchor(x, z)) {
+              for (let y = 1; y <= 8; y++) setY(y, B.BlockWall);
+              setY(9, B.Steel);                                // crossarm centre
+              if (hash2(x + 3, z - 3) < 0.4) setY(7, B.Steel); // transformer drum
+              setY(10, B.Lantern);                             // the light on it
+            } else {
+              // a crossarm from the pole next door reaches over this column,
+              // so the arms read as arms rather than single blocks
+              for (let d = -1; d <= 1; d += 2) {
+                if (isPoleAnchor(x + d, z) || isPoleAnchor(x, z + d)) setY(9, B.Steel);
+              }
+            }
+            break;
+          }
           // Streetlamps march along the kerb at a regular spacing so the roads
           // read as lit at night rather than randomly speckled.
           const onKerb = lxm === ROAD_W || lzm === ROAD_W;
@@ -922,6 +960,49 @@ export function generateChunkData(cx: number, cz: number): Uint8Array {
         case ColKind.Park: {
           const path = hash2(info.lotX! + 5, info.lotZ! - 5) < 0.5;
           const lxm = mod(x, CELL), lzm = mod(z, CELL);
+          const suburban = zoneAt(info.lotX! * CELL + CELL / 2, info.lotZ! * CELL + CELL / 2) === Zone.Suburb;
+
+          // A neighbourhood park in the suburbs is a small dirt lot with the
+          // same four things in it everywhere in Japan: swings, a slide, a
+          // climbing frame and a sandpit, with a wall round the outside.
+          if (suburban && hash2(info.lotX! - 21, info.lotZ! + 33) < 0.55) {
+            const inPark = lxm >= ROAD_W + 1 && lxm <= CELL - 2
+                        && lzm >= ROAD_W + 1 && lzm <= CELL - 2;
+            if (!inPark) { setY(0, B.Sidewalk); break; }
+            setY(0, B.Tarmac);
+            const edge = lxm === ROAD_W + 1 || lzm === ROAD_W + 1
+                      || lxm === CELL - 2 || lzm === CELL - 2;
+            if (edge && !(lxm === 13 || lzm === 13)) { setY(1, B.BlockWall); break; }
+
+            // swing set: two A-frames and a top bar with two seats hanging
+            if (lzm === 9 && lxm >= 8 && lxm <= 13) {
+              if (lxm === 8 || lxm === 13) { for (let y = 1; y <= 4; y++) setY(y, B.Steel); }
+              setY(4, B.Steel);
+              if (lxm === 10 || lxm === 12) setY(2, B.Wood); // seats
+            }
+            // slide: steps up one side, a sloped chute down the other
+            if (lzm === 14 && lxm >= 9 && lxm <= 14) {
+              const stepUp = lxm - 9;
+              const h = stepUp <= 2 ? 1 + stepUp : Math.max(1, 5 - (stepUp - 2));
+              for (let y = 1; y <= h; y++) setY(y, lxm <= 11 ? B.Steel : B.Yellow);
+            }
+            // climbing frame: an open lattice cube
+            if (lxm >= 17 && lxm <= 21 && lzm >= 16 && lzm <= 20) {
+              const lat = (lxm === 17 || lxm === 21) || (lzm === 16 || lzm === 20);
+              if (lat && mod(lxm + lzm, 2) === 0) for (let y = 1; y <= 4; y++) setY(y, B.Steel);
+              if (lat) setY(4, B.Steel);
+            }
+            // sandpit in the corner
+            if (lxm >= 8 && lxm <= 12 && lzm >= 18 && lzm <= 21) setY(0, B.Sand);
+            // a bench and a water fountain by the gate
+            if (lzm === 20 && lxm === 15) setY(1, B.Wood);
+            if (lzm === 19 && lxm === 15) { setY(1, B.Steel); setY(2, B.NeonCyan); }
+            // shade trees come from the usual park tree anchors below, which
+            // already build a proper canopy — a hand-placed trunk here would
+            // just be a bare pole
+            break;
+          }
+
           const onPath = path && (lxm === 13 || lzm === 13);
           setY(0, onPath ? B.Sand : B.Grass);
           if (!onPath) {
@@ -934,6 +1015,70 @@ export function generateChunkData(cx: number, cz: number): Uint8Array {
           const p = lotParams(info.lotX!, info.lotZ!);
           const lxm = mod(x, CELL), lzm = mod(z, CELL);
           const lo = ROAD_W + 1 + p.inset, hi = CELL - 2 - p.inset;
+
+          // Japanese suburbia is not one building per block — it is four or
+          // more houses crammed onto it, each with a metre of garden and a
+          // concrete-block wall between it and the next. So the lot gets
+          // subdivided rather than built on as a single footprint.
+          if (p.zone === Zone.Suburb) {
+            const inLot = lxm >= ROAD_W + 1 && lxm <= CELL - 2
+                       && lzm >= ROAD_W + 1 && lzm <= CELL - 2;
+            if (!inLot) { setY(0, B.Sidewalk); break; }
+
+            // which of the 2x2 plots, and where inside it
+            const span = (CELL - 2) - (ROAD_W + 1) + 1; // ~20
+            const half = Math.floor(span / 2);
+            const px = lxm - (ROAD_W + 1), pz = lzm - (ROAD_W + 1);
+            const plotX = px < half ? 0 : 1, plotZ = pz < half ? 0 : 1;
+            const ix = px - plotX * half, iz = pz - plotZ * half;
+            const hp = hash2(info.lotX! * 7 + plotX * 131, info.lotZ! * 11 + plotZ * 197);
+
+            setY(0, B.Plaza); // concrete hardstanding and driveways
+
+            // a low block wall on the plot boundary, with a gap for the gate
+            const edge = ix === 0 || iz === 0 || ix === half - 1 || iz === half - 1;
+            const gate = ix === Math.floor(half / 2) && iz === 0;
+            if (edge && !gate) {
+              setY(1, B.BlockWall);
+              if (hp < 0.4) setY(2, B.BlockWall); // taller wall on some plots
+            }
+
+            // one in six plots is a garden or a car park rather than a house
+            if (hp > 0.84) {
+              if (!edge) {
+                setY(0, hp > 0.93 ? B.Plaza : B.Grass);
+                const gh = hash2(x * 3 + 5, z * 3 - 8);
+                if (hp <= 0.93 && gh < 0.1) setY(1, gh < 0.05 ? B.Flower : B.Leaves);
+              }
+              break;
+            }
+
+            // the house: set back from the wall, two storeys, gable roof
+            const b = 2; // garden margin inside the wall
+            const inHouse = ix >= b && ix <= half - 1 - b && iz >= b && iz <= half - 1 - b;
+            if (!inHouse) break;
+            const storeys = hp < 0.22 ? 3 : 2;
+            const wallY = 1 + storeys * 3;      // 7 or 10 blocks of wall
+            const houseWall = hp < 0.5 ? B.WallGray : B.WallTan;
+            for (let y = 1; y < wallY; y++) {
+              // a window on each storey, and a door on the gate side
+              const storeyRow = (y - 1) % 3;
+              const isWin = storeyRow === 1 && mod(ix + iz, 2) === 0;
+              setY(y, isWin ? (hash3(x, y, z) < 0.35 ? B.WindowLit : B.Window) : houseWall);
+            }
+            // Gable roof: ridge runs along one axis and the tile steps down to
+            // the eaves, which is what makes these read as houses and not boxes.
+            const tile = hp < 0.62 ? B.RoofTile : B.RoofTileB;
+            const along = hp < 0.5;
+            const acrossPos = along ? iz - b : ix - b;
+            const acrossSpan = half - 1 - b * 2;
+            const mid = acrossSpan / 2;
+            const rise = Math.max(0, Math.round(mid - Math.abs(acrossPos - mid)));
+            for (let y = wallY; y <= wallY + rise; y++) setY(y, tile);
+            // eaves overhang by a block on the low sides
+            if (rise === 0) setY(wallY, tile);
+            break;
+          }
 
           // A works yard is not a smaller office block. Half of them are open
           // ground stacked with containers and a gantry, the rest are long

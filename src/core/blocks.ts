@@ -43,6 +43,10 @@ export const enum B {
   Crate = 39,
   CrateB = 40,
   Steel = 41,
+  RoofTile = 42,   // blue-grey kawara tile, the standard suburban roof
+  RoofTileB = 43,  // the browner tile you get on every third house
+  BlockWall = 44,  // the low concrete-block wall around every garden
+  Tarmac = 45,     // playground safety surface
 }
 
 export const BLOCK_COLORS: number[] = [];
@@ -89,6 +93,10 @@ BLOCK_COLORS[B.Crate] = 0xe08a6a;   // shipping containers
 BLOCK_COLORS[B.CrateB] = 0x6fa8d0;
 BLOCK_COLORS[B.Steel] = 0xb6bcc8;   // cranes and gantries
 BLOCK_COLORS[B.Puddle] = 0x86c5e8; // shallow water left by the aqua blaster
+BLOCK_COLORS[B.RoofTile] = 0x8e9cb2;  // slate-blue kawara
+BLOCK_COLORS[B.RoofTileB] = 0xc09a86; // warm brown kawara
+BLOCK_COLORS[B.BlockWall] = 0xdcd8cf; // pale cast concrete
+BLOCK_COLORS[B.Tarmac] = 0xc9bfae;    // compacted playground dirt
 
 export function isSolid(id: number): boolean {
   return id !== B.Air && id !== B.Water && id !== B.Puddle;
@@ -99,6 +107,8 @@ const FLAMMABLE = new Set<number>([
   B.WallGray, B.WallTan, B.WallBrick, B.Window, B.WindowLit, B.Roof,
   B.Trunk, B.Leaves, B.Sakura, B.SakuraTrunk, B.Wood, B.TempleRoof,
   B.Red, B.White, B.Yellow,
+  // suburban housing burns as readily as anything else downtown
+  B.RoofTile, B.RoofTileB,
 ]);
 
 export function isFlammable(id: number): boolean {
