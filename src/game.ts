@@ -133,6 +133,10 @@ export class Game {
   // campaign chapter. -1 means the campaign has not cleared Chapter 1 yet.
   private latestFinishedChapter = -1;
   private bossTimer = 14;
+  /** Swarm size for the current wave, before the lull's ramp is applied. */
+  private droneBase = 3;
+  private warnedContact = false;
+  private lastSpawnFar = false;
   private wave = 0;
   private score = 0;
   private combo = 1;
@@ -1453,7 +1457,8 @@ export class Game {
     this.latestFinishedChapter = index - 1;
     this.wave = index;
     this.bossTimer = 0.2;
-    this.drones.target = Math.min(10, 3 + Math.floor(index * 0.7));
+    this.droneBase = Math.min(10, 3 + Math.floor(index * 0.7));
+    this.drones.target = this.droneBase;
     this.deploySupportFromEarlierChapters(index);
     this.hud.setWave(index);
     this.hud.setObjective(`DEBUG · Preparing Chapter ${index + 1}`);
@@ -1521,7 +1526,10 @@ export class Game {
     this.bossTimer = 14;
     this.powerLevel = 1;
     this.power = 1;
+    this.droneBase = 3;
     this.drones.target = 3;
+    this.warnedContact = false;
+    this.lastSpawnFar = false;
     this.unlockedWeapons = new Set<WeaponId>(['saber', 'rifle', 'missiles']);
     this.player.abilities = {
       beam: false, boots: true, thrust: false, nova: false,
@@ -1653,6 +1661,30 @@ export class Game {
     this.bark(phase === 3 ? 'bossEnrage' : 'bossPhase', phase === 3);
   }
 
+  /**
+   * The gap between contacts used to be blank time with no information in it.
+   * Now it counts down in the objective line and the swarm thickens as it
+   * runs out, so the quiet reads as a build rather than an absence.
+   */
+  private warnNextContact(): void {
+    if (this.campaignOver || this.monster || this.gameOver) return;
+    const left = Math.max(0, this.bossTimer);
+    // hold back the drones early in the lull, then pile them on
+    const lean = left > 7 ? 0.55 : left > 3 ? 0.85 : 1.15;
+    this.drones.target = Math.max(2, Math.round(this.droneBase * lean));
+    if (left > 10) return; // let the shelters warning own the line until then
+    if (this.shelters.anyUnderAttack) return;
+    this.hud.setObjective(
+      left > 3
+        ? `NEXT CONTACT IN ${Math.ceil(left)}s — hold the line`
+        : 'CONTACT IMMINENT — brace'
+    );
+    if (left <= 5 && !this.warnedContact) {
+      this.warnedContact = true;
+      this.bark('incoming', true);
+    }
+  }
+
   // ------------------------------------------------------------ boss cycle
 
   private updateBosses(dt: number): void {
@@ -1697,7 +1729,11 @@ export class Game {
         this.scene.remove(this.monster.group);
         if (this.monster instanceof VoltSerpent) this.monster.removeSegmentsFrom(this.scene);
         this.monster = null;
-        this.bossTimer = 25;
+        // A fixed 25s of nothing was the worst stretch in the game. The lull
+        // is now short, and it only holds while the debrief is still talking
+        // — see the hold below — so the pause is exactly as long as it needs
+        // to be and never longer.
+        this.bossTimer = 13;
         sfx.setMusicIntensity(0);
         // don't stomp the campaign-complete objective set by the epilogue
         if (!this.campaignOver) this.hud.setObjective('Clear the drones — next contact inbound');
@@ -1705,17 +1741,30 @@ export class Game {
       return;
     }
 
+    // The countdown always runs — including under the debrief, which is long.
+    // Holding the timer instead would make the real gap the debrief plus the
+    // timer, which is how the dead air got there in the first place. Only the
+    // spawn itself waits for comms to finish, so a kaiju never lands on top
+    // of someone's sentence.
     this.bossTimer -= dt;
-    if (this.bossTimer > 0) return;
+    this.warnNextContact();
+    if (this.bossTimer > 0 || this.hud.busy || this.hud.cardOpen) return;
 
     // Bosses land somewhere out in the world rather than always the same
     // distance away — sometimes right on top of you, sometimes a hunt across
     // the districts. The minimap arrow is what makes the far ones findable.
     const a = Math.random() * Math.PI * 2;
+    // Two long hunts in a row is where the pacing died: five minutes of
+    // walking with nothing to fight. A far spawn now has to be followed by
+    // something closer, and the far band only opens up once the overdrive
+    // thrusters make crossing the city quick.
+    const canRoam = this.player.abilities.thrust && !this.lastSpawnFar;
     const roll = Math.random();
-    const d = roll < 0.3 ? 90 + Math.random() * 40      // close: immediate fight
-      : roll < 0.7 ? 180 + Math.random() * 120          // mid: short trek
-      : 340 + Math.random() * 260;                      // far: a real hunt
+    const far = canRoam && roll >= 0.78;
+    const d = far ? 320 + Math.random() * 180             // far: a real hunt
+      : roll < 0.42 ? 90 + Math.random() * 40             // close: immediate fight
+      : 170 + Math.random() * 110;                        // mid: short trek
+    this.lastSpawnFar = far;
     const x = this.player.pos.x + Math.sin(a) * d;
     const z = this.player.pos.z + Math.cos(a) * d;
 
@@ -1734,8 +1783,11 @@ export class Game {
 
     this.wave++;
     this.hud.setWave(this.wave);
-    // the swarm thickens as the campaign progresses
-    this.drones.target = Math.min(10, 3 + Math.floor(this.wave * 0.7));
+    this.warnedContact = false;
+    // the swarm thickens as the campaign progresses; the lull scales this up
+    // and down around the countdown
+    this.droneBase = Math.min(10, 3 + Math.floor(this.wave * 0.7));
+    this.drones.target = this.droneBase;
     if (this.bossIndex < campaign.length) {
       const chapterNo = this.bossIndex;
       const entry = campaign[this.bossIndex++];

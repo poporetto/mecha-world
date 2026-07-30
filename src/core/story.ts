@@ -385,6 +385,18 @@ export const BARKS: Record<string, Line[]> = {
     { who: AYA, text: 'Last quarter. Whatever it does next, it only gets to do once.' },
     { who: KOTETSU, text: 'If it is going to explode, tell me BEFORE and not after.' },
   ],
+  // the seconds before a new contact drops — the lull turning back into a fight
+  incoming: [
+    { who: AYA, text: 'New signature breaking atmosphere. Stand by, Kuroki.' },
+    { who: KUROSAWA, text: 'Something is coming down. Get off the open ground.' },
+    { who: AYA, text: 'Contact in seconds. Wherever you are standing, be somewhere better.' },
+    { who: KUROKI, text: 'I am always somewhere better.' },
+    { who: AYA, text: 'Second signature. That was a short rest, I am sorry.' },
+    { who: HINATA, text: 'Another one?! Captain, I am with you — right behind you!' },
+    { who: KOTETSU, text: 'Give me ten more seconds. Please. Ten.' },
+    { who: AYA, text: 'You do not have ten. Nobody has ten.' },
+    { who: KUROSAWA, text: 'They are coming faster than they used to. That means something.' },
+  ],
   bossFar: [
     { who: AYA, text: 'Target is a long way out. Follow the marker, I will keep it lit.' },
     { who: KUROKI, text: 'You always know where I am going.' },
