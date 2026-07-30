@@ -24,7 +24,7 @@ import { buildFallingChunk, FallingChunk, updateFallingChunk } from './fx/collap
 import { Explosions } from './fx/explosions';
 import { Sky } from './fx/sky';
 import { sfx } from './fx/sound';
-import { AYA_HINATA, BARKS, CHAPTERS, ENDLESS_LINES, EPILOGUE, HINATA_CHAPTER, JOTETSU_CHAPTER, KOTETSU_BARKS, KOTETSU_CHAPTER, LATE_MEMORIES, MEMORIES, MONSTER_BARKS, PROLOGUE } from './core/story';
+import { AYA_HINATA, BARKS, CHAPTERS, ENDLESS_LINES, EPILOGUE, HINATA_CHAPTER, JOTETSU_BARKS, JOTETSU_CHAPTER, KOTETSU_BARKS, KOTETSU_CHAPTER, LATE_MEMORIES, MEMORIES, MONSTER_BARKS, PROLOGUE } from './core/story';
 import { Hud, RadarKind, WEAPONS, WeaponId } from './ui/hud';
 import { isTouchDevice, TouchControls } from './ui/touch';
 
@@ -60,7 +60,9 @@ export class Game {
   private lateMemoryIdx = 0;
   private ayaHinataIdx = 0;
   private kotetsuCursor = new Map<string, number>();
+  private jotetsuCursor = new Map<string, number>();
   private mechanicT = 40;
+  private diggerChatterT = 32;
   private supportArrivalChapter = -1;
   private supportArrivalArmed = false;
   private diggerWorkTarget: THREE.Vector3 | null = null;
@@ -222,6 +224,7 @@ export class Game {
 
     this.hud.bindWeaponWheel((w) => this.selectWeapon(w));
     this.hud.bindPause(() => this.setPaused(false), () => this.restart());
+    this.hud.bindChapterDebug(CHAPTERS, (chapter) => this.jumpToChapter(chapter));
 
     // ?debug (or ?all) unlocks every ability/weapon up front for testing;
     // real players keep the defeat-a-boss-to-unlock progression
@@ -1059,12 +1062,14 @@ export class Game {
   private updateSupportArrivals(): void {
     if (!this.supportArrivalArmed || this.hud.busy || this.hud.cardOpen) return;
     const chapter = this.supportArrivalChapter;
+    const deployed: string[] = [];
     if (chapter >= HINATA_CHAPTER && !this.ally.active) {
       const at = this.player.pos.clone();
       at.x -= 14;
       at.z += 10;
       at.y = this.world.groundHeight(at.x, at.z, 60);
       this.ally.deploy(at);
+      deployed.push('TSUBAKI');
     }
     if (chapter >= KOTETSU_CHAPTER && !this.tank.active) {
       const at = this.player.pos.clone();
@@ -1072,6 +1077,7 @@ export class Game {
       at.z += 18;
       at.y = this.world.groundHeight(at.x, at.z, 60);
       this.tank.deploy(at);
+      deployed.push('KUROGANE');
     }
     if (chapter >= JOTETSU_CHAPTER && !this.digger.active) {
       const shelter = this.shelters.weakest;
@@ -1080,14 +1086,11 @@ export class Game {
       at.z += 10;
       at.y = this.world.groundHeight(at.x, at.z, 60);
       this.digger.deploy(at);
+      deployed.push('DIGGER');
     }
     this.supportArrivalArmed = false;
     this.supportArrivalChapter = -1;
-    this.hud.toast(
-      'SUPPORT TEAM DEPLOYED',
-      'TSUBAKI · KUROGANE · DIGGER are now operating in Neo Tokyo',
-      4,
-    );
+    if (deployed.length) this.hud.toast('SUPPORT DEPLOYED', `${deployed.join(' · ')} now operating in Neo Tokyo`, 4);
   }
 
   /**
@@ -1126,6 +1129,16 @@ export class Game {
     const at = this.kotetsuCursor.get(key) ?? 0;
     this.kotetsuCursor.set(key, (at + 1) % pool.length);
     this.barkT = 14;
+    this.hud.say([pool[at]]);
+  }
+
+  private sayJotetsu(key: string): void {
+    if (!this.digger.active || !this.started || this.hud.busy || this.hud.cardOpen || this.barkT > 0) return;
+    const pool = JOTETSU_BARKS[key];
+    if (!pool || pool.length === 0) return;
+    const at = this.jotetsuCursor.get(key) ?? 0;
+    this.jotetsuCursor.set(key, (at + 1) % pool.length);
+    this.barkT = 15;
     this.hud.say([pool[at]]);
   }
 
@@ -1304,10 +1317,14 @@ export class Game {
     }
 
     // Aya scolds early, then loses patience entirely if you keep wrecking.
-    if (this.blocksWrecked > 700 && this.blocksWrecked <= 2600) this.bark('cityDamage');
+    if (this.blocksWrecked > 700 && this.blocksWrecked <= 2600) {
+      if (this.digger.active) this.sayJotetsu('damage');
+      else this.bark('cityDamage');
+    }
     if (this.blocksWrecked > 2600) {
       this.blocksWrecked = 0;
-      this.bark('heavyDestruction');
+      if (this.digger.active) this.sayJotetsu('damage');
+      else this.bark('heavyDestruction');
     }
 
     // Quiet stretch: use it to let their history out, a fragment at a time.
@@ -1419,6 +1436,38 @@ export class Game {
 
   // ------------------------------------------------------------ pause / run
 
+  private jumpToChapter(chapter: number): void {
+    const index = Math.max(0, Math.min(CHAPTERS.length - 1, Math.floor(chapter)));
+    this.hud.dismissStart();
+    this.started = true;
+    sfx.ensure();
+    sfx.startMusic();
+    this.restart();
+    this.unlockEverything();
+    this.bossIndex = index;
+    this.latestFinishedChapter = index - 1;
+    this.wave = index;
+    this.bossTimer = 0.2;
+    this.drones.target = Math.min(10, 3 + Math.floor(index * 0.7));
+    this.deploySupportFromEarlierChapters(index);
+    this.hud.setWave(index);
+    this.hud.setObjective(`DEBUG · Preparing Chapter ${index + 1}`);
+    this.hud.toast('DEBUG CHAPTER JUMP', `Loading Chapter ${index + 1} · ${CHAPTERS[index].title}`, 2.5);
+  }
+
+  private deploySupportFromEarlierChapters(chapter: number): void {
+    const deploy = (unit: Ally | Tank | Digger, x: number, z: number): void => {
+      const at = this.player.pos.clone();
+      at.x += x;
+      at.z += z;
+      at.y = this.world.groundHeight(at.x, at.z, 60);
+      unit.deploy(at);
+    };
+    if (chapter > HINATA_CHAPTER) deploy(this.ally, -14, 10);
+    if (chapter > KOTETSU_CHAPTER) deploy(this.tank, 22, 18);
+    if (chapter > JOTETSU_CHAPTER) deploy(this.digger, 30, -16);
+  }
+
   private setPaused(on: boolean): void {
     this.paused = on;
     this.hud.setPaused(on, { score: this.score, wave: this.wave, deaths: this.deaths });
@@ -1491,6 +1540,8 @@ export class Game {
     this.lateMemoryIdx = 0;
     this.ayaHinataIdx = 0;
     this.kotetsuCursor.clear();
+    this.jotetsuCursor.clear();
+    this.diggerChatterT = 32;
     this.ally.retire();
     this.tank.retire();
     this.digger.retire();
@@ -1929,6 +1980,11 @@ export class Game {
     }
     if (this.digger.active) {
       this.diggerWorkTarget = this.shelters.reconstruct(dt).pos;
+      this.diggerChatterT -= dt;
+      if (this.diggerChatterT <= 0) {
+        this.diggerChatterT = 48 + Math.random() * 24;
+        this.sayJotetsu(Math.random() < 0.55 ? 'repair' : 'kotetsu');
+      }
     } else {
       this.diggerWorkTarget = null;
     }

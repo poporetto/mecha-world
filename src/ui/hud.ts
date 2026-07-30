@@ -237,12 +237,12 @@ export class Hud {
                 display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
                 pointer-events:auto; cursor:pointer; text-shadow:0 1px 2px #000; }
         .wbtn b { color:#7fdcff; font-size:12px; }
-        .debug-btn { position:absolute; right:24px; top:142px; pointer-events:auto; cursor:pointer;
+        .debug-btn { position:absolute; right:24px; top:142px; pointer-events:auto; cursor:pointer; z-index:35;
                      color:#ffd86a; background:#17150dcc; border:1px solid #ffd86a99;
                      border-radius:4px; padding:7px 10px; font-size:9px; letter-spacing:2px; }
         .debug-btn:hover { background:#3a3213; box-shadow:0 0 14px #ffd86a55; }
         .debug-panel { position:absolute; right:108px; top:60px; width:250px; padding:12px;
-                       display:none; pointer-events:auto; z-index:25; background:#080d16f2;
+                       display:none; pointer-events:auto; z-index:36; background:#080d16f2;
                        border:1px solid #ffd86a88; border-radius:6px; box-shadow:0 8px 28px #000b; }
         .debug-panel.open { display:block; }
         .debug-title { color:#ffd86a; font-size:10px; letter-spacing:3px; margin-bottom:9px; }
@@ -780,6 +780,10 @@ export class Hud {
       onStart();
     });
     this.root.appendChild(el);
+  }
+
+  dismissStart(): void {
+    this.root.querySelector('.start')?.remove();
   }
 
   setHP(frac: number): void {
