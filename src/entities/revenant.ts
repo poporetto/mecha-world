@@ -92,8 +92,14 @@ export class Revenant extends Monster {
     });
 
     this.group.position.set(x, 0, z);
-    this.addCore(7.4, -0.9);
-    this.weakCore.scale.setScalar(0.5);
+    // This frame is ~13 units tall, not thirty like a kaiju, so both the hit
+    // centre and the core have to be brought down to match it. addCore works
+    // in the group's local space, which the base class scales by
+    // MONSTER_SCALE — 4.8 there puts the core high on the back rather than
+    // hovering above its head.
+    this.centerY = 6.5;
+    this.addCore(4.8, -0.75);
+    this.weakCore.scale.setScalar(0.42);
     this.rememberEmissives();
   }
 

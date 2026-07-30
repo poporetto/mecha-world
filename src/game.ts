@@ -362,7 +362,7 @@ export class Game {
     // lock-on: every weapon routes through here, so they all track the boss
     if (this.lockOn && this.monster && !this.monster.dying) {
       _v.copy(this.monster.group.position);
-      _v.y += 14;
+      _v.y += this.monster.centerY;
       const from = this.player.pos.clone();
       from.y += 6.6;
       return _v.sub(from).normalize();
@@ -794,7 +794,7 @@ export class Game {
     const m = this.monster;
     if (m && !m.dying) {
       _v.copy(m.group.position);
-      _v.y += 14;
+      _v.y += m.centerY;
       if (_v.distanceTo(p) < radius + m.hitRadius) {
         const bonus = this.weakPointBonus(p);
         if (bonus > 1) this.bark('weakPoint');
@@ -838,7 +838,7 @@ export class Game {
     const m = this.monster;
     if (!m || m.dying) return;
     _v.copy(m.group.position);
-    _v.y += 14;
+    _v.y += m.centerY;
     const toM = _v.clone().sub(from);
     const along = toM.dot(dir);
     if (along < 0 || along > maxDist) return;
@@ -1215,7 +1215,9 @@ export class Game {
       const r = rot(d.position.x - this.player.pos.x, d.position.z - this.player.pos.z);
       if (Math.hypot(r.dx, r.dz) < RANGE * 1.4) contacts.push({ ...r, kind: 'drone' });
     }
-    for (const s of this.shelters.shelters) {
+    // only wards still in the run — Act II retires the outlying ones, and a
+    // blip for a ward that cannot be lost sends the player to defend nothing
+    for (const s of this.shelters.active) {
       const r = rot(s.pos.x - this.player.pos.x, s.pos.z - this.player.pos.z);
       contacts.push({ ...r, kind: s.underAttack ? 'shelterHit' : 'shelter' });
     }
@@ -1231,7 +1233,7 @@ export class Game {
       return;
     }
     const m = this.monster.group.position;
-    _v.set(m.x, m.y + 14, m.z);
+    _v.set(m.x, m.y + this.monster.centerY, m.z);
     const dist = Math.hypot(m.x - this.player.pos.x, m.z - this.player.pos.z);
     const ndc = _v.clone().project(this.camera);
     const inView = ndc.z < 1 && Math.abs(ndc.x) < 0.72 && Math.abs(ndc.y) < 0.72;
@@ -2376,7 +2378,7 @@ export class Game {
         // steer toward the boss: bend velocity toward the target each frame
         const m = this.monster;
         if (m && !m.dying) {
-          _v.copy(m.group.position); _v.y += 14;
+          _v.copy(m.group.position); _v.y += m.centerY;
           _v.sub(p.pos).normalize();
           const speed = p.vel.length();
           p.vel.lerp(_v.multiplyScalar(speed), Math.min(1, dt * 2.5));
@@ -2440,7 +2442,7 @@ export class Game {
       const progress = 1 - this.bossIntroT / this.bossIntroDuration;
       cinematicBlend = Math.sin(progress * Math.PI) * 0.92;
       _v.copy(this.monster.group.position);
-      _v.y += 14;
+      _v.y += this.monster.centerY;
       pivot.lerp(_v, cinematicBlend);
     }
     const dist = 28

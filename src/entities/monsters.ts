@@ -85,6 +85,12 @@ export abstract class Monster {
   abstract name: string;
   abstract reward: Reward;
   hitRadius = 8;
+  /**
+   * Height above the group origin used as the centre of the hit sphere.
+   * The default suits a thirty-metre kaiju; anything shorter has to lower it
+   * or its hitbox floats up into empty sky above its own head.
+   */
+  centerY = 14;
 
   constructor(hp: number) {
     this.hp = hp;
