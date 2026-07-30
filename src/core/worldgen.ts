@@ -23,12 +23,21 @@ function mod(n: number, m: number): number {
   return ((n % m) + m) % m;
 }
 
-/** Where the population is sheltering. Losing one of these ends the run. */
+/**
+ * Where the population is sheltering. Losing one of these ends the run.
+ *
+ * Spread right across the districts rather than clustered around the middle,
+ * so holding the line is a real logistical problem and wrecking the outskirts
+ * has consequences. Placed clear of the river channel, the mountain ramp and
+ * the port strip, and kept off the north-east bearing so none of them sit in
+ * the rift's corruption during Act I.
+ */
 export const SHELTER_SITES = [
-  { x: 118, z: 34, name: 'EAST WARD' },
-  { x: -104, z: 96, name: 'SOUTH WARD' },
-  { x: -66, z: -140, name: 'RIVERSIDE' },
-  { x: 172, z: -92, name: 'NORTH GATE' },
+  { x: 255, z: 55, name: 'EAST WARD' },
+  { x: -155, z: 150, name: 'SOUTH WARD' },
+  { x: 65, z: -110, name: 'RIVERSIDE' },
+  { x: -30, z: -250, name: 'NORTH GATE' },
+  { x: -200, z: -30, name: 'WEST RIDGE' },
 ];
 
 /** Where the mecha deploys from and returns to. */
@@ -587,11 +596,58 @@ function columnInfo(x: number, z: number): ColInfo {
   }
   const lotX = Math.floor(x / CELL), lotZ = Math.floor(z / CELL);
   const district = fbm(x * 0.005 + 31.7, z * 0.005 - 12.3, 3);
-  if (district < 0.34) return { kind: ColKind.Park, lotX, lotZ };
+  if (district < 0.34) {
+    // works yards are hard standing all the way through — a lawn in the
+    // middle of a freight depot reads as a bug rather than a park
+    const zone = zoneAt(lotX * CELL + CELL / 2, lotZ * CELL + CELL / 2);
+    if (zone !== Zone.Industrial) return { kind: ColKind.Park, lotX, lotZ };
+  }
   return { kind: ColKind.Lot, lotX, lotZ };
 }
 
+/**
+ * District character. The old generator had one noise value and three height
+ * bands, which meant every direction out of the city looked like the same
+ * downtown forever. Zones give each area a job, and the core fades with
+ * distance so the city genuinely thins into housing and then industry.
+ */
+const enum Zone { Core, Midrise, Residential, Lowrise, Industrial }
+
+/**
+ * Satellite downtowns. Without these, pushing the core threshold up with
+ * distance makes everything past the middle uniformly low — the city stops
+ * repeating itself but goes flat instead, which is no better. Secondary
+ * centres on a jittered lattice give the sprawl its own skylines to walk
+ * toward, so the continuation stays worth crossing.
+ */
+function satelliteBoost(cx: number, cz: number): number {
+  const S = 860; // spacing between centres
+  const gx = Math.round(cx / S), gz = Math.round(cz / S);
+  if (gx === 0 && gz === 0) return 0; // the real downtown owns the middle
+  const jx = (hash2(gx * 13 + 1, gz * 7 - 5) - 0.5) * S * 0.45;
+  const jz = (hash2(gx * 17 - 3, gz * 11 + 9) - 0.5) * S * 0.45;
+  const d = Math.hypot(cx - (gx * S + jx), cz - (gz * S + jz));
+  return Math.max(0, 1 - d / 230);
+}
+
+function zoneAt(cx: number, cz: number): Zone {
+  const r = Math.hypot(cx, cz);
+  const district = fbm(cx * 0.005 + 31.7, cz * 0.005 - 12.3, 3);
+  // a second, broader field so character does not track height
+  const flavor = fbm(cx * 0.0031 - 88.1, cz * 0.0031 + 51.4, 3);
+  const sat = satelliteBoost(cx, cz);
+  // works and freight yards sit between the centres, never in one
+  if (r > 210 && flavor > 0.6 && sat < 0.3) return Zone.Industrial;
+  // Downtown is a place, not a texture: the bar climbs as you leave the
+  // middle, and drops again as you approach a satellite centre.
+  const coreCut = 0.62 + Math.max(0, (r - 240) / 640) - sat * 0.62;
+  if (district > coreCut) return Zone.Core;
+  if (district > 0.47 - sat * 0.2) return flavor < 0.4 ? Zone.Residential : Zone.Midrise;
+  return Zone.Lowrise;
+}
+
 interface LotParams {
+  zone: Zone;
   height: number;
   wall: number;
   glassy: boolean;
@@ -604,27 +660,43 @@ function lotParams(lotX: number, lotZ: number): LotParams {
   const h1 = hash2(lotX * 3 + 7, lotZ * 5 - 3);
   const h2 = hash2(lotX - 91, lotZ + 44);
   const cx = lotX * CELL + CELL / 2, cz = lotZ * CELL + CELL / 2;
-  const district = fbm(cx * 0.005 + 31.7, cz * 0.005 - 12.3, 3);
+  const zone = zoneAt(cx, cz);
   let height: number;
   let glassy = false;
-  if (district > 0.62) {
-    height = 26 + Math.floor(h1 * 30); // downtown towers
-    glassy = h2 < 0.3; // fewer all-glass facades — mostly white towers
-  } else if (district > 0.47) {
-    height = 10 + Math.floor(h1 * 16);
-    glassy = h2 < 0.12;
-  } else {
-    height = 4 + Math.floor(h1 * 7); // low-rise sprawl
+  switch (zone) {
+    case Zone.Core:
+      height = 26 + Math.floor(h1 * 30); // downtown towers
+      glassy = h2 < 0.3; // fewer all-glass facades — mostly white towers
+      break;
+    case Zone.Midrise:
+      height = 10 + Math.floor(h1 * 16);
+      glassy = h2 < 0.12;
+      break;
+    case Zone.Residential:
+      // apartment blocks: a narrow height band, so a street of them reads as
+      // one estate built at one time rather than random sprawl
+      height = 8 + Math.floor(h1 * 6);
+      break;
+    case Zone.Industrial:
+      height = 5 + Math.floor(h1 * 5); // long low sheds
+      break;
+    default:
+      height = 4 + Math.floor(h1 * 7); // low-rise sprawl
   }
   // mostly white towers with the occasional warm or blush facade
   const walls = [B.WallGray, B.WallGray, B.White, B.WallTan, B.WallGray, B.WallBrick];
-  const wall = glassy ? B.Window : walls[Math.floor(h2 * 6) % 6];
-  const inset = Math.floor(hash2(lotX + 17, lotZ - 61) * 3);
+  let wall = glassy ? B.Window : walls[Math.floor(h2 * 6) % 6];
+  if (zone === Zone.Residential) wall = h2 < 0.5 ? B.WallTan : B.WallBrick;
+  if (zone === Zone.Industrial) wall = h2 < 0.6 ? B.Steel : B.WallGray;
+  // sheds fill their plot; towers step back off the pavement
+  const inset = zone === Zone.Industrial ? 0 : Math.floor(hash2(lotX + 17, lotZ - 61) * 3);
   let neon = 0;
-  if (district > 0.48 && h2 > 0.2) neon = h1 > 0.5 ? B.NeonPink : B.NeonCyan;
+  if ((zone === Zone.Core || zone === Zone.Midrise) && h2 > 0.2) {
+    neon = h1 > 0.5 ? B.NeonPink : B.NeonCyan;
+  }
   const awnings = [B.Red, B.Yellow, B.NeonCyan, B.NeonPink];
   const awning = awnings[Math.floor(hash2(lotX - 7, lotZ + 13) * 4) % 4];
-  return { height, wall, glassy, inset, neon, awning };
+  return { zone, height, wall, glassy, inset, neon, awning };
 }
 
 function isTreeAnchor(x: number, z: number): boolean {
@@ -815,6 +887,29 @@ export function generateChunkData(cx: number, cz: number): Uint8Array {
           // mesh placed by TrafficManager so it can cycle through its phases.
           const corner = (lxm === ROAD_W && lzm === ROAD_W);
           if (corner) for (let y = 1; y <= 5; y++) setY(y, B.Pole);
+
+          // Street furniture. Small, frequent and lit — a pavement with
+          // vending machines and benches on it reads as lived in, and these
+          // are the first things a stray shot takes out.
+          if (!onKerb && !corner && !isTreeAnchor(x, z)) {
+            const f = hash2(x * 7 - 19, z * 7 + 23);
+            if (f < 0.02) {
+              // vending machine bank, glowing at night
+              setY(1, f < 0.01 ? B.Red : B.NeonCyan);
+              setY(2, B.WindowLit);
+            } else if (f < 0.032) {
+              setY(1, B.Wood);          // bench
+            } else if (f < 0.038) {
+              // a paper lantern on a short post outside a shopfront
+              setY(1, B.Pole);
+              setY(2, B.Lantern);
+            } else if (f > 0.995) {
+              // bus shelter: a little roofed stand at the kerbside
+              setY(1, B.Pole);
+              setY(2, B.Pole);
+              setY(3, B.NeonCyan);
+            }
+          }
           break;
         }
         case ColKind.Landmark: {
@@ -839,6 +934,48 @@ export function generateChunkData(cx: number, cz: number): Uint8Array {
           const p = lotParams(info.lotX!, info.lotZ!);
           const lxm = mod(x, CELL), lzm = mod(z, CELL);
           const lo = ROAD_W + 1 + p.inset, hi = CELL - 2 - p.inset;
+
+          // A works yard is not a smaller office block. Half of them are open
+          // ground stacked with containers and a gantry, the rest are long
+          // windowless sheds — so freight districts read as freight.
+          if (p.zone === Zone.Industrial) {
+            const yard = hash2(info.lotX! + 29, info.lotZ! - 13) < 0.45;
+            setY(0, B.Plaza);
+            if (yard) {
+              // container stacks in rows, with aisles between them
+              const inYard = lxm >= lo + 1 && lxm <= hi - 1 && lzm >= lo + 1 && lzm <= hi - 1;
+              if (inYard && mod(lxm, 4) < 3 && mod(lzm, 6) < 4) {
+                const stack = 1 + Math.floor(hash2(x * 2 + 3, z * 2 - 7) * 3);
+                for (let y = 1; y <= stack; y++) {
+                  setY(y, hash3(x, y, z) < 0.5 ? B.Crate : B.CrateB);
+                }
+              }
+              // a gantry crane straddling one side of the yard
+              if (lzm === lo + 1 && mod(lxm, 5) === 0) {
+                for (let y = 1; y <= 9; y++) setY(y, B.Steel);
+              }
+              if (lzm === lo + 1 && lxm >= lo && lxm <= hi) setY(10, B.Steel);
+            } else {
+              const wallCol = lxm === lo || lxm === hi || lzm === lo || lzm === hi;
+              const inShed = lxm >= lo && lxm <= hi && lzm >= lo && lzm <= hi;
+              if (inShed) {
+                for (let y = 1; y < p.height; y++) {
+                  if (wallCol) setY(y, y === 2 && mod(lxm + lzm, 7) === 0 ? B.Window : p.wall);
+                }
+                // shallow ridged roof, and a chimney on some of them
+                setY(p.height, B.Roof);
+                const ridge = Math.abs(lxm - (lo + hi) / 2) < 1.5;
+                if (ridge) setY(p.height + 1, B.Roof);
+                if (hash2(info.lotX! - 41, info.lotZ! + 7) < 0.3
+                    && Math.abs(lxm - (lo + 3)) < 1 && Math.abs(lzm - (lo + 3)) < 1) {
+                  for (let yy = 1; yy <= 10; yy++) setY(p.height + yy, B.WallGray);
+                  setY(p.height + 11, B.Red);
+                }
+              }
+            }
+            break;
+          }
+
           if (lxm >= lo && lxm <= hi && lzm >= lo && lzm <= hi) {
             setY(0, B.Plaza);
             // tall towers step back to a narrower upper tier
@@ -868,15 +1005,40 @@ export function generateChunkData(cx: number, cz: number): Uint8Array {
               const perimTop = lxm === lo || lxm === hi || lzm === lo || lzm === hi;
               setY(topY, perimTop && p.neon ? p.neon : B.Roof);
             }
-            // rooftop clutter: vents, AC boxes, the odd antenna mast
+            // Rooftops matter more here than in most games because the
+            // player flies: this is the surface they spend the fight looking
+            // down at, so it gets water tanks, plant rooms, helipads and
+            // masts rather than a flat lid.
             if (topY === p.height) {
               const rh = hash3(x, p.height, z);
-              if (rh < 0.05) setY(p.height + 1, B.Roof);
-              if (rh < 0.014) setY(p.height + 2, B.WallGray);
-              if (rh > 0.996) {
-                for (let yy = 1; yy <= 4; yy++) setY(p.height + yy, B.Roof);
-                setY(p.height + 5, B.Red);
+              const cxm = Math.abs(lxm - (lo + hi) / 2), czm = Math.abs(lzm - (lo + hi) / 2);
+              const midRoof = cxm <= 2.5 && czm <= 2.5;
+              // helipad on the tallest towers: a pale disc with a marking
+              const heli = p.height >= 34 && hash2(info.lotX! + 5, info.lotZ! - 9) < 0.3;
+              if (heli && cxm <= 4 && czm <= 4) {
+                const ring = cxm >= 3.5 || czm >= 3.5;
+                setY(p.height, ring ? B.Yellow : B.Plaza);
+                if (cxm <= 2 && (Math.abs(cxm - 2) < 0.6 || czm <= 0.6)) setY(p.height, B.White);
+              } else if (midRoof && p.height >= 12
+                         && hash2(info.lotX! - 3, info.lotZ! + 11) < 0.45) {
+                // water tank up on short legs, the classic Tokyo roofline
+                const legs = cxm >= 1.5 || czm >= 1.5;
+                setY(p.height + 1, legs ? B.Steel : B.Air);
+                for (let yy = 2; yy <= 4; yy++) setY(p.height + yy, B.Steel);
+                setY(p.height + 5, B.Roof);
+              } else {
+                if (rh < 0.07) setY(p.height + 1, B.Roof);       // vents
+                if (rh < 0.03) setY(p.height + 2, B.WallGray);   // AC plant
+                if (rh < 0.008) setY(p.height + 3, B.Steel);
               }
+              // aerial masts, mostly downtown
+              if (rh > 0.994 && p.height >= 18) {
+                for (let yy = 1; yy <= 5; yy++) setY(p.height + yy, B.Pole);
+                setY(p.height + 6, B.LightRed);
+              }
+              // parapet around the edge so roofs have a lip, not a cliff
+              const perimTop2 = lxm === lo || lxm === hi || lzm === lo || lzm === hi;
+              if (perimTop2 && !p.neon && p.height >= 8) setY(p.height + 1, B.Roof);
             }
           } else {
             setY(0, B.Sidewalk);
