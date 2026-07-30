@@ -30,6 +30,10 @@ export interface Shelter {
 // exceeded during ordinary combat well before the player had a fair chance to
 // respond.
 const BASE_CAPACITY = 300;
+/** People filing back out of a ward per second while no kaiju is up. */
+const DRAIN = 2.5;
+/** However long Kotetsu works, a ward tops out here. */
+const MAX_CAPACITY = 560;
 
 export class ShelterManager {
   group = new THREE.Group();
@@ -91,13 +95,29 @@ export class ShelterManager {
   }
 
   /**
+   * With no kaiju in the sky, people start filing back out to what is left of
+   * their block. Drones do not count — nobody stays underground over those.
+   * This is the reward for killing a boss fast: the wards breathe again, and a
+   * long clean stretch can undo a messy fight.
+   */
+  release(dt: number): void {
+    for (const s of this.shelters) {
+      if (s.hp > 0 && !s.underAttack && s.people > 0) {
+        s.people = Math.max(0, s.people - dt * DRAIN);
+      }
+    }
+  }
+
+  /**
    * Kotetsu is a mechanic before he is a gunner. While he is deployed he
    * quietly extends the wards, which is the only thing keeping the population
-   * ahead of the demolition.
+   * ahead of the demolition. There is a ceiling: he can only bolt so many
+   * frames onto a ward before it stops being a building. Without that cap a
+   * long deployment makes overflow impossible and the fail state disappears.
    */
   expand(dt: number): void {
     for (const s of this.shelters) {
-      if (s.hp > 0) s.capacity += dt * 3.2;
+      if (s.hp > 0) s.capacity = Math.min(MAX_CAPACITY, s.capacity + dt * 3.2);
     }
   }
 

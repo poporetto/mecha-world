@@ -1971,6 +1971,9 @@ export class Game {
     const bossPos = this.monster && !this.monster.dying ? this.monster.group.position : null;
     const fallen = this.shelters.update(dt, this.time, bossPos, dronePos);
     this.shelters.mend(dt);
+    // no kaiju up means people start going home — drones alone don't keep
+    // anyone underground, so clearing a boss fast is what buys ward space
+    if (!bossPos) this.shelters.release(dt);
     // Kotetsu extends the wards while he is out there — he is a mechanic
     // first, and it is the only thing keeping capacity ahead of the rubble
     if (this.tank.active) {
