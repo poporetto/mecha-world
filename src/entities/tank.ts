@@ -127,11 +127,21 @@ export class Tank {
     want.z += 18;
     const dx = want.x - pos.x, dz = want.z - pos.z;
     const dist = Math.hypot(dx, dz);
-    const speed = Math.min(11, 3 + dist * 0.25); // roughly half the walkers
+    // A tracked support frame should never keep pace with a sprinting mecha.
+    // It catches up eventually, but is deliberately far slower than Terra-Armor.
+    const speed = Math.min(5, 1.4 + dist * 0.1);
     const moving = dist > 5;
     if (moving) {
-      pos.x += (dx / dist) * speed * dt;
-      pos.z += (dz / dist) * speed * dt;
+      const groundY = ctx.world.groundHeight(pos.x, pos.z, 6);
+      const nextX = pos.x + (dx / dist) * speed * dt;
+      const nextZ = pos.z + (dz / dist) * speed * dt;
+      const nextGroundY = ctx.world.groundHeight(nextX, nextZ, 6);
+      // Do not treat a building wall as a ramp. The low scan only sees street
+      // level terrain, and an upward step above one block is impassable.
+      if (nextGroundY <= groundY + 1.1) {
+        pos.x = nextX;
+        pos.z = nextZ;
+      }
       // hull turns slowly to face where it is going
       const wantYaw = Math.atan2(dx, dz);
       let d = wantYaw - this.yaw;
@@ -141,8 +151,8 @@ export class Tank {
     }
     this.group.rotation.y = this.yaw;
 
-    const gy = ctx.world.groundHeight(pos.x, pos.z, 60);
-    pos.y += ((gy > 40 ? 0 : gy) - pos.y) * Math.min(1, dt * 4);
+    const gy = ctx.world.groundHeight(pos.x, pos.z, 6);
+    pos.y += (gy - pos.y) * Math.min(1, dt * 4);
 
     // road wheels spin with travel
     if (moving) for (const w of this.wheels) w.rotation.x += dt * 7;

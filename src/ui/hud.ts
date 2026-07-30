@@ -64,6 +64,29 @@ export class Hud {
         .cross { position:absolute; left:50%; top:50%; width:6px; height:6px; margin:-3px; border-radius:50%;
                  background:#7fdcffcc; box-shadow:0 0 6px #39e6e0; }
         .vig { position:absolute; inset:0; box-shadow:inset 0 0 140px #ff2020; opacity:0; transition:opacity .4s; }
+        .impact-flash { position:absolute; inset:0; pointer-events:none; opacity:0;
+                        background:radial-gradient(circle at center,transparent 42%,#ffcf7a33 70%,#ff713366 100%);
+                        mix-blend-mode:screen; }
+        .impact-flash.weak {
+          background:radial-gradient(circle at center,transparent 32%,#fff3a855 62%,#39e6e099 100%);
+        }
+        @keyframes impact-hit {
+          0% { opacity:.95; transform:scale(1.035); }
+          100% { opacity:0; transform:scale(1); }
+        }
+        .boss-intro { position:absolute; inset:0; display:flex; flex-direction:column;
+                      align-items:center; justify-content:center; pointer-events:none; opacity:0;
+                      background:linear-gradient(180deg,transparent 20%,#02050acc 46%,#02050acc 58%,transparent 82%); }
+        .boss-intro.show { animation:boss-reveal 3s ease-in-out both; }
+        .boss-intro .threat { color:#ff6f61; font-size:12px; letter-spacing:9px; }
+        .boss-intro .name { color:#fff; font-size:clamp(34px,6vw,76px); font-weight:800;
+                            letter-spacing:12px; margin:8px 0; text-shadow:0 0 28px #ff3b3baa; }
+        .boss-intro .subtitle { color:#ffd4c7; font-size:13px; letter-spacing:3px; max-width:760px; text-align:center; }
+        @keyframes boss-reveal {
+          0% { opacity:0; transform:scale(1.08); }
+          14%,72% { opacity:1; transform:scale(1); }
+          100% { opacity:0; transform:scale(.98); }
+        }
         .start { position:absolute; inset:0; background:linear-gradient(90deg,#030815d9 0%,#07101abb 47%,#030815d9 100%),
                  url('/title-screen.png') center/cover no-repeat; display:flex; flex-direction:column;
                  align-items:center; justify-content:center; pointer-events:auto; cursor:pointer; }
@@ -214,6 +237,19 @@ export class Hud {
                 display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
                 pointer-events:auto; cursor:pointer; text-shadow:0 1px 2px #000; }
         .wbtn b { color:#7fdcff; font-size:12px; }
+        .debug-btn { position:absolute; right:24px; top:142px; pointer-events:auto; cursor:pointer;
+                     color:#ffd86a; background:#17150dcc; border:1px solid #ffd86a99;
+                     border-radius:4px; padding:7px 10px; font-size:9px; letter-spacing:2px; }
+        .debug-btn:hover { background:#3a3213; box-shadow:0 0 14px #ffd86a55; }
+        .debug-panel { position:absolute; right:108px; top:60px; width:250px; padding:12px;
+                       display:none; pointer-events:auto; z-index:25; background:#080d16f2;
+                       border:1px solid #ffd86a88; border-radius:6px; box-shadow:0 8px 28px #000b; }
+        .debug-panel.open { display:block; }
+        .debug-title { color:#ffd86a; font-size:10px; letter-spacing:3px; margin-bottom:9px; }
+        .debug-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:6px; }
+        .debug-ch { cursor:pointer; color:#eaf6ff; background:#111d2c; border:1px solid #3a5a7a;
+                    border-radius:3px; padding:7px 5px; font-size:9px; letter-spacing:1px; }
+        .debug-ch:hover { border-color:#ffd86a; color:#ffd86a; }
         .wheel { position:absolute; inset:0; display:none; align-items:center; justify-content:center;
                  background:#04060cbb; pointer-events:auto; z-index:20; }
         .wheel.open { display:flex; }
@@ -255,8 +291,19 @@ export class Hud {
         <div class="chip" id="chip-power" style="display:none"></div>
       </div>
       <div class="toast" id="toast"><h1 id="toast-h"></h1><p id="toast-p"></p></div>
+      <div class="impact-flash" id="impact-flash"></div>
+      <div class="boss-intro" id="boss-intro">
+        <div class="threat" id="boss-intro-threat">HOSTILE SIGNATURE</div>
+        <div class="name" id="boss-intro-name"></div>
+        <div class="subtitle" id="boss-intro-sub"></div>
+      </div>
       <div class="cross"></div>
       <div class="wbtn" id="wbtn"><b id="wbtn-ico">⚔</b><span id="wbtn-name">SABER</span></div>
+      <button class="debug-btn" id="debug-btn" type="button">DEBUG</button>
+      <div class="debug-panel" id="debug-panel">
+        <div class="debug-title">JUMP TO CHAPTER</div>
+        <div class="debug-grid" id="debug-grid"></div>
+      </div>
       <div class="wheel" id="wheel">
         <div class="wheel-ring">${WEAPONS.map((w, i) => {
           const a = (i / WEAPONS.length) * Math.PI * 2 - Math.PI / 2;
@@ -409,6 +456,26 @@ export class Hud {
     document.getElementById('p-restart')!.addEventListener('click', onRestart);
   }
 
+  bindChapterDebug(chapters: { no: number; title: string }[], onJump: (index: number) => void): void {
+    const panel = document.getElementById('debug-panel')!;
+    const button = document.getElementById('debug-btn')!;
+    const grid = document.getElementById('debug-grid')!;
+    grid.innerHTML = chapters.map((ch, index) =>
+      `<button class="debug-ch" type="button" data-ch="${index}">CH ${ch.no}<br/>${ch.title}</button>`
+    ).join('');
+    button.addEventListener('click', (e) => {
+      e.stopPropagation();
+      panel.classList.toggle('open');
+    });
+    grid.querySelectorAll<HTMLButtonElement>('.debug-ch').forEach((chapterButton) => {
+      chapterButton.addEventListener('click', (e) => {
+        e.stopPropagation();
+        panel.classList.remove('open');
+        onJump(Number(chapterButton.dataset.ch));
+      });
+    });
+  }
+
   /**
    * Queue radio lines. They type out one at a time and auto-advance, so the
    * player can keep fighting while Command talks.
@@ -449,6 +516,7 @@ export class Hud {
       const portrait = line.who.includes('KUROSAWA') ? 'dr-kurosawa'
         : line.who.includes('KUROKI') ? 'kuroki-pilot'
         : line.who.includes('HINATA') ? 'hinata-pilot'
+        : line.who.includes('JOTETSU') ? 'jotetsu-engineer'
         : line.who.includes('KOTETSU') ? 'kotetsu-support'
         : line.who.includes('REI') ? 'rei-memorial'
         : 'aya-command';
@@ -660,6 +728,23 @@ export class Hud {
     el.style.animation = 'none';
     void el.offsetWidth; // restart the animation
     el.style.animation = 'dmgpop .6s ease-out';
+  }
+
+  impactFeedback(weakPoint: boolean, strength = 1): void {
+    const el = document.getElementById('impact-flash')!;
+    el.classList.toggle('weak', weakPoint);
+    el.style.animation = 'none';
+    void el.offsetWidth;
+    el.style.animation = `impact-hit ${Math.max(0.12, 0.2 + strength * 0.05)}s ease-out`;
+  }
+
+  showBossIntro(name: string, subtitle: string): void {
+    const el = document.getElementById('boss-intro')!;
+    document.getElementById('boss-intro-name')!.textContent = name;
+    document.getElementById('boss-intro-sub')!.textContent = subtitle;
+    el.classList.remove('show');
+    void el.offsetWidth;
+    el.classList.add('show');
   }
 
   setWeapon(w: WeaponId): void {

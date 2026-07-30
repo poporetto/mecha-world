@@ -15,6 +15,7 @@ import { DroneManager } from './entities/drones';
 import { TrafficManager } from './entities/traffic';
 import { Ally } from './entities/ally';
 import { Tank } from './entities/tank';
+import { Digger } from './entities/digger';
 import { Shelter, ShelterManager } from './entities/shelters';
 import { EvacueeManager } from './entities/evacuees';
 import { RepairManager } from './core/repair';
@@ -23,7 +24,7 @@ import { buildFallingChunk, FallingChunk, updateFallingChunk } from './fx/collap
 import { Explosions } from './fx/explosions';
 import { Sky } from './fx/sky';
 import { sfx } from './fx/sound';
-import { AYA_HINATA, BARKS, CHAPTERS, ENDLESS_LINES, EPILOGUE, HINATA_CHAPTER, KOTETSU_BARKS, KOTETSU_CHAPTER, LATE_MEMORIES, MEMORIES, MONSTER_BARKS, PROLOGUE } from './core/story';
+import { AYA_HINATA, BARKS, CHAPTERS, ENDLESS_LINES, EPILOGUE, HINATA_CHAPTER, JOTETSU_CHAPTER, KOTETSU_BARKS, KOTETSU_CHAPTER, LATE_MEMORIES, MEMORIES, MONSTER_BARKS, PROLOGUE } from './core/story';
 import { Hud, RadarKind, WEAPONS, WeaponId } from './ui/hud';
 import { isTouchDevice, TouchControls } from './ui/touch';
 
@@ -53,12 +54,16 @@ export class Game {
   private traffic = new TrafficManager();
   private ally = new Ally();
   private tank = new Tank();
+  private digger = new Digger();
   private shelters!: ShelterManager;
   private evacuees!: EvacueeManager;
   private lateMemoryIdx = 0;
   private ayaHinataIdx = 0;
   private kotetsuCursor = new Map<string, number>();
   private mechanicT = 40;
+  private supportArrivalChapter = -1;
+  private supportArrivalArmed = false;
+  private diggerWorkTarget: THREE.Vector3 | null = null;
   private ridingPlane: Plane | null = null;
   private hud = new Hud();
   private touch: TouchControls | null = null;
@@ -122,6 +127,9 @@ export class Game {
 
   private monster: Monster | null = null;
   private bossIndex = 0; // progression through the campaign bosses
+  // Explicit checkpoint: zero-based index of the most recently defeated
+  // campaign chapter. -1 means the campaign has not cleared Chapter 1 yet.
+  private latestFinishedChapter = -1;
   private bossTimer = 14;
   private wave = 0;
   private score = 0;
@@ -129,6 +137,11 @@ export class Game {
   private comboTimer = 0;
   private shake = 0; // camera shake magnitude, decays
   private slowmo = 0; // seconds of slow-motion remaining
+  private hitStop = 0;
+  private impactZoom = 0;
+  private dashCameraT = 0;
+  private bossIntroT = 0;
+  private readonly bossIntroDuration = 3;
   private lockOn = false; // lock-on targets the boss
   private dashT = 0; // dash cooldown
   private comboWindow = 0; // time left to chain the next saber hit
@@ -174,7 +187,7 @@ export class Game {
     this.evacuees = new EvacueeManager(this.shelters.shelters.length);
     this.scene.add(this.evacuees.group);
     this.scene.add(this.npcs.group, this.cars.group, this.debris.mesh, this.explosions.group, this.fire.group);
-    this.scene.add(this.planes.group, this.drones.group, this.traffic.group, this.ally.group, this.tank.group);
+    this.scene.add(this.planes.group, this.drones.group, this.traffic.group, this.ally.group, this.tank.group, this.digger.group);
 
 
     // beam (unlockable): a long emissive box scaled to hit distance
@@ -366,6 +379,8 @@ export class Game {
     }
     this.player.dash(dir);
     this.player.model.dashT = 0.3; // forward lunge pose
+    this.dashCameraT = 0.3;
+    this.shake = Math.max(this.shake, 0.18);
     this.explosions.boom(this.player.pos.clone().setY(this.player.pos.y + 3), 3);
     sfx.rocket(0.6); // whoosh
   }
@@ -404,7 +419,9 @@ export class Game {
       // twin sabers cut ~60% deeper
       const blades = this.player.abilities.blades ? 1.6 : 1;
       const dmg = (finisher ? 26 : 12 + step * 4) * this.power * blades;
-      if (this.hitMonster(pc, finisher ? 14 : 11, dmg) && finisher) this.shake = Math.max(this.shake, 0.8);
+      if (this.hitMonster(pc, finisher ? 14 : 11, dmg, finisher ? 1.6 : 1.05) && finisher) {
+        this.shake = Math.max(this.shake, 0.8);
+      }
     }, 190);
   }
 
@@ -742,7 +759,7 @@ export class Game {
 
   // Every sphere-shaped hit funnels through here, so wiring the swarm in once
   // means all weapons damage drones without touching each weapon.
-  private hitMonster(p: THREE.Vector3, radius: number, dmg: number): boolean {
+  private hitMonster(p: THREE.Vector3, radius: number, dmg: number, impactScale = 0.7): boolean {
     let hit = false;
     this.killDrones(this.drones.damageSphere(p, radius, dmg));
     this.notePlanesDowned(this.planes.damageSphere(p, radius, dmg));
@@ -754,6 +771,12 @@ export class Game {
         const bonus = this.weakPointBonus(p);
         if (bonus > 1) this.bark('weakPoint');
         m.takeDamage(dmg * bonus);
+        const strength = Math.min(1.5, Math.max(0.25, dmg / 28) * impactScale);
+        this.hitStop = Math.max(this.hitStop, 0.012 + strength * 0.03 + (bonus > 1 ? 0.018 : 0));
+        this.shake = Math.max(this.shake, 0.18 + strength * 0.34);
+        this.impactZoom = Math.max(this.impactZoom, strength + (bonus > 1 ? 0.35 : 0));
+        this.hud.impactFeedback(bonus > 1, strength);
+        sfx.impact(strength, bonus > 1);
         this.debris.burst(p, [15], 6);
         this.addScore(Math.round(dmg * 2), true);
         this.hud.popDamage(dmg * bonus);
@@ -989,7 +1012,7 @@ export class Game {
     this.hud.toast('AIRLINER DOWN', 'Wreckage burning in the streets', 3.5);
   }
 
-  /** Keep KOTETSU alongside and let her put fire on whatever is closest. */
+  /** Keep Hinata alongside and let her put fire on whatever is closest. */
   private updateAlly(dt: number): void {
     if (!this.ally.active) return;
     // pick the nearest hostile: the boss if it is close, else a drone
@@ -1032,6 +1055,41 @@ export class Game {
     });
   }
 
+  /** Drop support units only after their chapter introduction has concluded. */
+  private updateSupportArrivals(): void {
+    if (!this.supportArrivalArmed || this.hud.busy || this.hud.cardOpen) return;
+    const chapter = this.supportArrivalChapter;
+    if (chapter >= HINATA_CHAPTER && !this.ally.active) {
+      const at = this.player.pos.clone();
+      at.x -= 14;
+      at.z += 10;
+      at.y = this.world.groundHeight(at.x, at.z, 60);
+      this.ally.deploy(at);
+    }
+    if (chapter >= KOTETSU_CHAPTER && !this.tank.active) {
+      const at = this.player.pos.clone();
+      at.x += 22;
+      at.z += 18;
+      at.y = this.world.groundHeight(at.x, at.z, 60);
+      this.tank.deploy(at);
+    }
+    if (chapter >= JOTETSU_CHAPTER && !this.digger.active) {
+      const shelter = this.shelters.weakest;
+      const at = shelter.pos.clone();
+      at.x += 12;
+      at.z += 10;
+      at.y = this.world.groundHeight(at.x, at.z, 60);
+      this.digger.deploy(at);
+    }
+    this.supportArrivalArmed = false;
+    this.supportArrivalChapter = -1;
+    this.hud.toast(
+      'SUPPORT TEAM DEPLOYED',
+      'TSUBAKI · KUROGANE · DIGGER are now operating in Neo Tokyo',
+      4,
+    );
+  }
+
   /**
    * A shell from KUROGANE. Heavy, slow, and thrown off aim on purpose —
    * Kotetsu is a mechanic who was handed a gun, and the misses are half the
@@ -1053,7 +1111,7 @@ export class Game {
     this.scene.add(mesh);
     this.projectiles.push({
       pos: from.clone(), vel: dir.multiplyScalar(54), life: 4,
-      kind: 'shell', mesh, dmg: 34,
+      kind: 'shell', mesh, dmg: 36,
     });
     sfx.explode(0.45, 1 - Math.min(1, from.distanceTo(this.player.pos) / 140));
     // he knows. everyone knows.
@@ -1308,16 +1366,52 @@ export class Game {
     ).then(() => this.restart());
   }
 
-  /** A full shelter is a failed evacuation, not the end of the campaign. */
-  private retryCurrentChapter(s: Shelter): void {
-    // bossIndex advances as soon as a boss spawns, so the active chapter is
-    // one slot behind it. Restarting restores the city and puts that chapter
-    // back in the launch queue without showing a game-over screen.
-    const chapter = Math.max(0, this.bossIndex - 1);
+  /** A full shelter rewinds to the most recently completed chapter checkpoint. */
+  private retryLatestFinishedChapter(s: Shelter): void {
+    // Preserve everything earned at the checkpoint. restart() restores the
+    // damaged city but intentionally resets progression for a genuinely new
+    // run, so checkpoint state is captured and reapplied around that reset.
+    const finished = this.latestFinishedChapter;
+    const chapter = Math.max(0, finished);
+    const abilities = { ...this.player.abilities };
+    const weapons = new Set(this.unlockedWeapons);
+    const selectedWeapon = this.selectedWeapon;
+    const powerLevel = this.powerLevel;
+    const power = this.power;
+    const memoryIdx = this.memoryIdx;
+    const lateMemoryIdx = this.lateMemoryIdx;
+    const ayaHinataIdx = this.ayaHinataIdx;
+    const kotetsuCursor = new Map(this.kotetsuCursor);
+
     this.restart();
+    this.latestFinishedChapter = finished;
     this.bossIndex = chapter;
     this.bossTimer = 2;
     this.wave = chapter;
+    this.player.abilities = abilities;
+    this.unlockedWeapons = weapons;
+    this.powerLevel = powerLevel;
+    this.power = power;
+    this.memoryIdx = memoryIdx;
+    this.lateMemoryIdx = lateMemoryIdx;
+    this.ayaHinataIdx = ayaHinataIdx;
+    this.kotetsuCursor = kotetsuCursor;
+
+    // Restore the checkpoint loadout in both the model and the HUD without
+    // replaying reward toasts.
+    if (abilities.beam) this.hud.unlock('beam', '<b>E (hold)</b> PLASMA BEAM');
+    if (abilities.thrust) this.hud.unlock('boots', '<b>SPACE</b> OVERDRIVE THRUSTERS');
+    if (abilities.nova) this.hud.unlock('nova', '<b>Q</b> NOVA PULSE');
+    if (abilities.shield) this.hud.unlock('shield', 'AEGIS SHIELD 50%');
+    if (abilities.quake) this.hud.unlock('quake', '<b>G</b> QUAKE SLAM');
+    if (abilities.blades) this.hud.unlock('blades', 'TWIN SABERS');
+    for (const weapon of weapons) {
+      this.hud.unlockWeapon(weapon);
+      this.touch?.unlockWeapon(weapon);
+    }
+    if (powerLevel > 1) this.hud.setPowerLevel(powerLevel);
+    this.selectWeapon(weapons.has(selectedWeapon) ? selectedWeapon : 'saber');
+
     this.hud.setWave(this.wave);
     this.hud.setObjective(`RETRY CHAPTER ${chapter + 1} — EVACUATE ${s.name}`);
     this.hud.toast('SHELTER OVERFLOW', `Returning to Chapter ${chapter + 1}`, 3.5);
@@ -1369,6 +1463,7 @@ export class Game {
     this.wave = 0;
     this.deaths = 0;
     this.bossIndex = 0;
+    this.latestFinishedChapter = -1;
     this.bossTimer = 14;
     this.powerLevel = 1;
     this.power = 1;
@@ -1381,6 +1476,10 @@ export class Game {
     this.player.respawn();
     this.ridingPlane = null;
     this.slowmo = 0;
+    this.hitStop = 0;
+    this.impactZoom = 0;
+    this.dashCameraT = 0;
+    this.bossIntroT = 0;
     this.shake = 0;
 
     this.barkT = 0;
@@ -1394,6 +1493,10 @@ export class Game {
     this.kotetsuCursor.clear();
     this.ally.retire();
     this.tank.retire();
+    this.digger.retire();
+    this.supportArrivalChapter = -1;
+    this.supportArrivalArmed = false;
+    this.diggerWorkTarget = null;
     this.shelters.reset();
     this.evacuees.reset();
     this.gameOver = false;
@@ -1493,6 +1596,10 @@ export class Game {
           this.shake = 1.4;
           this.explosions.boom(this.monster.group.position.clone().setY(this.monster.group.position.y + 14), 16);
           this.grantReward(this.monster.reward);
+          const finishedChapter = this.bossIndex - 1;
+          if (CHAPTERS[finishedChapter]) {
+            this.latestFinishedChapter = Math.max(this.latestFinishedChapter, finishedChapter);
+          }
           this.playDebrief();
         }
       }
@@ -1543,19 +1650,14 @@ export class Game {
       const chapterNo = this.bossIndex;
       const entry = campaign[this.bossIndex++];
       this.monster = entry.make(x, z);
-      // Hinata joins from Chapter 2 onward.
-      if (chapterNo >= HINATA_CHAPTER && !this.ally.active) {
-        const at = this.player.pos.clone();
-        at.x -= 14;
-        at.z += 10;
-        this.ally.deploy(at);
-      }
-      // Kotetsu and his support frame arrive in Chapter 4.
-      if (chapterNo >= KOTETSU_CHAPTER && !this.tank.active) {
-        const at = this.player.pos.clone();
-        at.x += 22;
-        at.z += 18;
-        this.tank.deploy(at);
+      // Support frames are deliberately held outside the map until every
+      // introduction line has finished. This makes their descent an arrival,
+      // instead of having the units silently present before anyone speaks.
+      if ((chapterNo >= HINATA_CHAPTER && !this.ally.active)
+        || (chapterNo >= KOTETSU_CHAPTER && !this.tank.active)
+        || (chapterNo >= JOTETSU_CHAPTER && !this.digger.active)) {
+        this.supportArrivalChapter = chapterNo;
+        this.supportArrivalArmed = false;
       }
       const ch = CHAPTERS[chapterNo];
       // title card first, then Command talks you through the contact
@@ -1563,7 +1665,11 @@ export class Game {
         `CHAPTER ${ch.no}`,
         ch.title,
         `A new signature has broken through.<br/>Neo Tokyo is counting on you.`
-      ).then(() => this.hud.say(ch.brief));
+      ).then(() => {
+        this.beginBossIntro(this.monster?.name ?? entry.toast[0], entry.toast[1]);
+        this.hud.say(ch.brief);
+        if (this.supportArrivalChapter === chapterNo) this.supportArrivalArmed = true;
+      });
     } else {
       // endless mode: any boss, scaled up each wave; reward = repairs + power
       const pool = [Kaiju, RocketBeast, VoltSerpent, IronColossus, SkyReaver, CrimsonMantis, MagmaGolem, DeepMaw, CinderWyrm, TideLeviathan];
@@ -1573,13 +1679,13 @@ export class Game {
       m.reward = 'repair';
       this.monster = m;
       this.hud.toast('⚠ WAVE ' + this.wave + ' ⚠', m.name + ' detected.', 3);
+      this.beginBossIntro(m.name, 'Escalating hostile signature · endless deployment');
       this.hud.say([ENDLESS_LINES[this.wave % ENDLESS_LINES.length]]);
     }
     if (this.monster instanceof VoltSerpent) this.monster.addSegmentsTo(this.scene);
     this.scene.add(this.monster.group);
     this.hud.showBoss(this.monster.name);
     this.hud.setObjective('Destroy ' + this.monster.name);
-    sfx.roar();
     // teach the weak point once, after the boss intro toast has had its time
     if (!this.taughtWeakPoint) {
       this.taughtWeakPoint = true;
@@ -1590,6 +1696,13 @@ export class Game {
       }, 5200);
     }
     sfx.setMusicIntensity(1);
+  }
+
+  private beginBossIntro(name: string, subtitle: string): void {
+    this.bossIntroT = this.bossIntroDuration;
+    this.hud.showBossIntro(name, subtitle);
+    this.shake = Math.max(this.shake, 0.3);
+    sfx.roar();
   }
 
   // DEBUG helper: hand the player every ability + weapon up front
@@ -1717,7 +1830,14 @@ export class Game {
     }
     // slow-motion scales the whole simulation; its own timer uses raw time
     if (this.slowmo > 0) this.slowmo -= rawDt;
-    const dt = this.slowmo > 0 ? rawDt * 0.35 : rawDt;
+    if (this.hitStop > 0) this.hitStop = Math.max(0, this.hitStop - rawDt);
+    if (this.bossIntroT > 0) this.bossIntroT = Math.max(0, this.bossIntroT - rawDt);
+    this.impactZoom = Math.max(0, this.impactZoom - rawDt * 4.2);
+    this.dashCameraT = Math.max(0, this.dashCameraT - rawDt);
+    const dt = this.hitStop > 0 ? 0
+      : this.bossIntroT > 0 ? rawDt * 0.16
+      : this.slowmo > 0 ? rawDt * 0.35
+      : rawDt;
 
     this.time += dt;
     this.laserCooldown -= dt;
@@ -1739,6 +1859,8 @@ export class Game {
     }
 
     let jump = false;
+    const wasStanding = this.player.grounded || this.player.onPlatform;
+    const incomingFallSpeed = this.player.vel.y;
     if (this.started) {
       // A is the attack button now, so left-strafe is ArrowLeft (or Q-less); D/right still work
       const right = this.keys.has('KeyD') || this.keys.has('ArrowRight');
@@ -1763,6 +1885,14 @@ export class Game {
       this.player.update(dt, mx, mz, this.camYaw, jump, boost);
     } else {
       this.player.update(dt, 0, 0, this.camYaw, false, false);
+    }
+    const standingNow = this.player.grounded || this.player.onPlatform;
+    if (!wasStanding && standingNow && incomingFallSpeed < -7) {
+      const weight = Math.min(1, Math.abs(incomingFallSpeed) / 28);
+      this.shake = Math.max(this.shake, 0.28 + weight * 0.55);
+      this.impactZoom = Math.max(this.impactZoom, 0.35 + weight * 0.35);
+      this.explosions.boom(this.player.pos.clone().setY(this.player.pos.y + 0.6), 2.5 + weight * 2);
+      sfx.thud();
     }
     const crashes = this.planes.update(dt, this.player.pos,
       (x, z) => this.world.groundHeight(x, z, 60));
@@ -1797,14 +1927,24 @@ export class Game {
       this.mechanicT -= dt;
       if (this.mechanicT <= 0) { this.mechanicT = 55; this.sayKotetsu('mechanic'); }
     }
+    if (this.digger.active) {
+      this.diggerWorkTarget = this.shelters.reconstruct(dt).pos;
+    } else {
+      this.diggerWorkTarget = null;
+    }
     const reached = this.evacuees.update(dt, this.time, this.world);
     const burst = this.shelters.admit(reached);
     if (fallen && !this.gameOver) this.endRun(fallen, 'destroyed');
-    else if (burst && !this.gameOver) this.retryCurrentChapter(burst);
+    else if (burst && !this.gameOver) this.retryLatestFinishedChapter(burst);
     this.warnShelters();
 
     this.updateAlly(dt);
     this.updateTank(dt);
+    this.digger.update(dt, this.time, {
+      world: this.world,
+      playerPos: this.player.pos,
+      workTarget: this.diggerWorkTarget,
+    });
     this.drones.update(dt, this.time, {
       world: this.world,
       playerPos: this.player.pos,
@@ -1824,7 +1964,11 @@ export class Game {
     if (fl) this.chunks.markDirty(fl.dirty);
 
     // townspeople rebuild the city while things are quiet
-    const rep = this.repair.update(dt, this.time, this.player.pos.x, this.player.pos.z);
+    // The Digger more than doubles reconstruction throughput while deployed.
+    const rep = this.repair.update(
+      dt, this.time, this.player.pos.x, this.player.pos.z,
+      this.digger.active ? 2.25 : 1,
+    );
     if (rep) {
       this.chunks.markDirty(rep.dirty);
       for (const site of rep.startedSites) this.npcs.spawnWorkers(site.x, site.z);
@@ -1848,6 +1992,7 @@ export class Game {
     this.updateRadar();
     this.hud.setHP(this.player.hp / this.player.maxHp);
     this.hud.update(dt);
+    this.updateSupportArrivals();
 
     this.updateCamera();
     this.renderer.render(this.scene, this.camera);
@@ -1905,7 +2050,9 @@ export class Game {
       let boom = false;
       if (this.world.solidAt(p.pos.x, p.pos.y, p.pos.z) || p.pos.y < 0.2) boom = true;
       if (playerShot(p.kind)) {
-        const hitR = p.kind === 'charge' ? 4 : 2;
+        // Kotetsu's shells are artillery: the blast is the attack, not a
+        // precision impact, so nearby bosses and drone packs take damage too.
+        const hitR = p.kind === 'shell' ? 12 : p.kind === 'charge' ? 4 : 2;
         if (this.hitMonster(p.pos, hitR, (p.dmg ?? 7) * (p.kind === 'laser' ? this.power : 1))) boom = true;
       } else if (p.pos.distanceTo(this.player.pos) < (p.kind === 'boulder' ? 8 : 7)) {
         // only enemy ordnance hurts the player
@@ -1913,7 +2060,7 @@ export class Game {
         this.damagePlayer(p.kind === 'boulder' ? 22 : 16);
       }
       if (boom) {
-        const r = p.kind === 'shell' ? 7   // his misses take out whole frontages
+        const r = p.kind === 'shell' ? 10  // his misses take out whole blocks
           : p.kind === 'charge' ? 4.5 : p.kind === 'laser' ? 2.4
           : p.kind === 'missile' ? 3 : p.kind === 'boulder' ? 5 : 3.6;
         this.destroyAt(p.pos, r, 0.2);
@@ -1930,7 +2077,28 @@ export class Game {
   private updateCamera(): void {
     const pivot = this.player.pos.clone();
     pivot.y += 9.9;
-    const dist = 28;
+    const speed = Math.hypot(this.player.vel.x, this.player.vel.z);
+    const dashPull = this.dashCameraT > 0 ? Math.sin((this.dashCameraT / 0.3) * Math.PI) : 0;
+    let cinematicBlend = 0;
+    if (this.bossIntroT > 0 && this.monster && !this.monster.dying) {
+      const progress = 1 - this.bossIntroT / this.bossIntroDuration;
+      cinematicBlend = Math.sin(progress * Math.PI) * 0.92;
+      _v.copy(this.monster.group.position);
+      _v.y += 14;
+      pivot.lerp(_v, cinematicBlend);
+    }
+    const dist = 28
+      + Math.min(5, speed * 0.18)
+      + dashPull * 4.5
+      + cinematicBlend * 12
+      - Math.min(4.2, this.impactZoom * 2.8);
+    const targetFov = 65
+      + Math.min(6, speed * 0.16)
+      + dashPull * 3
+      + cinematicBlend * 5
+      - Math.min(5, this.impactZoom * 3.4);
+    this.camera.fov += (targetFov - this.camera.fov) * 0.16;
+    this.camera.updateProjectionMatrix();
     const dir = new THREE.Vector3(
       Math.sin(this.camYaw) * Math.cos(this.camPitch),
       Math.sin(this.camPitch),

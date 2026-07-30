@@ -40,6 +40,8 @@ export abstract class Monster {
    *  player can read the tell and dash out of the way. */
   protected telegraph = false;
   private coreT = 0;
+  private staggerT = 0;
+  private staggerStrength = 0;
   /** Glowing dorsal core: the visible weak point. Local y is chosen so it
    *  sits high on the back once MONSTER_SCALE is applied. */
   weakCore!: THREE.Mesh;
@@ -55,7 +57,9 @@ export abstract class Monster {
   takeDamage(amount: number): void {
     if (this.dying) return;
     this.hp = Math.max(0, this.hp - amount);
-    this.flashT = 0.12;
+    this.flashT = 0.14;
+    this.staggerT = Math.max(this.staggerT, 0.16);
+    this.staggerStrength = Math.max(this.staggerStrength, Math.min(1, amount / 42));
     if (this.hp <= 0) this.dying = true;
   }
 
@@ -63,6 +67,18 @@ export abstract class Monster {
     this.coreT += dt;
     this.updateCore(this.coreT);
     this.flashT -= dt;
+    this.staggerT = Math.max(0, this.staggerT - dt);
+    const stagger = this.staggerT > 0
+      ? Math.sin((this.staggerT / 0.16) * Math.PI) * this.staggerStrength
+      : 0;
+    // A short compression makes hits register on the entire silhouette while
+    // preserving each boss's authored movement and heading.
+    this.group.scale.set(
+      MONSTER_SCALE * (1 + stagger * 0.018),
+      MONSTER_SCALE * (1 - stagger * 0.035),
+      MONSTER_SCALE * (1 + stagger * 0.018),
+    );
+    if (this.staggerT === 0) this.staggerStrength = 0;
     const flash = this.flashT > 0;
     const warn = !flash && this.telegraph;
     this.group.traverse((o) => {

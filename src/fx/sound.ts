@@ -110,6 +110,31 @@ class Sfx {
     o.stop(t + 0.3);
   }
 
+  impact(strength = 1, weakPoint = false): void {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const hit = ctx.createBufferSource();
+    hit.buffer = this.noiseBuffer(0.14);
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = weakPoint ? 1800 : 720;
+    filter.Q.value = weakPoint ? 1.8 : 0.8;
+    const gain = ctx.createGain();
+    this.env(gain, t, Math.min(0.65, 0.22 + strength * 0.25), 0.13);
+    hit.connect(filter).connect(gain).connect(this.master);
+    hit.start(t);
+
+    const body = ctx.createOscillator();
+    body.type = 'triangle';
+    body.frequency.setValueAtTime(weakPoint ? 240 : 105, t);
+    body.frequency.exponentialRampToValueAtTime(42, t + 0.16);
+    const bodyGain = ctx.createGain();
+    this.env(bodyGain, t, Math.min(0.55, 0.18 + strength * 0.22), 0.18);
+    body.connect(bodyGain).connect(this.master);
+    body.start(t);
+    body.stop(t + 0.2);
+  }
+
   rocket(vol = 1): void {
     if (!this.ctx || vol <= 0.04) return;
     const ctx = this.ctx, t = ctx.currentTime;

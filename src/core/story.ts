@@ -28,10 +28,12 @@ export const KUROKI = 'KUROKI'; // the pilot — you
 export const REI = 'REI · MEMORIAL'; // Aya's late sister; heard only in archived recordings
 export const HINATA = 'HINATA · PILOT'; // second unit, joins mid-campaign
 export const KOTETSU = 'KOTETSU · SUPPORT'; // mechanic and mission-control ally
+export const JOTETSU = 'JOTETSU · ENGINEER'; // Kotetsu's older, much leaner brother
 
 /** Zero-based campaign chapters where each ally enters the fight. */
 export const HINATA_CHAPTER = 1;  // Chapter 2
-export const KOTETSU_CHAPTER = 3; // Chapter 4
+export const KOTETSU_CHAPTER = 2; // Chapter 3
+export const JOTETSU_CHAPTER = 3; // Chapter 4
 
 export const PROLOGUE: Line[] = [
   { who: AYA, text: 'Kuroki, are you even listening? The bay tore open fourteen hours ago.' },
@@ -68,6 +70,12 @@ export const CHAPTERS: Chapter[] = [
       { who: AYA, text: 'Airborne contact. It has circled since dawn — it was WAITING.' },
       { who: KUROKI, text: 'Patient. I respect that. Does not change how this ends.' },
       { who: AYA, text: 'You cannot outrun it on the ground. Please, for once, be careful.' },
+      { who: AYA, text: 'And you are not going alone. Kurosawa cleared the second frame this morning.' },
+      { who: HINATA, text: 'HINATA, dropping in! Hi! Oh wow, you are TALLER than the file said.' },
+      { who: KUROKI, text: '…Aya. Who is this.' },
+      { who: HINATA, text: 'Hinata! I am your wingman! Please look after me, senpai!' },
+      { who: KUROKI, text: 'Do not call me that.' },
+      { who: AYA, text: 'Second-frame descent cleared. Hinata — deploy now!' },
     ],
     debrief: [
       { who: KUROSAWA, text: 'Thrust core intact! Bolt it to your boots and you will fly properly.' },
@@ -83,6 +91,12 @@ export const CHAPTERS: Chapter[] = [
       { who: KUROSAWA, text: 'Seismic readings all down the subway line. It is underneath you.' },
       { who: KUROKI, text: 'Under me. Perfect. My favourite place for a two-hundred-tonne snake.' },
       { who: AYA, text: 'It lights up before it strikes. Watch for it. WATCH for it, Kuroki.' },
+      { who: AYA, text: 'Heavy support is approaching from the south. Identify yourself.' },
+      { who: KOTETSU, text: 'Kotetsu. Kurogane support tank. I brought shells, tools, and several bad ideas.' },
+      { who: KUROKI, text: 'You know how to drive that thing?' },
+      { who: KOTETSU, text: 'Drive, yes. Aim is currently more theoretical.' },
+      { who: HINATA, text: 'Kotetsu fixes everything! Usually after he accidentally hits it.' },
+      { who: AYA, text: 'Kurogane descent cleared. Kotetsu, deploy!' },
     ],
     debrief: [
       { who: KUROKI, text: 'Told you I would watch for it.' },
@@ -102,12 +116,13 @@ export const CHAPTERS: Chapter[] = [
       { who: KUROKI, text: 'Something we have in common.' },
       { who: AYA, text: 'It has plating we cannot identify. And you are not going alone.' },
       { who: KUROKI, text: 'I work alone. You know I work alone.' },
-      { who: AYA, text: 'Not any more. Kurosawa finished the second frame this morning.' },
-      { who: KOTETSU, text: 'Second frame checks green. Hinata is eager. The frame is less eager.' },
-      { who: HINATA, text: 'HINATA, dropping in! Hi! Oh wow, you are TALLER than the file said.' },
-      { who: KUROKI, text: '…Aya. Who is this.' },
-      { who: HINATA, text: 'Hinata! I am your wingman! Please look after me, senpai!' },
-      { who: KUROKI, text: 'Do not call me that.' },
+      { who: HINATA, text: 'I am on your wing, senpai. I will cover the east side.' },
+      { who: JOTETSU, text: 'Jotetsu. Senior reconstruction engineer. Digger frame awaiting clearance.' },
+      { who: KOTETSU, text: 'My older brother. He is friendlier than he sounds. Marginally.' },
+      { who: JOTETSU, text: 'Kotetsu, you arrived one chapter ago and have already shelled a pharmacy.' },
+      { who: KOTETSU, text: 'The monster moved.' },
+      { who: JOTETSU, text: 'Of course it did. Even the monster understands what your aim means.' },
+      { who: AYA, text: 'Enough. Jotetsu, repair the shelters. Digger deployment cleared.' },
     ],
     debrief: [
       { who: KUROSAWA, text: 'It is not armour. It is fabrication. These things are being BUILT.' },
@@ -126,12 +141,9 @@ export const CHAPTERS: Chapter[] = [
       { who: KUROSAWA, text: 'It has been mapping us. Flight paths in a perfect survey grid.' },
       { who: AYA, text: 'It is scouting. Something is using it to look at our city.' },
       { who: KUROKI, text: 'Then let us give it something to look at.' },
-      { who: KOTETSU, text: '…Morning, everyone.' },
-      { who: AYA, text: 'MORNING? Kotetsu, you were due out FOUR HOURS AGO!' },
-      { who: KOTETSU, text: 'I overslept. In my defence I was up all night finishing his suit.' },
-      { who: HINATA, text: 'Kotetsu! You made it! Everyone, this is Kotetsu, he fixes everything!' },
-      { who: KOTETSU, text: 'I am a mechanic. They put me in a tank. I want that on the record.' },
-      { who: AYA, text: 'It is on the record. Get moving.' },
+      { who: KOTETSU, text: 'Kurogane is in position. I can miss it from here just as effectively.' },
+      { who: JOTETSU, text: 'Three shelter blocks restored. Try not to demolish them again before lunch.' },
+      { who: HINATA, text: 'No promises! Senpai is already doing the hero pose.' },
     ],
     debrief: [
       { who: KUROSAWA, text: 'Its spine houses a rail accelerator. That is yours now.' },
@@ -612,6 +624,25 @@ export const KOTETSU_BARKS: Record<string, Line[]> = {
     { who: AYA, text: 'How much more?' },
     { who: KOTETSU, text: 'More than yesterday. Less than you would like.' },
     { who: KOTETSU, text: 'If you all stopped flattening buildings I would have less to do.' },
+  ],
+};
+
+export const JOTETSU_BARKS: Record<string, Line[]> = {
+  damage: [
+    { who: JOTETSU, text: 'Kuroki, I rebuilt that façade twelve seconds ago. Your restraint remains inspiring.' },
+    { who: JOTETSU, text: 'Another building. Excellent. I was worried my work queue might become manageable.' },
+    { who: JOTETSU, text: 'Try aiming at the monster, Kuroki. The architecture has not declared war on you.' },
+    { who: JOTETSU, text: 'I am beginning to understand why Aya always sounds exhausted.' },
+  ],
+  kotetsu: [
+    { who: JOTETSU, text: 'Kotetsu, if you cannot hit the target, at least miss away from my construction site.' },
+    { who: JOTETSU, text: 'My brother has turned incompetence into a weapons platform.' },
+    { who: KOTETSU, text: 'Good to hear your personality survived the launch, brother.' },
+    { who: JOTETSU, text: 'Somebody in this family had to bring standards.' },
+  ],
+  repair: [
+    { who: JOTETSU, text: 'Ward integrity restored. You are welcome to preserve it this time.' },
+    { who: JOTETSU, text: 'Housing block is open. Civilians are leaving the shelter in an orderly fashion — observe and learn.' },
   ],
 };
 

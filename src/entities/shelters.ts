@@ -25,7 +25,11 @@ export interface Shelter {
   capacity: number;
 }
 
-const BASE_CAPACITY = 120;
+// A ward needs enough room to absorb a few destroyed buildings before it
+// becomes a campaign-level failure. The original 120-person limit could be
+// exceeded during ordinary combat well before the player had a fair chance to
+// respond.
+const BASE_CAPACITY = 300;
 
 export class ShelterManager {
   group = new THREE.Group();
@@ -143,6 +147,24 @@ export class ShelterManager {
     for (const s of this.shelters) {
       if (s.hp > 0 && !s.underAttack) s.hp = Math.min(MAX_HP, s.hp + dt * 0.9);
     }
+  }
+
+  /**
+   * Jotetsu's Digger reinforces damaged wards and steadily moves sheltered
+   * civilians into freshly rebuilt housing. Returns the ward being serviced.
+   */
+  reconstruct(dt: number): Shelter {
+    const target = this.shelters.reduce((a, b) => {
+      const aNeed = (MAX_HP - a.hp) + (a.people / a.capacity) * 70;
+      const bNeed = (MAX_HP - b.hp) + (b.people / b.capacity) * 70;
+      return aNeed >= bNeed ? a : b;
+    });
+    if (!target.underAttack && target.hp > 0) {
+      target.hp = Math.min(MAX_HP, target.hp + dt * 2.4);
+    }
+    // Roughly 13 people per minute are rehoused from the ward being serviced.
+    target.people = Math.max(0, target.people - dt * 0.22);
+    return target;
   }
 
   reset(): void {

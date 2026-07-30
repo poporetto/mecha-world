@@ -38,8 +38,8 @@ export class RepairManager {
     }
   }
 
-  update(dt: number, time: number, px: number, pz: number): RepairTickResult | null {
-    this.tickT -= dt;
+  update(dt: number, time: number, px: number, pz: number, rate = 1): RepairTickResult | null {
+    this.tickT -= dt * rate;
     if (this.tickT > 0) return null;
     this.tickT = TICK;
 
@@ -54,7 +54,7 @@ export class RepairManager {
       result.startedSites.push({ x: cx * CS + CS / 2, z: cz * CS + CS / 2 });
     }
 
-    let budget = BLOCKS_PER_TICK;
+    let budget = Math.round(BLOCKS_PER_TICK * rate);
     for (const [key, site] of this.sites) {
       if (budget <= 0) break;
       const chunk = this.world.getChunk(site.cx, site.cz);
