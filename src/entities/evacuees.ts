@@ -74,23 +74,29 @@ export class EvacueeManager {
    * A building came down here — turn the rubble into people heading for
    * cover. `weight` scales roughly with how much was destroyed.
    */
-  displace(at: THREE.Vector3, weight: number, shelters: THREE.Vector3[], world: World): void {
+  displace(at: THREE.Vector3, weight: number, shelters: (THREE.Vector3 | null)[], world: World): void {
     if (shelters.length === 0) return;
     const n = Math.min(6, 1 + Math.floor(weight));
     for (let i = 0; i < n; i++) {
       if (this.walkers.length >= MAX_ACTIVE) break;
-      // nearest ward wins — people run for the cover they can see
-      let best = 0, bestD = Infinity;
+      // Nearest ward wins — people run for the cover they can see. Retired
+      // wards come through as null and are skipped, but keep their slot so
+      // the indices stay aligned with `arrived` and the manager's admit().
+      let best = -1, bestD = Infinity;
       for (let s = 0; s < shelters.length; s++) {
-        const d = shelters[s].distanceToSquared(at);
+        const site = shelters[s];
+        if (!site) continue;
+        const d = site.distanceToSquared(at);
         if (d < bestD) { bestD = d; best = s; }
       }
+      if (best < 0) return; // nowhere left to run to
+      const target = shelters[best]!;
       const a = Math.random() * Math.PI * 2;
       const r = 4 + Math.random() * 10;
       const x = at.x + Math.sin(a) * r, z = at.z + Math.cos(a) * r;
       const w = this.take();
       w.pos.set(x, world.groundHeight(x, z, 60), z);
-      w.target = shelters[best];
+      w.target = target;
       w.shelter = best;
       w.phase = Math.random() * 10;
       this.walkers.push(w);

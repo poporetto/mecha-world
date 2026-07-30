@@ -863,7 +863,7 @@ export class Game {
       if (res.count > 12) {
         this.evacuees.displace(
           p, res.count / 26,
-          this.shelters.shelters.map((s) => s.pos),
+          this.shelters.targets,
           this.world,
         );
       }

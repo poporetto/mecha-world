@@ -23,6 +23,12 @@ export interface Shelter {
   /** How many people are inside, and how many it can hold. */
   people: number;
   capacity: number;
+  /**
+   * Act II retires the outlying wards once their population has been moved
+   * into the staging shelter. A retired ward is out of the run entirely — it
+   * cannot be lost, filled or defended.
+   */
+  retired: boolean;
 }
 
 // A ward needs enough room to absorb a few destroyed buildings before it
@@ -34,6 +40,11 @@ const BASE_CAPACITY = 300;
 const DRAIN = 2.5;
 /** However long Kotetsu works, a ward tops out here. */
 const MAX_CAPACITY = 560;
+/**
+ * The Act II staging shelter is hardened and much larger, because it is
+ * holding what is left of four wards and it is the only one left to lose.
+ */
+const STAGING_CAPACITY = 900;
 
 export class ShelterManager {
   group = new THREE.Group();
@@ -41,7 +52,7 @@ export class ShelterManager {
   /** Set once a shelter has been lost — the run is over. */
   lost: Shelter | null = null;
 
-  constructor(groundAt: (x: number, z: number) => number) {
+  constructor(private groundAt: (x: number, z: number) => number) {
     for (const site of SHELTER_SITES) {
       const y = groundAt(site.x, site.z);
       // a marker ring so the ward reads as protected ground from the air
@@ -63,22 +74,36 @@ export class ShelterManager {
         ring,
         people: 0,
         capacity: BASE_CAPACITY,
+        retired: false,
       });
     }
   }
 
+  /** Wards still in the run. Never empty — the staging shelter always remains. */
+  get active(): Shelter[] {
+    return this.shelters.filter((s) => !s.retired);
+  }
+
+  /**
+   * Positions for the evacuee crowd to run to, with retired wards left as
+   * null so the array stays index-aligned with `arrived` and `admit`.
+   */
+  get targets(): (THREE.Vector3 | null)[] {
+    return this.shelters.map((s) => (s.retired ? null : s.pos));
+  }
+
   /** Weakest shelter, for the HUD readout. */
   get weakest(): Shelter {
-    return this.shelters.reduce((a, b) => (a.hp <= b.hp ? a : b));
+    return this.active.reduce((a, b) => (a.hp <= b.hp ? a : b));
   }
 
   get anyUnderAttack(): Shelter | null {
-    return this.shelters.find((s) => s.underAttack) ?? null;
+    return this.shelters.find((s) => s.underAttack && !s.retired) ?? null;
   }
 
   /** The ward closest to bursting, for the HUD. */
   get fullest(): Shelter {
-    return this.shelters.reduce((a, b) =>
+    return this.active.reduce((a, b) =>
       a.people / a.capacity >= b.people / b.capacity ? a : b);
   }
 
@@ -88,10 +113,49 @@ export class ShelterManager {
     for (let i = 0; i < counts.length && i < this.shelters.length; i++) {
       if (counts[i] <= 0) continue;
       const s = this.shelters[i];
+      if (s.retired) continue;
       s.people += counts[i];
       if (s.people > s.capacity && !burst) burst = s;
     }
     return burst;
+  }
+
+  /**
+   * Act II: the outlying wards empty into a single hardened staging shelter
+   * that moves up the line behind the player each chapter. This is what makes
+   * leaving Neo Tokyo possible at all — without it, walking away from four
+   * fixed wards is an automatic loss the moment a kaiju settles on one.
+   *
+   * Only a fraction of the population comes along. The rest are already on the
+   * mainland; these are the ones who would not go.
+   */
+  consolidate(pos: THREE.Vector3, name: string): Shelter {
+    const keep = this.shelters[0];
+    let total = 0;
+    for (const s of this.shelters) {
+      total += s.people;
+      if (s !== keep) {
+        s.retired = true;
+        s.underAttack = false;
+        s.people = 0;
+        s.ring.visible = false;
+      }
+    }
+    keep.retired = false;
+    keep.hp = MAX_HP;
+    keep.capacity = STAGING_CAPACITY;
+    keep.people = Math.min(total * 0.45, STAGING_CAPACITY * 0.5);
+    this.relocate(pos, name);
+    return keep;
+  }
+
+  /** Move the staging shelter up the line. Population and capacity come with it. */
+  relocate(pos: THREE.Vector3, name: string): void {
+    const s = this.shelters[0];
+    s.name = name;
+    s.pos.copy(pos);
+    s.ring.visible = true;
+    s.ring.position.set(pos.x, pos.y + 0.4, pos.z);
   }
 
   /**
@@ -101,7 +165,7 @@ export class ShelterManager {
    * long clean stretch can undo a messy fight.
    */
   release(dt: number): void {
-    for (const s of this.shelters) {
+    for (const s of this.active) {
       if (s.hp > 0 && !s.underAttack && s.people > 0) {
         s.people = Math.max(0, s.people - dt * DRAIN);
       }
@@ -116,7 +180,7 @@ export class ShelterManager {
    * long deployment makes overflow impossible and the fail state disappears.
    */
   expand(dt: number): void {
-    for (const s of this.shelters) {
+    for (const s of this.active) {
       if (s.hp > 0) s.capacity = Math.min(MAX_CAPACITY, s.capacity + dt * 3.2);
     }
   }
@@ -133,7 +197,7 @@ export class ShelterManager {
   ): Shelter | null {
     let justLost: Shelter | null = null;
 
-    for (const s of this.shelters) {
+    for (const s of this.active) {
       if (s.hp <= 0) continue;
       let dps = 0;
       if (bossPos && bossPos.distanceTo(s.pos) < THREAT_RANGE) dps += DPS;
@@ -164,7 +228,7 @@ export class ShelterManager {
 
   /** Slow self-repair while nothing is attacking, so a run stays winnable. */
   mend(dt: number): void {
-    for (const s of this.shelters) {
+    for (const s of this.active) {
       if (s.hp > 0 && !s.underAttack) s.hp = Math.min(MAX_HP, s.hp + dt * 0.9);
     }
   }
@@ -174,7 +238,7 @@ export class ShelterManager {
    * civilians into freshly rebuilt housing. Returns the ward being serviced.
    */
   reconstruct(dt: number): Shelter {
-    const target = this.shelters.reduce((a, b) => {
+    const target = this.active.reduce((a, b) => {
       const aNeed = (MAX_HP - a.hp) + (a.people / a.capacity) * 70;
       const bNeed = (MAX_HP - b.hp) + (b.people / b.capacity) * 70;
       return aNeed >= bNeed ? a : b;
@@ -189,11 +253,20 @@ export class ShelterManager {
 
   reset(): void {
     this.lost = null;
-    for (const s of this.shelters) {
+    // Act II moves and retires wards, so a restart has to put all four back
+    // where they started rather than only clearing their counters.
+    for (let i = 0; i < this.shelters.length; i++) {
+      const s = this.shelters[i];
+      const site = SHELTER_SITES[i];
       s.hp = MAX_HP;
       s.underAttack = false;
       s.people = 0;
       s.capacity = BASE_CAPACITY;
+      s.retired = false;
+      s.name = site.name;
+      s.pos.set(site.x, this.groundAt(site.x, site.z), site.z);
+      s.ring.visible = true;
+      s.ring.position.set(s.pos.x, s.pos.y + 0.4, s.pos.z);
     }
   }
 }
