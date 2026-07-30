@@ -55,6 +55,7 @@ export class Revenant extends Monster {
   private vel = new THREE.Vector3();
   private orbitDir = Math.random() < 0.5 ? 1 : -1;
   private bob = 0;
+  private plowT = 0;
 
   /** Damage absorbed per weapon, which becomes resistance to it. */
   private learned = new Map<string, number>();
@@ -179,14 +180,44 @@ export class Revenant extends Monster {
 
     pos.x += this.vel.x * dt;
     pos.z += this.vel.z * dt;
-    const gy = ctx.world.groundHeight(pos.x, pos.z, 40);
-    pos.y += ((gy > 40 ? 0 : gy) - pos.y) * Math.min(1, dt * 5);
+    // Street level only. groundHeight scans DOWNWARD from the height it is
+    // given, so searching from 40 made every rooftop read as ground: it would
+    // step onto a tower, then onto a taller one, and climb the skyline until
+    // it was out of reach entirely. Searching from just above street height
+    // means towers are invisible to it and it walks through them instead.
+    const gy = ctx.world.groundHeight(pos.x, pos.z, 14);
+    const deck = gy > 14 ? 0 : gy;
+
+    // It holds the deck unless you take the fight upward. It is a
+    // Terra-Armor, so it has your thrusters — climbing does not escape it.
+    // But it only ever rises to meet you, never above you, and it drops the
+    // moment you come down, so it can never wander off into the sky on its
+    // own the way it used to.
+    const airborne = ctx.playerPos.y - deck > 16;
+    const wantY = airborne ? Math.min(ctx.playerPos.y - 2, deck + 70) : deck;
+    // slow to climb, quick to fall — it is heavier than you
+    pos.y += (wantY - pos.y) * Math.min(1, dt * (wantY > pos.y ? 1.5 : 4));
+    const lit = pos.y > deck + 4;
+    this.model.setThrusters(lit);
+    this.model.flying = lit;
 
     // drive the shared frame's own animation so it walks and swings like you
     this.bob += dt;
     const speed = Math.hypot(this.vel.x, this.vel.z);
     this.model.animate(t, speed, true, dt);
     this.inner.position.y = Math.sin(this.bob * 3) * 0.06;
+
+    // Now that towers no longer stop it, it has to go through them visibly
+    // rather than clipping. A charge carves its own corridor.
+    this.plowT -= dt;
+    if (speed > 14 && this.plowT <= 0) {
+      this.plowT = 0.1;
+      const through = pos.clone();
+      through.y += 7;
+      through.x += (this.vel.x / speed) * 9;
+      through.z += (this.vel.z / speed) * 9;
+      ctx.destroyAt(through, 7, 0.12);
+    }
   }
 
   /** Circle at range, closing slowly. This is the only time it is readable. */
