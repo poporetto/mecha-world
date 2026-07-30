@@ -20,7 +20,16 @@ export interface Chapter {
   brief: Line[];
   /** Played once it goes down. */
   debrief: Line[];
+  /**
+   * Act II only. Where the line has moved to, as a fraction of the way from
+   * home base to the rift. The staging shelter relocates just behind it and
+   * contacts drop around it, so each chapter is physically further in.
+   */
+  advance?: { frac: number; name: string };
 }
+
+/** Zero-based index of the first Act II chapter. */
+export const ACT2_START = 10;
 
 export const AYA = 'AYA · COMMAND';
 export const KUROSAWA = 'DR. KUROSAWA';
@@ -257,6 +266,121 @@ export const CHAPTERS: Chapter[] = [
       { who: AYA, text: '…You did. You kept talking the whole way down.' },
       { who: HINATA, text: 'And I caught him! Tell them I caught him!' },
       { who: KUROKI, text: 'She caught me.' },
+    ],
+  },
+
+  // ------------------------------------------------------------------ Act II
+  // The campaign stops being a defence and becomes an advance. Every chapter
+  // stages further from the city, and the thing waiting at the far end has
+  // been listening to these people talk for three years.
+
+  {
+    no: 11,
+    title: 'THE ROAD OUT',
+    advance: { frac: 0.22, name: 'STAGING · THE CAUSEWAY' },
+    brief: [
+      { who: KUROSAWA, text: 'The seam is widening again. Sealing it from this side has stopped working.' },
+      { who: AYA, text: 'So we stop sealing it from this side. Command has approved the advance.' },
+      { who: KUROKI, text: 'We go to it.' },
+      { who: AYA, text: 'We go to it. The wards are emptying into one staging shelter behind you — it moves as you move.' },
+      { who: HINATA, text: 'Everyone we could not get onto the boats is in that shelter. Just so we are all clear.' },
+      { who: KOTETSU, text: 'I reinforced it myself. It will hold. …It will hold if nothing sits on it.' },
+      { who: AYA, text: 'Then nothing sits on it. Move out, Kuroki.' },
+    ],
+    debrief: [
+      { who: KUROSAWA, text: 'Curious. There is a Terra-Armor signature inside the rift.' },
+      { who: AYA, text: '…Say that again.' },
+      { who: KUROSAWA, text: 'Debris, almost certainly. We lost a frame near the bay three years ago.' },
+      { who: KUROSAWA, text: 'The seam has been pulling wreckage in since it opened. This will be some of it.' },
+      { who: AYA, text: '…Understood. Log it and move on.' },
+      { who: KUROKI, text: 'Aya.' },
+      { who: AYA, text: 'Log it and move on, Kuroki.' },
+    ],
+  },
+  {
+    no: 12,
+    title: 'WHAT THE TIDE LEFT',
+    advance: { frac: 0.4, name: 'STAGING · THE SHALLOWS' },
+    brief: [
+      { who: AYA, text: 'City is behind you now. Everything ahead of this point is ours only while you are standing on it.' },
+      { who: JOTETSU, text: 'I have moved the shelter up. Do not make me move it again under fire.' },
+      { who: HINATA, text: 'Senpai, the ground out here is wrong. It is not burnt. It is just… less.' },
+      { who: KUROSAWA, text: 'Matter nearest the seam is being unmade slowly. Do not stand still for long.' },
+    ],
+    debrief: [
+      { who: KUROSAWA, text: 'The Terra-Armor signature has changed position.' },
+      { who: AYA, text: 'Drift. The seam moves everything.' },
+      { who: KUROSAWA, text: 'It moved four kilometres against the pull, Commander. That is not drift.' },
+      { who: KUROSAWA, text: '…It is under power.' },
+      { who: KOTETSU, text: 'Nothing has power after three years in there. Nothing.' },
+      { who: AYA, text: '…' },
+      { who: HINATA, text: 'Aya? You have gone quiet. You never go quiet.' },
+    ],
+  },
+  {
+    no: 13,
+    title: 'DEAD GROUND',
+    advance: { frac: 0.58, name: 'STAGING · DEAD GROUND' },
+    brief: [
+      { who: KUROSAWA, text: 'No terrain, no salvage, no life. This stretch has been inside the seam and come back out.' },
+      { who: KUROKI, text: 'Kurosawa. The frame in there. Whose was it.' },
+      { who: KUROSAWA, text: '…You know whose it was.' },
+      { who: AYA, text: 'It was a prototype. It was the FIRST prototype. That is all it was.' },
+      { who: KUROKI, text: 'Understood.' },
+      { who: AYA, text: '…Contact inbound. Go.' },
+    ],
+    debrief: [
+      { who: KUROSAWA, text: 'Something is bleeding onto our channel. Routing it through.' },
+      { who: REI, text: '—get the shelters clear. I will catch up.' },
+      { who: HINATA, text: 'Who was that? Aya, who was that?' },
+      { who: REI, text: '—Kuroki? Kuroki, I have lost you on the turn. Say again.' },
+      { who: KUROKI, text: '…That is the archive. That is the archived transmission.' },
+      { who: KUROSAWA, text: 'It is not. The archive has four lines. This has said six.' },
+      { who: AYA, text: '[TRANSMISSION ENDED]' },
+      { who: HINATA, text: 'Aya cut the channel. …Aya has cut her own channel.' },
+    ],
+  },
+  {
+    no: 14,
+    title: 'IT WILL NOT ENGAGE',
+    advance: { frac: 0.76, name: 'STAGING · THE APPROACH' },
+    brief: [
+      { who: AYA, text: 'I am back on. I am fine. Do not ask.' },
+      { who: KUROKI, text: 'I was not going to.' },
+      { who: AYA, text: '…Thank you.' },
+      { who: KUROSAWA, text: 'The Terra-Armor is holding station two kilometres out. It has matched your advance exactly.' },
+      { who: AYA, text: 'It is escorting you. Whatever else it is, it is escorting you.' },
+    ],
+    debrief: [
+      { who: HINATA, text: 'It watched the whole fight. It had a firing solution on me twice and it did not take it.' },
+      { who: KOTETSU, text: 'Maybe it is out of ammunition.' },
+      { who: HINATA, text: 'It is not out of ammunition, Kotetsu.' },
+      { who: HINATA, text: 'It looked at you, senpai. The entire time. Only you.' },
+      { who: KUROKI, text: '…I know.' },
+      { who: AYA, text: 'Kuroki. Whatever is in that frame, it is not her. Do you understand me?' },
+      { who: KUROKI, text: 'Say that again when your voice is steadier and I will believe you.' },
+    ],
+  },
+  {
+    no: 15,
+    title: 'THE MOUTH',
+    advance: { frac: 0.9, name: 'STAGING · THE MOUTH' },
+    brief: [
+      { who: KUROSAWA, text: 'This is the threshold. Past this the seam is not a place, it is a direction.' },
+      { who: AYA, text: 'Three signatures converging on you. They are trying to keep you off the rift.' },
+      { who: HINATA, text: 'Then they are about to be very disappointed. Senpai — on your wing.' },
+      { who: KOTETSU, text: 'Shelter is as far forward as it goes. If we lose ground here, we lose it with people on it.' },
+    ],
+    debrief: [
+      { who: KUROSAWA, text: 'The Terra-Armor is moving to intercept. It is coming to you.' },
+      { who: AYA, text: 'All units break off. BREAK OFF.' },
+      { who: REI, text: 'You called the turn.' },
+      { who: KUROKI, text: '…' },
+      { who: REI, text: 'I followed it. I followed it because it was you.' },
+      { who: REI, text: 'Where were you?' },
+      { who: AYA, text: 'Rei—' },
+      { who: REI, text: 'Where WERE you?' },
+      { who: KUROSAWA, text: 'It is powering weapons. Kuroki — it is powering weapons.' },
     ],
   },
 ];

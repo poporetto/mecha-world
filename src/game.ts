@@ -39,6 +39,8 @@ interface Projectile {
 }
 
 const _v = new THREE.Vector3();
+/** What a kaiju's palette drains toward after a long stay in the seam. */
+const _riftTint = new THREE.Color(0x4a3060);
 
 export class Game {
   private renderer: THREE.WebGLRenderer;
@@ -136,6 +138,8 @@ export class Game {
   private bossTimer = 14;
   /** 0 in the clean city, 1 at the seam. Recomputed each frame from position. */
   private corruption = 0;
+  /** Act II: where the line currently is. Null for the whole of Act I. */
+  private frontLine: THREE.Vector3 | null = null;
   /** Swarm size for the current wave, before the lull's ramp is applied. */
   private droneBase = 3;
   private warnedContact = false;
@@ -1540,6 +1544,7 @@ export class Game {
     this.drones.target = 3;
     this.warnedContact = false;
     this.lastSpawnFar = false;
+    this.frontLine = null;
     this.unlockedWeapons = new Set<WeaponId>(['saber', 'rifle', 'missiles']);
     this.player.abilities = {
       beam: false, boots: true, thrust: false, nova: false,
@@ -1699,6 +1704,44 @@ export class Game {
     }
   }
 
+  /**
+   * Push the line toward the rift. The staging shelter comes up behind the
+   * new front — close enough that it is still yours to lose, far enough back
+   * that the fight is not standing on it — and the first advance is what
+   * empties the four city wards into it.
+   */
+  private advanceLine(adv: { frac: number; name: string }): THREE.Vector3 {
+    const front = new THREE.Vector3(RIFT_SITE.x * adv.frac, 0, RIFT_SITE.z * adv.frac);
+    front.y = this.world.groundHeight(front.x, front.z, 90);
+    this.frontLine = front;
+
+    // shelter sits a little way back down the road you came in on
+    const back = Math.max(0, adv.frac - 0.11);
+    const site = new THREE.Vector3(RIFT_SITE.x * back, 0, RIFT_SITE.z * back);
+    site.y = this.world.groundHeight(site.x, site.z, 90);
+    // consolidate() is idempotent, so later chapters just move the shelter
+    this.shelters.consolidate(site, adv.name);
+    this.hud.toast('THE LINE HAS MOVED', `${adv.name} — the shelter is behind you`, 4);
+    return front;
+  }
+
+  /**
+   * A kaiju that stayed in the seam. Bigger, already in second gear so it
+   * never has an opening phase, and drained toward the violet of the rift.
+   */
+  private corruptMonster(m: Monster, amount: number): void {
+    m.maxHp = m.hp = Math.round(m.maxHp * (1.35 + amount * 0.6));
+    m.phase = 2; // it is past the stage where it was measuring you
+    m.group.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      const mat = mesh.material as THREE.MeshLambertMaterial;
+      // desaturate toward the seam rather than simply tinting purple, so the
+      // silhouette still reads as the kaiju you already know
+      mat.color.lerp(_riftTint, 0.3 + amount * 0.34);
+    });
+  }
+
   // ------------------------------------------------------------ boss cycle
 
   private updateBosses(dt: number): void {
@@ -1793,6 +1836,14 @@ export class Game {
       { make: (x2, z2) => new DeepMaw(x2, z2), toast: ['⚠ TREMORS ⚠', 'DEEP MAW burrowing below. Defeat it to mount HEAD VULCANS.'] },
       { make: (x2, z2) => new CinderWyrm(x2, z2), toast: ['⚠ FIRESTORM ⚠', 'CINDER WYRM torching the district. Defeat it to claim its FLAMETHROWER.'] },
       { make: (x2, z2) => new TideLeviathan(x2, z2), toast: ['⚠ FLOOD WARNING ⚠', 'TIDE LEVIATHAN surfacing. Defeat it to claim its AQUA BLASTER.'] },
+      // Act II. These are the same ten kaiju that came through the seam the
+      // first time, except they have been in there since — bigger, already in
+      // second gear, and the colour bled out of them.
+      { make: (x2, z2) => new IronColossus(x2, z2), toast: ['⚠ SEAM-TOUCHED ⚠', 'A COLOSSUS is holding the causeway. It has been in there a long time.'] },
+      { make: (x2, z2) => new DeepMaw(x2, z2), toast: ['⚠ THE GROUND IS MOVING ⚠', 'Something is running under the shallows.'] },
+      { make: (x2, z2) => new CrimsonMantis(x2, z2), toast: ['⚠ FAST MOVER ⚠', 'Contact on the dead ground — closing quickly.'] },
+      { make: (x2, z2) => new SkyReaver(x2, z2), toast: ['⚠ OVERHEAD ⚠', 'It has been circling the approach since before you arrived.'] },
+      { make: (x2, z2) => new MagmaGolem(x2, z2), toast: ['⚠ THE MOUTH ⚠', 'The seam is defending itself. Break through.'] },
     ];
 
     this.wave++;
@@ -1805,7 +1856,19 @@ export class Game {
     if (this.bossIndex < campaign.length) {
       const chapterNo = this.bossIndex;
       const entry = campaign[this.bossIndex++];
-      this.monster = entry.make(x, z);
+      // Act II stages the fight around a front line that walks toward the
+      // rift, rather than around wherever the player happens to be standing.
+      const adv = CHAPTERS[chapterNo]?.advance;
+      let sx = x, sz = z;
+      if (adv) {
+        const at = this.advanceLine(adv);
+        const ra = Math.random() * Math.PI * 2;
+        const rd = 70 + Math.random() * 90;
+        sx = at.x + Math.sin(ra) * rd;
+        sz = at.z + Math.cos(ra) * rd;
+      }
+      this.monster = entry.make(sx, sz);
+      if (adv) this.corruptMonster(this.monster, adv.frac);
       // Support frames are deliberately held outside the map until every
       // introduction line has finished. This makes their descent an arrival,
       // instead of having the units silently present before anyone speaks.
@@ -1820,7 +1883,9 @@ export class Game {
       void this.hud.showCard(
         `CHAPTER ${ch.no}`,
         ch.title,
-        `A new signature has broken through.<br/>Neo Tokyo is counting on you.`
+        adv
+          ? `The line moves to ${adv.name.replace('STAGING · ', '')}.<br/>Everyone left is behind you.`
+          : `A new signature has broken through.<br/>Neo Tokyo is counting on you.`
       ).then(() => {
         this.beginBossIntro(this.monster?.name ?? entry.toast[0], entry.toast[1]);
         this.hud.say(ch.brief);

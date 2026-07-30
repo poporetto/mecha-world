@@ -24,6 +24,12 @@ export interface Shelter {
   people: number;
   capacity: number;
   /**
+   * Ceiling for Kotetsu's expansion. Per-shelter because the Act II staging
+   * shelter is hardened and much larger — a single global cap would have him
+   * quietly shrinking it back down to ward size.
+   */
+  maxCapacity: number;
+  /**
    * Act II retires the outlying wards once their population has been moved
    * into the staging shelter. A retired ward is out of the run entirely — it
    * cannot be lost, filled or defended.
@@ -45,6 +51,8 @@ const MAX_CAPACITY = 560;
  * holding what is left of four wards and it is the only one left to lose.
  */
 const STAGING_CAPACITY = 900;
+/** Kotetsu can extend the staging shelter further than a city ward. */
+const STAGING_MAX_CAPACITY = 1400;
 
 export class ShelterManager {
   group = new THREE.Group();
@@ -74,6 +82,7 @@ export class ShelterManager {
         ring,
         people: 0,
         capacity: BASE_CAPACITY,
+        maxCapacity: MAX_CAPACITY,
         retired: false,
       });
     }
@@ -131,6 +140,13 @@ export class ShelterManager {
    */
   consolidate(pos: THREE.Vector3, name: string): Shelter {
     const keep = this.shelters[0];
+    // Idempotent: consolidating twice would take 45% of an already-reduced
+    // population and quietly evaporate the survivors. Once the wards are in,
+    // later chapters move the shelter with relocate() instead.
+    if (this.active.length === 1) {
+      this.relocate(pos, name);
+      return keep;
+    }
     let total = 0;
     for (const s of this.shelters) {
       total += s.people;
@@ -144,6 +160,7 @@ export class ShelterManager {
     keep.retired = false;
     keep.hp = MAX_HP;
     keep.capacity = STAGING_CAPACITY;
+    keep.maxCapacity = STAGING_MAX_CAPACITY;
     keep.people = Math.min(total * 0.45, STAGING_CAPACITY * 0.5);
     this.relocate(pos, name);
     return keep;
@@ -181,7 +198,7 @@ export class ShelterManager {
    */
   expand(dt: number): void {
     for (const s of this.active) {
-      if (s.hp > 0) s.capacity = Math.min(MAX_CAPACITY, s.capacity + dt * 3.2);
+      if (s.hp > 0) s.capacity = Math.min(s.maxCapacity, s.capacity + dt * 3.2);
     }
   }
 
@@ -262,6 +279,7 @@ export class ShelterManager {
       s.underAttack = false;
       s.people = 0;
       s.capacity = BASE_CAPACITY;
+      s.maxCapacity = MAX_CAPACITY;
       s.retired = false;
       s.name = site.name;
       s.pos.set(site.x, this.groundAt(site.x, site.z), site.z);
