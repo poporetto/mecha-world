@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { B } from './core/blocks';
 import { World } from './core/world';
+import { corruptionAt, RIFT_SITE } from './core/worldgen';
 import { ChunkManager } from './render/chunkManager';
 import { Player } from './entities/player';
 import { NpcManager } from './entities/npcs';
@@ -133,6 +134,8 @@ export class Game {
   // campaign chapter. -1 means the campaign has not cleared Chapter 1 yet.
   private latestFinishedChapter = -1;
   private bossTimer = 14;
+  /** 0 in the clean city, 1 at the seam. Recomputed each frame from position. */
+  private corruption = 0;
   /** Swarm size for the current wave, before the lull's ramp is applied. */
   private droneBase = 3;
   private warnedContact = false;
@@ -2163,7 +2166,9 @@ export class Game {
     }
 
     // day/night cycle drives sky, fog and lights
-    const skyState = this.sky.update(dt, this.time, this.player.pos, this.camera);
+    // how far into the seam the player currently is — drives the whole look
+    this.corruption = corruptionAt(this.player.pos.x, this.player.pos.z);
+    const skyState = this.sky.update(dt, this.time, this.player.pos, this.camera, this.corruption);
     (this.scene.background as THREE.Color).copy(skyState.skyColor);
     (this.scene.fog as THREE.Fog).color.copy(skyState.fogColor);
     this.sun.intensity = skyState.sunIntensity;

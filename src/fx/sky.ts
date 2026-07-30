@@ -2,8 +2,14 @@
 // voxel clouds. game.ts applies the returned light parameters each frame.
 
 import * as THREE from 'three';
+import { RIFT_SITE } from '../core/worldgen';
 
 const CYCLE = 300; // seconds for a full day
+// Where the sky goes as the seam takes over. Deliberately desaturated and
+// dark: near the rift it should read as colour draining out of the world
+// rather than as a different time of day.
+const RIFT_SKY = new THREE.Color(0x1a0f2b);
+const RIFT_FOG = new THREE.Color(0x3a1f52);
 const DAY_SKY = new THREE.Color(0xa5d5f5);
 const DAY_FOG = new THREE.Color(0xc3e4f8);
 const DUSK_SKY = new THREE.Color(0xf2b48c);
@@ -43,6 +49,7 @@ export class Sky {
   group = new THREE.Group();
   private sun: THREE.Group;
   private fuji: THREE.Group;
+  private rift: THREE.Group;
   private moon: THREE.Mesh;
   private clouds: Cloud[] = [];
   private birds: Bird[] = [];
@@ -89,9 +96,64 @@ export class Sky {
     return g;
   }
 
+  /**
+   * The tear. Unlike Fuji this sits at a fixed world position — it is a place
+   * you walk to, not scenery — but it is drawn without fog and tall enough to
+   * clear the skyline, so it is on the horizon from the first chapter and
+   * grows the whole way in.
+   */
+  private buildRift(): THREE.Group {
+    const g = new THREE.Group();
+    const H = 430;
+    // a ragged vertical slash: stacked slabs of decreasing width, jittered
+    // sideways so the edge reads as torn rather than cut
+    for (let i = 0; i < 26; i++) {
+      const t = i / 25;
+      // widest at a third height, tapering to nothing at both ends
+      const taper = Math.sin(Math.pow(t, 0.8) * Math.PI);
+      const w = 4 + taper * 30;
+      const band = H / 26 + 2;
+      // Draw back to front: the dark sheath has to be added first or the
+      // bright core blends over it and the whole tear washes out against a
+      // daylight sky.
+      const sheath = new THREE.Mesh(
+        new THREE.BoxGeometry(w + 22 + taper * 34, band, 1),
+        new THREE.MeshBasicMaterial({
+          color: 0x150720, fog: false, transparent: true, opacity: 0.55 + taper * 0.4,
+          depthWrite: false,
+        })
+      );
+      const jitter = Math.sin(i * 2.3) * 9;
+      sheath.position.set(jitter, t * H, -3);
+      const core = new THREE.Mesh(
+        new THREE.BoxGeometry(w, band, 1),
+        new THREE.MeshBasicMaterial({
+          color: 0xc79bff, fog: false, transparent: true, opacity: 0.5 + taper * 0.45,
+          depthWrite: false,
+        })
+      );
+      core.position.set(jitter, t * H, 0);
+      // a thin white-hot filament down the middle of the tear
+      const filament = new THREE.Mesh(
+        new THREE.BoxGeometry(Math.max(1.6, w * 0.22), band, 1),
+        new THREE.MeshBasicMaterial({
+          color: 0xfdf4ff, fog: false, transparent: true, opacity: 0.5 + taper * 0.45,
+          depthWrite: false,
+        })
+      );
+      filament.position.set(jitter, t * H, 1.5);
+      g.add(sheath, core, filament);
+    }
+    g.renderOrder = -1;
+    return g;
+  }
+
   constructor() {
     this.fuji = this.buildFuji();
     this.group.add(this.fuji);
+    this.rift = this.buildRift();
+    this.rift.position.set(RIFT_SITE.x, 0, RIFT_SITE.z);
+    this.group.add(this.rift);
     this.sun = new THREE.Group();
     const core = new THREE.Mesh(
       new THREE.CircleGeometry(22, 24),
@@ -156,7 +218,7 @@ export class Sky {
   }
 
   // time in seconds; starts mid-morning
-  update(dt: number, time: number, center: THREE.Vector3, camera: THREE.Camera): SkyState {
+  update(dt: number, time: number, center: THREE.Vector3, camera: THREE.Camera, corruption = 0): SkyState {
     const phase = ((time / CYCLE) + 0.22) % 1; // 0..1, sunrise near 0
     const theta = phase * Math.PI * 2;
     const elev = Math.sin(theta); // >0 day, <0 night
@@ -180,7 +242,16 @@ export class Sky {
       _fog.copy(NIGHT_FOG);
     }
 
-    const day = Math.max(0, Math.min(1, elev * 3 + 0.2)); // 0 night .. 1 day
+    // The seam bleeds over the top of the day/night cycle: near the rift it is
+    // always the same dim violet whatever the sun is doing.
+    if (corruption > 0.001) {
+      _sky.lerp(RIFT_SKY, corruption);
+      _fog.lerp(RIFT_FOG, corruption);
+    }
+
+    let day = Math.max(0, Math.min(1, elev * 3 + 0.2)); // 0 night .. 1 day
+    // the sun stops reaching the ground as the seam takes over
+    day *= 1 - corruption * 0.75;
     this.state.sunIntensity = 0.05 + day * 1.3;
     this.state.hemiIntensity = 0.38 + day * 0.9;
 
@@ -200,6 +271,26 @@ export class Sky {
         const mat = m.material as THREE.MeshBasicMaterial;
         const base = mat.userData.base ?? (mat.userData.base = mat.color.clone());
         mat.color.copy(base).multiplyScalar(0.3 + day * 0.7);
+      }
+    });
+
+    // The tear pulses, slowly and out of time with anything else, and burns
+    // brighter the closer you get.
+    const beat = 0.86 + Math.sin(time * 0.7) * 0.07 + Math.sin(time * 2.3) * 0.03;
+    this.rift.scale.set(1 + corruption * 0.35, beat, 1);
+    // Billboard it. The tear is built from flat slabs, so without this it
+    // thins to nothing when approached from the side — and a hole in the
+    // world should look the same from every angle anyway.
+    this.rift.rotation.y = Math.atan2(
+      camera.position.x - this.rift.position.x,
+      camera.position.z - this.rift.position.z,
+    );
+    this.rift.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh) {
+        const mat = m.material as THREE.MeshBasicMaterial;
+        const base = mat.userData.baseOpacity ?? (mat.userData.baseOpacity = mat.opacity);
+        mat.opacity = Math.min(1, base * (0.75 + corruption * 0.6) * beat);
       }
     });
 

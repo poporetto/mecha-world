@@ -34,6 +34,29 @@ export const SHELTER_SITES = [
 /** Where the mecha deploys from and returns to. */
 export const BASE_SITE = { x: 0, z: 0 };
 
+/**
+ * The tear itself, out past the bay. Act II is the walk to this point, so it
+ * is deliberately far — roughly three times the width of the city core — and
+ * it is rendered without fog so it stays on the horizon the whole way rather
+ * than fading in at the last minute.
+ */
+export const RIFT_SITE = { x: 520, z: -560 };
+
+/** How far the rift's influence reaches. Beyond this the city is untouched. */
+const RIFT_REACH = 820;
+
+/**
+ * How far gone a point is, 0 (clean city) to 1 (the seam). This single scalar
+ * drives the sky, the ground, enemy density and the music, so the approach is
+ * felt continuously instead of stepping at chapter boundaries.
+ */
+export function corruptionAt(x: number, z: number): number {
+  const d = Math.hypot(x - RIFT_SITE.x, z - RIFT_SITE.z);
+  const t = Math.max(0, Math.min(1, 1 - d / RIFT_REACH));
+  // eased so home base reads as completely clean and it ramps late
+  return Math.pow(t, 1.6);
+}
+
 // ---------------------------------------------------------------- landmarks
 
 interface Landmark {
