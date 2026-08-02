@@ -255,12 +255,15 @@ export class Game {
 
     this.hud.bindWeaponWheel((w) => this.selectWeapon(w));
     this.hud.bindPause(() => this.setPaused(false), () => this.restart());
-    this.hud.bindChapterDebug(CHAPTERS, (chapter) => this.jumpToChapter(chapter));
-
     // ?debug (or ?all) unlocks every ability/weapon up front for testing;
     // real players keep the defeat-a-boss-to-unlock progression
     const params = new URLSearchParams(location.search);
-    if (params.has('debug') || params.has('all')) {
+    const debug = params.has('debug') || params.has('all');
+    // The chapter jump is a development tool. It was being wired up for
+    // everybody, which put a DEBUG button on the HUD of a shipped build that
+    // skips to any chapter with everything unlocked.
+    if (debug) this.hud.bindChapterDebug(CHAPTERS, (chapter) => this.jumpToChapter(chapter));
+    if (debug) {
       this.unlockEverything();
     } else {
       // reveal the weapons the mecha ships with (the rest stay locked)

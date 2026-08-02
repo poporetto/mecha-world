@@ -49,16 +49,46 @@ export class TouchControls {
         .tc-knob { position:absolute; width:44px; height:44px; border-radius:50%;
                    background:#7fdcffbb; box-shadow:0 0 12px #39e6e088;
                    transform:translate(-50%,-50%); pointer-events:none; display:none; }
-        .tc-btns { position:absolute; right:calc(14px + env(safe-area-inset-right));
-                   bottom:calc(78px + env(safe-area-inset-bottom)); display:grid;
-                   grid-template-columns:repeat(2, 62px); gap:10px; justify-items:end; }
-        .tc-btn { width:62px; height:62px; border-radius:50%; border:2px solid #3a5a7a;
-                  background:#0a1626cc; color:#eaf6ff; font-size:11px; letter-spacing:1px;
+        /* Thumb-shaped pad rather than a column. The old 2-wide stack ran
+           310px up the screen — over a third of a phone — which put the
+           abilities out of reach and buried the comms panel underneath it.
+           Attack sits in the corner where the thumb rests; movement is one
+           reach away; abilities are a small strip along the top. */
+        .tc-btns { position:absolute; right:calc(10px + env(safe-area-inset-right));
+                   bottom:calc(16px + env(safe-area-inset-bottom)); display:grid;
+                   grid-template-columns:52px 58px 76px;
+                   grid-template-rows:44px 58px 76px;
+                   grid-template-areas:
+                     "nova  quake beam"
+                     ".     wheel boost"
+                     ".     jump  attack";
+                   gap:8px; }
+        .tc-btn { border-radius:50%; border:2px solid #3a5a7a;
+                  background:#0a1626d9; color:#eaf6ff; font-size:10px; letter-spacing:.5px;
                   display:flex; align-items:center; justify-content:center; text-align:center;
-                  text-shadow:0 1px 2px #000; touch-action:none; }
-        .tc-btn.big { width:78px; height:78px; border-color:#39e6e0; font-size:12px; }
+                  line-height:1.15; text-shadow:0 1px 2px #000; touch-action:none;
+                  backdrop-filter:blur(2px); }
+        /* situational abilities read quieter than the things used every second */
+        .tc-btn.minor { font-size:9px; border-color:#33506e; background:#0a1626b0; color:#bcd8ee; }
+        #tc-nova { grid-area:nova; } #tc-quake { grid-area:quake; } #tc-beam { grid-area:beam; }
+        #tc-wheel { grid-area:wheel; } #tc-boost { grid-area:boost; }
+        #tc-jump { grid-area:jump; } #tc-attack { grid-area:attack; }
+        .tc-btn.big { border-color:#39e6e0; font-size:11px; box-shadow:0 0 16px #39e6e033; }
         .tc-btn.held { background:#39e6e055; border-color:#39e6e0; }
-        .tc-btn.hidden { display:none; }
+        .tc-btn.hidden { visibility:hidden; }
+        /* Landscape phones are short. The portrait pad would take well over
+           half the height, so it flattens into two rows and the abilities
+           tuck in beside the movement keys instead of above them. */
+        @media (orientation:landscape) and (max-height:520px) {
+          .tc-btns { grid-template-columns:44px 48px 48px 64px;
+                     grid-template-rows:48px 64px;
+                     grid-template-areas:
+                       "nova quake beam  wheel"
+                       ".    boost jump  attack";
+                     gap:7px; bottom:calc(10px + env(safe-area-inset-bottom)); }
+          .tc-btn { font-size:9px; }
+          .tc-btn.big { font-size:10px; }
+        }
         /* hint ring showing where the movement stick lives until first touch */
         .tc-hint { position:absolute; left:calc(64px + env(safe-area-inset-left));
                    bottom:calc(120px + env(safe-area-inset-bottom)); width:96px; height:96px;
@@ -69,17 +99,27 @@ export class TouchControls {
         /* declutter the desktop HUD while touch controls are active */
         .tc-on .hint { display:none !important; }
         .tc-on .chips { display:none !important; }
-        .tc-on .start h1 { font-size:30px !important; letter-spacing:6px !important; }
-        .tc-on .start h2 { font-size:12px !important; letter-spacing:4px !important; }
-        .tc-on .start .keys { font-size:11px !important; padding:0 16px; }
+        /* The title screen was laid out for a desktop width and ran off the
+           side of a phone — the subtitle alone is 34 characters and clipped
+           at both edges. Everything here scales with the viewport instead. */
+        .tc-on .start { padding:0 18px; text-align:center; }
+        .tc-on .start h1 { font-size:clamp(22px,8.5vw,34px) !important;
+                           letter-spacing:clamp(3px,1.6vw,8px) !important; margin-bottom:4px !important; }
+        .tc-on .start h2 { font-size:clamp(8px,2.7vw,12px) !important;
+                           letter-spacing:clamp(1px,.9vw,4px) !important; margin-bottom:20px !important;
+                           max-width:100%; }
+        .tc-on .start .keys { font-size:clamp(9.5px,3vw,12px) !important; line-height:1.85;
+                              padding:0; max-width:100%; }
+        .tc-on .start .go { font-size:clamp(11px,3.2vw,14px); padding:12px 20px;
+                            letter-spacing:clamp(2px,1vw,4px); max-width:calc(100vw - 44px); }
       </style>
       <div class="tc-stick" id="tc-stick"><div class="tc-knob" id="tc-knob"></div></div>
       <div class="tc-hint" id="tc-hint">DRAG<br/>TO MOVE</div>
       <div class="tc-btns">
-        <div class="tc-btn hidden" id="tc-nova">NOVA</div>
-        <div class="tc-btn hidden" id="tc-quake">QUAKE</div>
-        <div class="tc-btn hidden" id="tc-beam">BEAM</div>
-        <div class="tc-btn" id="tc-wheel">⚔<br/>WEAPON</div>
+        <div class="tc-btn minor hidden" id="tc-nova">NOVA</div>
+        <div class="tc-btn minor hidden" id="tc-quake">QUAKE</div>
+        <div class="tc-btn minor hidden" id="tc-beam">BEAM</div>
+        <div class="tc-btn" id="tc-wheel">⚔</div>
         <div class="tc-btn" id="tc-boost">BOOST</div>
         <div class="tc-btn" id="tc-jump">JUMP</div>
         <div class="tc-btn big" id="tc-attack">ATTACK</div>

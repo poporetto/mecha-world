@@ -161,20 +161,53 @@ export class Hud {
         /* On touch the bottom of the screen belongs to the joystick and the
            action buttons, so radio traffic moves up under the objective bar
            and stops short of the radar rather than hiding behind controls. */
-        .tc-on .comms { left:10px; right:158px; bottom:auto; top:104px;
+        .tc-on .comms { left:10px; right:134px; bottom:auto; top:116px;
                         width:auto; transform:none; padding:10px 14px 12px; }
         .tc-on .comms-avatar { width:52px; height:52px; flex-basis:52px; }
         .tc-on .comms-text { font-size:13px; min-height:2.2em; }
         .tc-on .comms-who { font-size:9.5px; letter-spacing:2px; }
-        .tc-on .comms-next { display:none; }
+        /* The panel above already keeps radio traffic clear of the pad. It
+           also has to be a tap target, because touch has no Enter key to
+           hurry the radio with. */
+        .tc-on .comms { pointer-events:auto; cursor:pointer; }
+        .tc-on .comms-next { right:12px; bottom:6px; font-size:8.5px; letter-spacing:2px; }
         /* touch already has its own WEAPON button on the pad — the desktop
            dial would only collide with the radar */
         .tc-on .wbtn { display:none !important; }
-        /* keep the objective compact so it clears the radar and the comms */
-        .tc-on .obj { top:56px; font-size:10px; letter-spacing:1.5px; padding:4px 12px;
-                      max-width:62vw; overflow:hidden; text-overflow:ellipsis; }
+        /* The phone top band has to hold five things in the space the desktop
+           gives to two, so it is laid out as explicit rows rather than left
+           to overlap: integrity and score share row one, the boss bar takes
+           row two full width, the objective row three, radar below that. */
+        .tc-on .hud-bar { left:10px; top:8px; width:118px; }
+        .tc-on .hud-label { font-size:8px; letter-spacing:1.2px; margin-bottom:3px; }
+        .tc-on .hud-track { height:9px; border-radius:5px; }
+        /* Wave and score share one line so the block stays short enough to
+           clear the boss bar; the combo drops below so a long "x9 COMBO"
+           cannot widen the row into the integrity bar on the far side. */
+        .tc-on .scorebox { left:auto; right:10px; top:6px; text-align:right; }
+        .tc-on .score-wave { display:inline; font-size:9px; letter-spacing:1.5px; margin-right:5px; }
+        .tc-on .score-val { display:inline; font-size:17px; line-height:1; }
+        .tc-on .score-combo { display:block; font-size:11px; height:auto; line-height:1.25; }
+        .tc-on .boss { width:92vw; top:44px; }
+        .tc-on .boss-name { font-size:10px; letter-spacing:3px; margin-bottom:3px; }
+        .tc-on .obj { top:84px; font-size:10px; letter-spacing:1.5px; padding:4px 12px;
+                      max-width:74vw; overflow:hidden; text-overflow:ellipsis; }
         /* a smaller dial on touch, so dialogue has room beside it */
-        .tc-on .minimap { width:132px; height:132px; right:12px; top:100px; }
+        .tc-on .minimap { width:112px; height:112px; right:10px; top:112px; }
+        /* Landscape phones are short and wide. Everything moves up and the
+           radio narrows so it clears the radar — these have to come after the
+           portrait .tc-on rules or equal specificity lets those win. */
+        @media (orientation:landscape) and (max-height:520px) {
+          /* the top band is one row in landscape: integrity left, score right,
+             boss between them — so it has to be narrow enough to fit */
+          .tc-on .boss { top:8px; width:min(440px, 44vw); }
+          .tc-on .boss-name { font-size:9px; margin-bottom:2px; }
+          .tc-on .obj { top:58px; }
+          .tc-on .minimap { width:104px; height:104px; top:58px; }
+          .tc-on .comms { top:86px; right:164px; }
+          .tc-on .comms-avatar { width:40px; height:40px; flex-basis:40px; }
+          .tc-on .comms-text { font-size:12px; min-height:1.9em; }
+        }
         .tc-on .mm-label { font-size:8px; bottom:2px; }
         @media (max-width:600px) { .comms { width:calc(100vw - 30px); bottom:96px; padding:9px 12px 12px; }
           .comms-avatar { width:44px; height:44px; flex-basis:44px; } .comms-text { font-size:13px; }
@@ -272,7 +305,9 @@ export class Hud {
                 display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
                 pointer-events:auto; cursor:pointer; text-shadow:0 1px 2px #000; }
         .wbtn b { color:#7fdcff; font-size:12px; }
-        .debug-btn { position:absolute; right:24px; top:142px; pointer-events:auto; cursor:pointer; z-index:35;
+        /* development tool: only revealed when bindChapterDebug is called,
+           which now happens solely under ?debug */
+        .debug-btn { display:none; position:absolute; right:24px; top:142px; pointer-events:auto; cursor:pointer; z-index:35;
                      color:#ffd86a; background:#17150dcc; border:1px solid #ffd86a99;
                      border-radius:4px; padding:7px 10px; font-size:9px; letter-spacing:2px; }
         .debug-btn:hover { background:#3a3213; box-shadow:0 0 14px #ffd86a55; }
@@ -373,7 +408,7 @@ export class Hud {
           <div class="comms-copy"><div class="comms-who" id="comms-who"></div>
           <div class="comms-text" id="comms-text"></div></div>
         </div>
-        <div class="comms-next">ENTER ▸ SKIP</div>
+        <div class="comms-next" id="comms-next">ENTER ▸ SKIP</div>
       </div>
       <div class="card" id="card">
         <div class="ch" id="card-ch"></div>
@@ -497,6 +532,7 @@ export class Hud {
   bindChapterDebug(chapters: { no: number; title: string }[], onJump: (index: number) => void): void {
     const panel = document.getElementById('debug-panel')!;
     const button = document.getElementById('debug-btn')!;
+    button.style.display = 'block'; // hidden in CSS until a debug build asks
     const grid = document.getElementById('debug-grid')!;
     grid.innerHTML = chapters.map((ch, index) =>
       `<button class="debug-ch" type="button" data-ch="${index}">CH ${ch.no}<br/>${ch.title}</button>`
@@ -865,6 +901,14 @@ export class Hud {
     resume?: { chapter: number; title: string; onResume: () => void },
   ): void {
     this.isTouch = isTouch;
+    if (isTouch) {
+      // no keyboard to hurry the radio with, so the panel itself is the button
+      document.getElementById('comms-next')!.textContent = 'TAP ▸ SKIP';
+      const box = document.getElementById('comms')!;
+      const skip = (e: Event) => { e.preventDefault(); e.stopPropagation(); this.skipLine(); };
+      box.addEventListener('touchstart', skip, { passive: false });
+      box.addEventListener('click', skip);
+    }
     const el = document.createElement('div');
     el.className = 'start';
     const keys = isTouch
