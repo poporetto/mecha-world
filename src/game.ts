@@ -39,6 +39,17 @@ interface Projectile {
   dmg?: number; // override damage / blast radius for player weapons
 }
 
+/** A checkpoint, written at each chapter boundary. */
+interface SaveData {
+  v: 1;
+  chapter: number;
+  score: number;
+  deaths: number;
+  powerLevel: number;
+  weapons: WeaponId[];
+  abilities: Record<string, boolean>;
+}
+
 const _v = new THREE.Vector3();
 /** What a kaiju's palette drains toward after a long stay in the seam. */
 const _riftTint = new THREE.Color(0x4a3060);
@@ -273,9 +284,105 @@ export class Game {
         this.hud.say(PROLOGUE);
         this.hud.setObjective('Hold Neo Tokyo');
       });
-    }, this.touch !== null);
+    }, this.touch !== null, this.resumeOffer());
 
     this.renderer.setAnimationLoop(() => this.frame());
+  }
+
+  // ------------------------------------------------------------- checkpoints
+  // The campaign is the better part of an hour. Losing it to a closed tab is
+  // not something a player should ever have to find out about, so progress is
+  // written at every chapter boundary and offered back on the start screen.
+
+  private static readonly SAVE_KEY = 'mecha-city.progress.v1';
+
+  private saveProgress(): void {
+    if (this.campaignOver) { this.clearProgress(); return; }
+    try {
+      const data: SaveData = {
+        v: 1,
+        chapter: this.bossIndex,
+        score: this.score,
+        deaths: this.deaths,
+        powerLevel: this.powerLevel,
+        weapons: [...this.unlockedWeapons],
+        abilities: { ...this.player.abilities },
+      };
+      localStorage.setItem(Game.SAVE_KEY, JSON.stringify(data));
+    } catch {
+      // private browsing or a full quota — progress is a courtesy, not a
+      // requirement, so a failure here must never interrupt the run
+    }
+  }
+
+  private loadProgress(): SaveData | null {
+    try {
+      const raw = localStorage.getItem(Game.SAVE_KEY);
+      if (!raw) return null;
+      const d = JSON.parse(raw) as SaveData;
+      if (d?.v !== 1 || typeof d.chapter !== 'number') return null;
+      if (d.chapter <= 0 || d.chapter >= CHAPTERS.length) return null;
+      return d;
+    } catch {
+      return null;
+    }
+  }
+
+  private clearProgress(): void {
+    try { localStorage.removeItem(Game.SAVE_KEY); } catch { /* see above */ }
+  }
+
+  /** What the start screen should offer, if anything. */
+  private resumeOffer(): { chapter: number; title: string; onResume: () => void } | undefined {
+    const d = this.loadProgress();
+    if (!d) return undefined;
+    const ch = CHAPTERS[d.chapter];
+    return {
+      chapter: ch.no,
+      title: ch.title,
+      onResume: () => { sfx.ensure(); sfx.startMusic(); this.resumeFrom(d); },
+    };
+  }
+
+  /**
+   * Pick the campaign back up. Deliberately not jumpToChapter: that is a debug
+   * tool which unlocks everything, and a resumed run must give back exactly
+   * what was actually earned and nothing more.
+   */
+  private resumeFrom(d: SaveData): void {
+    this.hud.dismissStart();
+    this.restart();
+    this.started = true;
+    this.bossIndex = d.chapter;
+    this.latestFinishedChapter = d.chapter - 1;
+    this.wave = d.chapter;
+    this.score = d.score;
+    this.deaths = d.deaths;
+    this.powerLevel = d.powerLevel ?? 1;
+    this.bossTimer = 4;
+    this.unlockedWeapons = new Set(d.weapons);
+    this.player.abilities = { ...this.player.abilities, ...d.abilities };
+    for (const w of this.unlockedWeapons) {
+      this.hud.unlockWeapon(w);
+      this.touch?.unlockWeapon(w);
+    }
+    if (this.powerLevel > 1) this.hud.setPowerLevel(this.powerLevel);
+    if (this.player.abilities.beam) this.hud.unlock('beam', '<b>E (hold)</b> PLASMA BEAM');
+    if (this.player.abilities.thrust) this.hud.unlock('boots', '<b>SPACE</b> OVERDRIVE THRUSTERS');
+    if (this.player.abilities.nova) this.hud.unlock('nova', '<b>Q</b> NOVA PULSE');
+    if (this.player.abilities.shield) this.hud.unlock('shield', 'AEGIS SHIELD 50%');
+    if (this.player.abilities.blades) this.hud.unlock('blades', 'TWIN SABERS');
+    if (this.player.abilities.quake) this.hud.unlock('quake', '<b>G</b> QUAKE SLAM');
+    this.selectWeapon('saber');
+    this.droneBase = Math.min(10, 3 + Math.floor(d.chapter * 0.7));
+    this.drones.target = this.droneBase;
+    this.deploySupportFromEarlierChapters(d.chapter);
+    this.hud.setWave(d.chapter);
+    this.hud.setScore(this.score, 1);
+    if (!this.touch) this.renderer.domElement.requestPointerLock();
+    const ch = CHAPTERS[d.chapter];
+    this.hud.toast('RESUMING', `Chapter ${ch.no} · ${ch.title}`, 3.5);
+    this.hud.setObjective('Hold Neo Tokyo');
   }
 
   // ------------------------------------------------------------------ input
@@ -287,6 +394,9 @@ export class Game {
       // jump, attack or switch weapons
       if (this.hud.cardOpen) return;
       this.keys.add(e.code);
+      // Enter runs the radio on. It is not bound to anything in the fight, so
+      // hurrying a conversation can never also make the mecha do something.
+      if (e.code === 'Enter' || e.code === 'NumpadEnter') { this.hud.skipLine(); return; }
       if (e.code === 'KeyF') this.fireLaser();
       if (e.code === 'KeyT') this.fireMissiles();
       if (e.code === 'KeyQ') this.novaPulse();
@@ -1257,6 +1367,9 @@ export class Game {
     const done = this.bossIndex - 1; // index of the chapter just cleared
     const ch = CHAPTERS[done];
     if (!ch) return;
+    // A cleared chapter is the checkpoint. Written here, after the reward has
+    // been granted, so a resumed run gets back the weapon it just earned.
+    this.saveProgress();
     this.hud.say(ch.debrief);
     // The lull after a kill is the natural place for them to talk, so drip a
     // backstory scene here too rather than relying on the player idling.
@@ -1415,6 +1528,10 @@ export class Game {
   /** A ward is lost — either flattened or swamped. Either way the run ends. */
   private endRun(s: Shelter, cause: 'destroyed' | 'overfull'): void {
     this.gameOver = true;
+    // Losing a ward outright is meant to be final — back to chapter one. The
+    // checkpoint has to go with it, or reloading the page would quietly hand
+    // the run back and make the loss meaningless.
+    this.clearProgress();
     this.slowmo = 1.6;
     this.shake = 1.6;
     sfx.explode(1, 1);

@@ -112,6 +112,9 @@ export class Hud {
         .start h2 { color:#ff4fa3; font-size:15px; letter-spacing:8px; margin:0 0 34px; font-weight:400; }
         .start .keys { color:#9fc4e8; font-size:13px; line-height:2.1; letter-spacing:1px; text-align:center; }
         .start .keys b { color:#7fdcff; }
+        .start .go.resume { border-color:#ffd86a; color:#ffe9b0; box-shadow:0 0 26px #ffd86a33; margin-top:30px; }
+        .start .go.resume:hover { background:#3a3213; }
+        .start .go + .go { margin-top:12px; font-size:12px; opacity:.75; letter-spacing:3px; }
         .start .go { margin-top:30px; color:#fff; font-size:14px; letter-spacing:4px; border:1px solid #39e6e0;
                      padding:10px 26px; border-radius:4px; animation:pulse 1.6s infinite; }
         @keyframes pulse { 50% { box-shadow:0 0 22px #39e6e088; } }
@@ -370,7 +373,7 @@ export class Hud {
           <div class="comms-copy"><div class="comms-who" id="comms-who"></div>
           <div class="comms-text" id="comms-text"></div></div>
         </div>
-        <div class="comms-next">TRANSMISSION</div>
+        <div class="comms-next">ENTER ▸ SKIP</div>
       </div>
       <div class="card" id="card">
         <div class="ch" id="card-ch"></div>
@@ -517,6 +520,36 @@ export class Hud {
    */
   say(lines: { who: string; text: string }[]): void {
     this.commsQueue.push(...lines);
+  }
+
+  /**
+   * Advance the radio by one line. The campaign carries roughly fourteen
+   * minutes of scripted dialogue and none of it could be hurried, which is
+   * indefensible on a replay and painful on a first run if you already read
+   * quickly. One press completes the line being typed; a second drops it and
+   * moves on, so holding the key runs the whole conversation out.
+   */
+  skipLine(): void {
+    const line = this.commsQueue[0];
+    if (!line) return;
+    // A line that has not begun typing yet has no DOM state to complete, and
+    // updateComms would re-initialise it on the next frame and undo the skip.
+    // Let it start; the following press will take it.
+    if (!this.commsOn) return;
+    if (this.typed < line.text.length) {
+      // finish revealing this one rather than skipping what has not been read
+      this.typed = line.text.length;
+      document.getElementById('comms-text')!.textContent = line.text;
+      this.holdT = 0.35; // brief beat so a held key does not blur past it
+      return;
+    }
+    this.commsQueue.shift();
+    this.commsOn = false;
+    this.typed = 0;
+    this.holdT = 0;
+    if (this.commsQueue.length === 0) {
+      document.getElementById('comms')!.classList.remove('show');
+    }
   }
 
   /** True while scripted dialogue is still playing — barks defer to it. */
@@ -820,7 +853,17 @@ export class Hud {
     }
   }
 
-  showStart(onStart: () => void, isTouch = false): void {
+  /**
+   * @param resume  If a checkpoint exists, its chapter number and title, plus
+   *                the callback to pick up from it. The campaign runs to the
+   *                better part of an hour, so losing it to a closed tab is
+   *                not something a player should ever have to discover.
+   */
+  showStart(
+    onStart: () => void,
+    isTouch = false,
+    resume?: { chapter: number; title: string; onResume: () => void },
+  ): void {
     this.isTouch = isTouch;
     const el = document.createElement('div');
     el.className = 'start';
@@ -837,12 +880,22 @@ export class Hud {
         Everything breaks. Citizens can't be hurt — but they will run.<br/>
         Hunt the monsters. Every boss you defeat teaches you a new power.
       </div>
-      <div class="go">${isTouch ? 'TAP' : 'CLICK'} TO DEPLOY</div>
+      ${resume ? `<div class="go resume" id="go-resume">CONTINUE · CHAPTER ${resume.chapter} — ${resume.title}</div>` : ''}
+      <div class="go" id="go-new">${resume ? 'START A NEW RUN' : `${isTouch ? 'TAP' : 'CLICK'} TO DEPLOY`}</div>
     `;
-    el.addEventListener('click', () => {
-      el.remove();
-      onStart();
-    });
+    const begin = (fn: () => void) => { el.remove(); fn(); };
+    if (resume) {
+      el.querySelector('#go-resume')!.addEventListener('click', (e) => {
+        e.stopPropagation();
+        begin(resume.onResume);
+      });
+      el.querySelector('#go-new')!.addEventListener('click', (e) => {
+        e.stopPropagation();
+        begin(onStart);
+      });
+    } else {
+      el.addEventListener('click', () => begin(onStart));
+    }
     this.root.appendChild(el);
   }
 
