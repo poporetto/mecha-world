@@ -16,10 +16,17 @@ const TRACK = 0x2b3138;
 const GLASS = 0x8ef0c8;
 
 function box(w: number, h: number, d: number, color: number, emissive = 0): THREE.Mesh {
-  return new THREE.Mesh(
+  const mesh = new THREE.Mesh(
     new THREE.BoxGeometry(w, h, d),
-    new THREE.MeshLambertMaterial({ color, emissive, emissiveIntensity: emissive ? 1 : 0 })
+    new THREE.MeshStandardMaterial({
+      color, emissive, emissiveIntensity: emissive ? 1.5 : 0,
+      metalness: color === METAL || color === TRACK ? 0.78 : 0.36,
+      roughness: 0.42, flatShading: true,
+    })
   );
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  return mesh;
 }
 
 export interface TankCtx {
@@ -55,7 +62,14 @@ export class Tank {
     glacis.rotation.x = -0.4;
     const deck = box(3.0, 0.2, 4.2, PLATE);
     deck.position.y = 2.08;
-    g.add(hull, glacis, deck);
+    const glacisInset = box(1.5, 0.34, 0.12, TRACK);
+    glacisInset.position.set(0, 1.57, 3.13);
+    glacisInset.rotation.x = -0.4;
+    const headlampL = box(0.34, 0.28, 0.12, GLASS, 0x2b6f5a);
+    headlampL.position.set(-1.12, 1.7, 3.12);
+    const headlampR = headlampL.clone();
+    headlampR.position.x = 1.12;
+    g.add(hull, glacis, deck, glacisInset, headlampL, headlampR);
 
     // tracks, with road wheels that spin while he trundles along
     for (const side of [-1, 1]) {
@@ -63,7 +77,9 @@ export class Tank {
       track.position.set(side * 2.0, 0.9, 0);
       const guard = box(1.1, 0.25, 5.2, HULL);
       guard.position.set(side * 2.0, 1.75, 0);
-      g.add(track, guard);
+      const outerTrack = box(0.12, 1.12, 5.25, METAL);
+      outerTrack.position.set(side * 2.47, 0.9, 0);
+      g.add(track, guard, outerTrack);
       for (let i = 0; i < 4; i++) {
         const w = new THREE.Mesh(
           new THREE.CylinderGeometry(0.5, 0.5, 0.5, 8),
@@ -73,6 +89,9 @@ export class Tank {
         w.position.set(side * 2.0, 0.75, -1.9 + i * 1.25);
         g.add(w);
         this.wheels.push(w);
+        const hub = box(0.14, 0.24, 0.24, PLATE);
+        hub.position.set(side * 2.29, 0.75, -1.9 + i * 1.25);
+        g.add(hub);
       }
     }
 
@@ -83,6 +102,8 @@ export class Tank {
     const ring = box(2.2, 0.25, 2.2, METAL);
     const body = box(2.4, 1.1, 2.8, HULL);
     body.position.y = 0.65;
+    const turretBrow = box(2.0, 0.24, 2.35, PLATE);
+    turretBrow.position.set(0, 1.16, 0.1);
     const mantlet = box(1.2, 0.9, 0.7, PLATE);
     mantlet.position.set(0, 0.65, 1.5);
     const cupola = box(0.9, 0.5, 0.9, PLATE);
@@ -94,13 +115,23 @@ export class Tank {
     toolbox.position.set(0.8, 1.4, -0.9);
     const drum = box(0.55, 0.55, 0.55, 0xc9705a);
     drum.position.set(0.85, 1.45, 0.2);
-    this.turret.add(ring, body, mantlet, cupola, vision, toolbox, drum);
+    const cheekL = box(0.38, 0.62, 1.7, PLATE);
+    cheekL.position.set(-1.12, 0.62, 0.12);
+    const cheekR = cheekL.clone();
+    cheekR.position.x = 1.12;
+    const antenna = box(0.08, 1.25, 0.08, METAL);
+    antenna.position.set(-0.95, 1.8, -0.72);
+    this.turret.add(ring, body, turretBrow, mantlet, cupola, vision, toolbox, drum, cheekL, cheekR, antenna);
 
     this.barrel = box(0.5, 0.5, 4.6, METAL);
     this.barrel.position.set(0, 0.65, 3.6);
     const brake = box(0.72, 0.72, 0.7, TRACK);
     brake.position.set(0, 0.65, 5.9);
-    this.turret.add(this.barrel, brake);
+    const barrelSleeve = box(0.72, 0.72, 1.35, PLATE);
+    barrelSleeve.position.set(0, 0.65, 2.15);
+    const brakeCut = box(0.3, 0.32, 0.74, METAL);
+    brakeCut.position.set(0, 0.65, 5.92);
+    this.turret.add(this.barrel, barrelSleeve, brake, brakeCut);
 
     g.visible = false;
   }

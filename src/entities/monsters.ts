@@ -76,6 +76,15 @@ export abstract class Monster {
   /** Set while a heavy attack winds up — renders a warning tint so the
    *  player can read the tell and dash out of the way. */
   protected telegraph = false;
+  /** Public combat-readability state used by the lock-on HUD and evasion. */
+  get threatening(): boolean {
+    return this.telegraph;
+  }
+
+  /** A frame-perfect evade converts the avoided attack into a short opening. */
+  rewardEvade(sec = 1.15): void {
+    if (!this.dying) this.openWindow(sec);
+  }
   private coreT = 0;
   private staggerT = 0;
   private staggerStrength = 0;

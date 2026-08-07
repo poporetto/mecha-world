@@ -55,6 +55,8 @@ export class Sky {
   private birds: Bird[] = [];
   private birdMat = new THREE.MeshLambertMaterial({ color: 0x2c3038 });
   private cloudMat: THREE.MeshLambertMaterial;
+  private ash: THREE.Points;
+  private ashPos: Float32Array;
   private state: SkyState = {
     sunDir: new THREE.Vector3(0.6, 1, 0.35).normalize(),
     sunIntensity: 1.3,
@@ -174,6 +176,21 @@ export class Sky {
     this.group.add(this.moon);
 
     this.cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff, fog: false, transparent: true, opacity: 0.92 });
+    // Fine ash becomes visible as the line approaches the seam. Keeping it as
+    // one Points draw call adds atmosphere without multiplying scene objects.
+    this.ashPos = new Float32Array(240 * 3);
+    for (let i = 0; i < 240; i++) {
+      this.ashPos[i * 3] = (Math.random() - 0.5) * 180;
+      this.ashPos[i * 3 + 1] = Math.random() * 90;
+      this.ashPos[i * 3 + 2] = (Math.random() - 0.5) * 180;
+    }
+    const ashGeo = new THREE.BufferGeometry();
+    ashGeo.setAttribute('position', new THREE.BufferAttribute(this.ashPos, 3));
+    this.ash = new THREE.Points(ashGeo, new THREE.PointsMaterial({
+      color: 0xd7c9e0, size: 0.65, transparent: true, opacity: 0,
+      depthWrite: false, blending: THREE.NormalBlending,
+    }));
+    this.group.add(this.ash);
     for (let i = 0; i < 16; i++) {
       const g = new THREE.Group();
       const puffs = 3 + Math.floor(Math.random() * 4);
@@ -296,6 +313,20 @@ export class Sky {
 
     // clouds dim at night
     this.cloudMat.color.setScalar(0.35 + day * 0.65);
+
+    const ashMat = this.ash.material as THREE.PointsMaterial;
+    ashMat.opacity = Math.max(0, (corruption - 0.08) * 0.8);
+    this.ash.visible = ashMat.opacity > 0.01;
+    this.ash.position.set(center.x, center.y, center.z);
+    if (this.ash.visible) {
+      for (let i = 0; i < this.ashPos.length; i += 3) {
+        this.ashPos[i] += dt * (1.4 + corruption * 2.2);
+        this.ashPos[i + 1] -= dt * (2.1 + (i % 7) * 0.08);
+        if (this.ashPos[i] > 90) this.ashPos[i] = -90;
+        if (this.ashPos[i + 1] < 0) this.ashPos[i + 1] = 90;
+      }
+      (this.ash.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
+    }
 
     for (const c of this.clouds) {
       c.group.position.x += c.speed * dt;

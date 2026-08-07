@@ -26,10 +26,16 @@ export const TSUBAKI: AllyPalette = {
 const DARK = 0x2f333b;
 
 function box(w: number, h: number, d: number, color: number, emissive = 0): THREE.Mesh {
-  return new THREE.Mesh(
+  const mesh = new THREE.Mesh(
     new THREE.BoxGeometry(w, h, d),
-    new THREE.MeshLambertMaterial({ color, emissive, emissiveIntensity: emissive ? 1 : 0 })
+    new THREE.MeshStandardMaterial({
+      color, emissive, emissiveIntensity: emissive ? 1.6 : 0,
+      metalness: color === DARK ? 0.7 : 0.2, roughness: 0.34, flatShading: true,
+    })
   );
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  return mesh;
 }
 
 export interface AllyCtx {
@@ -61,12 +67,23 @@ export class Ally {
     this.legR = this.makeLeg(0.62);
     g.add(this.legL, this.legR);
 
-    // wide low pelvis
+    // wide low pelvis, split into articulated armour rather than one toy block
     const pelvis = box(1.5, 0.5, 1.0, CREAM);
     pelvis.position.y = 1.35;
-    const skirt = box(1.7, 0.42, 1.15, ORANGE);
-    skirt.position.y = 1.05;
-    g.add(pelvis, skirt);
+    const hipCore = box(0.72, 0.38, 0.72, DARK);
+    hipCore.position.y = 1.25;
+    const buckle = box(0.34, 0.24, 0.12, GLASS, 0x2b6f7a);
+    buckle.position.set(0, 1.36, 0.58);
+    g.add(pelvis, hipCore, buckle);
+    for (const side of [-1, 1]) {
+      const skirtFront = box(0.58, 0.52, 0.24, ORANGE);
+      skirtFront.position.set(side * 0.34, 1.03, 0.52);
+      skirtFront.rotation.z = side * -0.08;
+      const skirtSide = box(0.24, 0.48, 0.76, ORANGE);
+      skirtSide.position.set(side * 0.86, 1.08, 0);
+      skirtSide.rotation.z = side * -0.12;
+      g.add(skirtFront, skirtSide);
+    }
 
     this.torso = new THREE.Group();
     this.torso.position.y = 1.6;
@@ -81,7 +98,19 @@ export class Ally {
     vent.position.set(0, 0.75, 0.65);
     const core = box(0.34, 0.34, 0.14, GLASS, 0x2b6f7a);
     core.position.set(0, 0.42, 0.66);
-    this.torso.add(chest, belly, vent, core);
+    const sternum = box(0.42, 0.68, 0.16, CREAM);
+    sternum.position.set(0, 0.5, 0.67);
+    const collar = box(1.0, 0.22, 0.76, DARK);
+    collar.position.set(0, 1.08, 0);
+    this.torso.add(chest, belly, vent, core, sternum, collar);
+    for (const side of [-1, 1]) {
+      const chestRail = box(0.48, 0.2, 0.16, CREAM);
+      chestRail.position.set(side * 0.55, 0.88, 0.68);
+      chestRail.rotation.z = side * -0.18;
+      const intake = box(0.28, 0.22, 0.08, DARK);
+      intake.position.set(side * 0.58, 0.48, 0.71);
+      this.torso.add(chestRail, intake);
+    }
 
     // oversized round shoulders
     for (const side of [-1, 1]) {
@@ -89,16 +118,24 @@ export class Ally {
       pad.position.set(side * 1.28, 0.72, 0);
       const cap = box(0.9, 0.2, 0.98, CREAM);
       cap.position.set(side * 1.28, 1.16, 0);
+      const padFace = box(0.64, 0.46, 0.12, CREAM);
+      padFace.position.set(side * 1.28, 0.75, 0.53);
+      const padStripe = box(0.38, 0.13, 0.05, DARK);
+      padStripe.position.set(side * 1.28, 0.75, 0.61);
       const trim = box(0.14, 0.5, 0.6, STEEL);
       pad.position.y = 0.72;
       trim.position.set(side * 1.74, 0.72, 0);
-      this.torso.add(pad, cap, trim);
+      this.torso.add(pad, cap, padFace, padStripe, trim);
       // short thick arms
+      const joint = box(0.42, 0.42, 0.46, DARK);
+      joint.position.set(side * 1.28, 0.31, 0);
       const upper = box(0.5, 0.62, 0.55, CREAM);
       upper.position.set(side * 1.28, 0.05, 0);
+      const elbow = box(0.48, 0.34, 0.5, DARK);
+      elbow.position.set(side * 1.28, -0.3, 0);
       const fist = box(0.6, 0.44, 0.62, STEEL);
       fist.position.set(side * 1.28, -0.42, 0.05);
-      this.torso.add(upper, fist);
+      this.torso.add(joint, upper, elbow, fist);
     }
 
     // slab shield on the left, shoulder cannon on the right
@@ -106,13 +143,21 @@ export class Ally {
     shield.position.set(-1.85, 0.2, 0.1);
     const shieldBar = box(0.1, 1.5, 0.3, ORANGE);
     shieldBar.position.set(-1.97, 0.2, 0.1);
-    this.torso.add(shield, shieldBar);
+    const shieldInset = box(0.05, 0.82, 0.62, DARK);
+    shieldInset.position.set(-1.99, 0.2, 0.1);
+    const shieldCore = box(0.04, 0.28, 0.28, GLASS, 0x2b6f7a);
+    shieldCore.position.set(-2.03, 0.2, 0.1);
+    this.torso.add(shield, shieldBar, shieldInset, shieldCore);
 
     this.cannon = box(0.46, 0.46, 1.5, STEEL);
     this.cannon.position.set(1.3, 1.28, 0.35);
     const muzzle = box(0.3, 0.3, 0.28, DARK);
     muzzle.position.set(1.3, 1.28, 1.2);
-    this.torso.add(this.cannon, muzzle);
+    const cannonRailL = box(0.1, 0.1, 1.35, CREAM);
+    cannonRailL.position.set(1.03, 1.52, 0.35);
+    const cannonRailR = cannonRailL.clone();
+    cannonRailR.position.x = 1.57;
+    this.torso.add(this.cannon, muzzle, cannonRailL, cannonRailR);
 
     // small head sunk between the shoulders
     const head = box(0.62, 0.48, 0.6, CREAM);
@@ -121,7 +166,11 @@ export class Ally {
     visor.position.set(0, 1.34, 0.32);
     const horn = box(0.1, 0.34, 0.1, ORANGE);
     horn.position.set(0, 1.66, 0.16);
-    this.torso.add(head, visor, horn);
+    const jaw = box(0.38, 0.16, 0.2, DARK);
+    jaw.position.set(0, 1.12, 0.22);
+    const headCap = box(0.42, 0.12, 0.48, ORANGE);
+    headCap.position.set(0, 1.61, -0.02);
+    this.torso.add(head, visor, horn, jaw, headCap);
 
     g.visible = false;
   }
@@ -132,11 +181,19 @@ export class Ally {
     leg.position.set(x, 1.3, 0);
     const thigh = box(0.66, 0.6, 0.72, CREAM);
     thigh.position.y = -0.34;
+    const hip = box(0.46, 0.46, 0.5, DARK);
+    hip.position.y = -0.05;
     const shin = box(0.78, 0.6, 0.84, ORANGE);
     shin.position.y = -0.92;
+    const knee = box(0.5, 0.3, 0.18, DARK);
+    knee.position.set(0, -0.65, 0.42);
+    const shinFace = box(0.5, 0.38, 0.12, CREAM);
+    shinFace.position.set(0, -0.93, 0.48);
     const foot = box(0.94, 0.3, 1.15, STEEL);
     foot.position.set(0, -1.32, 0.16);
-    leg.add(thigh, shin, foot);
+    const toe = box(0.68, 0.18, 0.36, ORANGE);
+    toe.position.set(0, -1.34, 0.77);
+    leg.add(hip, thigh, knee, shin, shinFace, foot, toe);
     return leg;
   }
 

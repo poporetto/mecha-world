@@ -1,5 +1,7 @@
 // Synthesized sound effects — pure WebAudio, no asset files.
 
+export type MusicMode = 'intro' | 'explore' | 'boss' | 'revenant';
+
 class Sfx {
   private ctx: AudioContext | null = null;
   private master!: GainNode;
@@ -11,7 +13,11 @@ class Sfx {
   private musicTimer: number | null = null;
   private nextBarTime = 0;
   private barIndex = 0;
-  private intensity = 0; // 0 calm exploration, 1 boss fight
+  private musicMode: MusicMode = 'intro';
+  private requestedMode: MusicMode = 'intro';
+  private sfxVolume = 0.4;
+  private musicVolume = 0.145;
+  private lowHealth = false;
 
   // must be called from a user gesture (deploy click)
   ensure(): void {
@@ -21,7 +27,7 @@ class Sfx {
     }
     this.ctx = new AudioContext();
     this.master = this.ctx.createGain();
-    this.master.gain.value = 0.4;
+    this.master.gain.value = this.sfxVolume;
     this.master.connect(this.ctx.destination);
   }
 
@@ -231,12 +237,18 @@ class Sfx {
 
   // ------------------------------------------------------------- music
 
-  // Chill pastel-city loop: pad chords + soft bass + sparkly arpeggio.
-  // Intensity (boss fights) speeds the arp, adds a driving pulse bass.
-  startMusic(): void {
-    if (!this.ctx || this.musicTimer !== null) return;
+  // Adaptive score. Every mode shares the scheduler, but has its own tempo,
+  // harmony, rhythm and instrumentation so transitions feel musical rather
+  // than like the same loop merely playing faster.
+  startMusic(mode: MusicMode = 'intro'): void {
+    if (!this.ctx) return;
+    if (this.musicTimer !== null) {
+      this.requestedMode = mode;
+      return;
+    }
+    this.musicMode = this.requestedMode = mode;
     this.musicGain = this.ctx.createGain();
-    this.musicGain.gain.value = 0.16;
+    this.musicGain.gain.value = this.musicVolume;
     this.musicGain.connect(this.ctx.destination);
     this.nextBarTime = this.ctx.currentTime + 0.1;
     this.barIndex = 0;
@@ -245,17 +257,104 @@ class Sfx {
   }
 
   setMusicIntensity(v: number): void {
-    this.intensity = Math.max(0, Math.min(1, v));
+    this.setMusicMode(v > 0.5 ? 'boss' : 'explore');
+  }
+
+  setMusicMode(mode: MusicMode): void {
+    this.requestedMode = mode;
+  }
+
+  setVolumes(music: number, effects: number): void {
+    this.musicVolume = Math.max(0, Math.min(1, music)) * 0.24;
+    this.sfxVolume = Math.max(0, Math.min(1, effects)) * 0.65;
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    this.master.gain.setTargetAtTime(this.sfxVolume, t, 0.04);
+    if (this.musicGain) {
+      const duck = this.lowHealth ? 0.72 : 1;
+      this.musicGain.gain.setTargetAtTime(this.musicVolume * duck, t, 0.18);
+    }
+  }
+
+  setLowHealth(on: boolean): void {
+    if (this.lowHealth === on) return;
+    this.lowHealth = on;
+    if (!this.ctx || !this.musicGain) return;
+    this.musicGain.gain.setTargetAtTime(this.musicVolume * (on ? 0.72 : 1), this.ctx.currentTime, 0.35);
+    if (on) this.warningPulse();
+  }
+
+  footstep(weight = 1): void {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const o = ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(72, t);
+    o.frequency.exponentialRampToValueAtTime(32, t + 0.12);
+    const g = ctx.createGain();
+    this.env(g, t, 0.18 * weight, 0.14);
+    o.connect(g).connect(this.master); o.start(t); o.stop(t + 0.16);
+  }
+
+  servo(vol = 1): void {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const o = ctx.createOscillator(); o.type = 'triangle';
+    o.frequency.setValueAtTime(180, t); o.frequency.exponentialRampToValueAtTime(420, t + 0.09);
+    const g = ctx.createGain(); this.env(g, t, 0.06 * vol, 0.1);
+    o.connect(g).connect(this.master); o.start(t); o.stop(t + 0.12);
+  }
+
+  bossStinger(dark = false): void {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const notes = dark ? [55, 77.78, 58.27] : [73.42, 110, 146.83];
+    notes.forEach((f, i) => this.note(f, t + i * 0.13, 0.75, dark ? 'sawtooth' : 'triangle', 0.18, this.master));
+    this.drum(t, 0.28, false, this.master);
+  }
+
+  phaseStinger(final = false): void {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    [146.83, 174.61, final ? 293.66 : 220].forEach((f, i) =>
+      this.note(f, t + i * 0.08, 0.4, 'sawtooth', 0.12, this.master));
+  }
+
+  victoryStinger(): void {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    [220, 277.18, 329.63, 440].forEach((f, i) =>
+      this.note(f, t + i * 0.14, 0.65, 'triangle', 0.16, this.master));
+  }
+
+  private warningPulse(): void {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    for (let i = 0; i < 2; i++) this.note(82.41, t + i * 0.22, 0.12, 'square', 0.06, this.master);
   }
 
   private scheduleMusic(): void {
     const ctx = this.ctx!;
-    const barLen = 2.0 - this.intensity * 0.5; // bars shorten when fighting
+    const barLen = this.barLength(this.musicMode);
     while (this.nextBarTime < ctx.currentTime + barLen * 2) {
-      this.scheduleBar(this.nextBarTime, barLen);
-      this.nextBarTime += barLen;
+      // Quantize score changes to bar lines: no chopped notes or abrupt tempo
+      // jumps, but the new encounter identity arrives within one phrase.
+      if (this.musicMode !== this.requestedMode) {
+        this.musicMode = this.requestedMode;
+        this.barIndex = 0;
+      }
+      const activeLen = this.barLength(this.musicMode);
+      this.scheduleBar(this.nextBarTime, activeLen);
+      this.nextBarTime += activeLen;
       this.barIndex++;
     }
+  }
+
+  private barLength(mode: MusicMode): number {
+    if (mode === 'boss') return 1.35;
+    if (mode === 'revenant') return 1.72;
+    if (mode === 'intro') return 2.4;
+    return 2.05;
   }
 
   private note(freq: number, t: number, dur: number, type: OscillatorType, peak: number, out: GainNode): void {
@@ -272,35 +371,66 @@ class Sfx {
     o.stop(t + dur + 0.05);
   }
 
+  private drum(t: number, peak: number, bright: boolean, out: GainNode): void {
+    const ctx = this.ctx!;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noiseBuffer(bright ? 0.11 : 0.2);
+    const filter = ctx.createBiquadFilter();
+    filter.type = bright ? 'highpass' : 'lowpass';
+    filter.frequency.value = bright ? 2600 : 240;
+    const gain = ctx.createGain();
+    this.env(gain, t, peak, bright ? 0.1 : 0.18);
+    src.connect(filter).connect(gain).connect(out);
+    src.start(t);
+  }
+
   private scheduleBar(t: number, barLen: number): void {
     const out = this.musicGain!;
-    // i–VI–III–VII in A minor: dreamy, loops seamlessly
-    const chords = [
-      [220.0, 261.63, 329.63], // Am
-      [174.61, 220.0, 261.63], // F
-      [130.81, 196.0, 261.63], // C  (low voicing)
-      [196.0, 246.94, 293.66], // G
-    ];
+    const mode = this.musicMode;
+    const progressions: Record<MusicMode, number[][]> = {
+      // Open fifths and a rising answer: a deployment theme, not combat music.
+      intro: [[146.83, 220, 293.66], [174.61, 261.63, 349.23], [196, 293.66, 392], [220, 329.63, 440]],
+      // Dreamy minor city patrol.
+      explore: [[220, 261.63, 329.63], [174.61, 220, 261.63], [130.81, 196, 261.63], [196, 246.94, 293.66]],
+      // Tense D-minor combat movement with a dominant turnaround.
+      boss: [[146.83, 174.61, 220], [116.54, 146.83, 174.61], [130.81, 164.81, 196], [138.59, 174.61, 207.65]],
+      // TA-00 uses semitone tension and hollow tritones instead of heroic harmony.
+      revenant: [[110, 155.56, 164.81], [103.83, 146.83, 155.56], [92.5, 130.81, 138.59], [110, 155.56, 164.81]],
+    };
+    const chords = progressions[mode];
     const chord = chords[this.barIndex % 4];
-    const hi = this.intensity;
+    const combat = mode === 'boss';
+    const dark = mode === 'revenant';
+    const intro = mode === 'intro';
 
-    // pad: two soft triangle voices per chord tone
+    // The Revenant loses the warm upper octave and gains detuned saw voices;
+    // bosses get brass-like saw reinforcement; intro stays broad and clean.
     for (const f of chord) {
-      this.note(f, t, barLen * 1.05, 'triangle', 0.05 + hi * 0.02, out);
-      this.note(f * 2.003, t, barLen * 1.05, 'sine', 0.03, out);
+      this.note(f, t, barLen * 1.05, dark ? 'sawtooth' : 'triangle', dark ? 0.025 : 0.045, out);
+      if (!dark) this.note(f * 2.003, t, barLen * 1.05, 'sine', intro ? 0.04 : 0.025, out);
+      if (combat) this.note(f * 0.997, t, barLen * 0.72, 'sawtooth', 0.025, out);
     }
-    // bass: root an octave down; pulses on half-bar when intense
+    // Bass rhythm is the main intensity carrier.
     const root = chord[0] / 2;
-    this.note(root, t, barLen * 0.9, 'sine', 0.12, out);
-    if (hi > 0.3) {
-      this.note(root, t + barLen / 2, barLen * 0.35, 'sawtooth', 0.05 * hi, out);
-      this.note(root, t + barLen * 0.75, barLen * 0.2, 'sawtooth', 0.05 * hi, out);
+    this.note(root, t, barLen * (dark ? 1.15 : 0.8), dark ? 'triangle' : 'sine', dark ? 0.14 : 0.11, out);
+    if (combat) {
+      for (const beat of [0, 0.25, 0.5, 0.75]) {
+        this.note(root, t + barLen * beat, barLen * 0.18, 'sawtooth', 0.055, out);
+        this.drum(t + barLen * beat, beat === 0 ? 0.12 : 0.07, false, out);
+      }
+      this.drum(t + barLen * 0.5, 0.07, true, out);
+    } else if (dark) {
+      this.drum(t, 0.11, false, out);
+      this.drum(t + barLen * 0.75, 0.045, true, out);
     }
-    // arpeggio: plucked chord tones, denser when intense
-    const steps = hi > 0.3 ? 8 : 4;
+    // Melodic motion: spacious intro, light exploration, frantic boss ostinato,
+    // and an intentionally incomplete Revenant pulse that never resolves.
+    const steps = combat ? 8 : dark ? 3 : intro ? 4 : 5;
     for (let i = 0; i < steps; i++) {
-      const f = chord[i % 3] * (i % 3 === 0 && i > 0 ? 4 : 2);
-      this.note(f, t + (i / steps) * barLen, 0.22, 'triangle', 0.045 + hi * 0.03, out);
+      const degree = dark ? [0, 2, 1][i % 3] : i % 3;
+      const f = chord[degree] * (combat ? 2 : intro && i === steps - 1 ? 4 : 2);
+      this.note(f, t + (i / steps) * barLen, dark ? 0.38 : 0.2,
+        dark ? 'sine' : 'triangle', combat ? 0.065 : dark ? 0.035 : 0.043, out);
     }
   }
 

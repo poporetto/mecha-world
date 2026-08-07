@@ -17,6 +17,16 @@ export type WeaponId = (typeof WEAPONS)[number]['id'];
 /** What a radar blip represents. */
 export type RadarKind = 'boss' | 'drone' | 'pickup' | 'shelter' | 'shelterHit';
 
+export interface GameSettings {
+  music: number;
+  effects: number;
+  shake: number;
+  sensitivity: number;
+  subtitles: boolean;
+  highContrast: boolean;
+  reducedMotion: boolean;
+}
+
 /** Characters a degraded transmission resolves through before it settles. */
 const STATIC = '▓▒░#%&/\\|=+*<>';
 
@@ -81,6 +91,39 @@ export class Hud {
         .toast p { color:#bfe9ff; font-size:14px; letter-spacing:3px; margin:8px 0 0; text-shadow:0 1px 3px #000; }
         .cross { position:absolute; left:50%; top:50%; width:6px; height:6px; margin:-3px; border-radius:50%;
                  background:#7fdcffcc; box-shadow:0 0 6px #39e6e0; }
+        .target-lock { position:absolute; width:68px; height:68px; margin:-34px; display:none;
+                       pointer-events:none; border:2px solid #ff6680; border-radius:50%;
+                       box-shadow:0 0 15px #ff4d6a88, inset 0 0 12px #ff4d6a33;
+                       transition:left .06s linear,top .06s linear,border-color .12s,box-shadow .12s;
+                       animation:lockSpin 5s linear infinite; }
+        .target-lock::before,.target-lock::after { content:''; position:absolute; background:#ff8da0; }
+        .target-lock::before { width:86px; height:2px; left:-11px; top:31px; }
+        .target-lock::after { width:2px; height:86px; left:31px; top:-11px; }
+        .target-lock .target-data { position:absolute; top:72px; left:50%; transform:translateX(-50%);
+                                   white-space:nowrap; color:#ffc1cb; font-size:9px; letter-spacing:2px;
+                                   text-shadow:0 1px 4px #000; animation:lockSpinReverse 5s linear infinite; }
+        .target-lock.evade { border-color:#ffcf4f; box-shadow:0 0 22px #ff8a2f; }
+        .target-lock.evade::before,.target-lock.evade::after { background:#ffcf4f; }
+        .target-lock.open { border-color:#58f4ff; box-shadow:0 0 25px #39e6e0; }
+        .target-lock.open::before,.target-lock.open::after { background:#58f4ff; }
+        @keyframes lockSpin { to { transform:rotate(360deg); } }
+        @keyframes lockSpinReverse { to { transform:translateX(-50%) rotate(-360deg); } }
+        .critical-state { position:absolute; inset:0; pointer-events:none; opacity:0;
+                          box-shadow:inset 0 0 120px 24px #d5072d99;
+                          background:radial-gradient(circle,transparent 54%,#8d001733 100%);
+                          transition:opacity .3s; }
+        .critical-state.on { animation:criticalPulse 1.05s ease-in-out infinite; }
+        .critical-label { position:absolute; left:24px; top:43px; color:#ff8b9e; font-size:9px;
+                          letter-spacing:3px; opacity:0; text-shadow:0 0 8px #ff2049; }
+        .critical-label.on { opacity:1; animation:criticalText .7s ease-in-out infinite alternate; }
+        @keyframes criticalPulse { 0%,100% { opacity:.24; } 50% { opacity:.62; } }
+        @keyframes criticalText { to { color:#fff; } }
+        .evade-flash { position:absolute; left:50%; top:42%; transform:translate(-50%,-50%);
+                       color:#eaffff; font-size:28px; font-weight:800; letter-spacing:9px;
+                       text-shadow:0 0 18px #39e6e0,0 2px 5px #000; opacity:0; pointer-events:none; }
+        @keyframes perfectEvade { 0% { opacity:0; transform:translate(-50%,-40%) scale(.7); }
+                                  20%,65% { opacity:1; transform:translate(-50%,-50%) scale(1); }
+                                  100% { opacity:0; transform:translate(-50%,-70%) scale(1.08); } }
         .vig { position:absolute; inset:0; box-shadow:inset 0 0 140px #ff2020; opacity:0; transition:opacity .4s; }
         .impact-flash { position:absolute; inset:0; pointer-events:none; opacity:0;
                         background:radial-gradient(circle at center,transparent 42%,#ffcf7a33 70%,#ff713366 100%);
@@ -290,6 +333,27 @@ export class Hud {
         .pkeys { margin-top:24px; color:#8fb4d8; font-size:11.5px; letter-spacing:1px; line-height:2;
                  text-align:center; max-width:520px; }
         .pkeys b { color:#7fdcff; }
+        .settings { width:min(620px,88vw); margin:12px 0 4px; padding:14px 18px;
+                    border:1px solid #31516d; border-radius:6px; background:#08111dcc; }
+        .settings-title { color:#7fdcff; font-size:10px; letter-spacing:4px; margin-bottom:10px; text-align:center; }
+        .settings-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px 20px; }
+        .setting { display:grid; grid-template-columns:110px 1fr 34px; align-items:center; gap:8px;
+                   color:#b9d6ed; font-size:10px; letter-spacing:1px; }
+        .setting input[type=range] { width:100%; accent-color:#39e6e0; }
+        .setting output { color:#7fdcff; text-align:right; }
+        .setting.toggle { grid-template-columns:1fr auto; cursor:pointer; }
+        .setting.toggle input { accent-color:#39e6e0; }
+        .hc-on .boss-track, .hc-on .hud-track { border-color:#fff; }
+        .hc-on .hud-label, .hc-on .hint { color:#fff; text-shadow:0 1px 4px #000,0 0 4px #000; }
+        .subtitles-off #comms { display:none !important; }
+        .reduced-motion *, .reduced-motion *::before, .reduced-motion *::after {
+          animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important;
+        }
+        .shield-flash { position:absolute; inset:0; pointer-events:none; opacity:0;
+                        border:5px solid #67e8ff; box-shadow:inset 0 0 90px #31cfff88; }
+        .shield-flash.on { animation:shieldHit .32s ease-out both; }
+        @keyframes shieldHit { 0%{opacity:.9;transform:scale(.985)} 100%{opacity:0;transform:scale(1)} }
+        @media(max-width:650px){ .settings-grid{grid-template-columns:1fr}.settings{max-height:42vh;overflow:auto}.pkeys{display:none} }
         .scorebox { position:absolute; left:24px; top:60px; }
         .score-wave { color:#ffd0a0; font-size:12px; letter-spacing:3px; text-shadow:0 1px 3px #000; }
         .score-val { color:#fff; font-size:32px; font-weight:700; letter-spacing:2px; line-height:1.1;
@@ -365,6 +429,10 @@ export class Hud {
       </div>
       <div class="toast" id="toast"><h1 id="toast-h"></h1><p id="toast-p"></p></div>
       <div class="impact-flash" id="impact-flash"></div>
+      <div class="critical-state" id="critical-state"></div>
+      <div class="critical-label" id="critical-label">⚠ INTEGRITY CRITICAL</div>
+      <div class="evade-flash" id="evade-flash">PERFECT EVADE</div>
+      <div class="target-lock" id="target-lock"><div class="target-data" id="target-data"></div></div>
       <div class="boss-intro" id="boss-intro">
         <div class="threat" id="boss-intro-threat">HOSTILE SIGNATURE</div>
         <div class="name" id="boss-intro-name"></div>
@@ -417,11 +485,24 @@ export class Hud {
         <div class="go">CLICK TO CONTINUE</div>
       </div>
       <div class="vig" id="vig"></div>
+      <div class="shield-flash" id="shield-flash"></div>
       <div class="pause" id="pause">
         <h1>PAUSED</h1>
         <div class="stats" id="pause-stats"></div>
         <div class="pbtn" id="p-resume">RESUME</div>
         <div class="pbtn" id="p-restart">RESTART RUN</div>
+        <div class="settings">
+          <div class="settings-title">SYSTEM CONFIGURATION</div>
+          <div class="settings-grid">
+            <label class="setting">MUSIC <input id="set-music" type="range" min="0" max="100"/><output id="out-music"></output></label>
+            <label class="setting">EFFECTS <input id="set-effects" type="range" min="0" max="100"/><output id="out-effects"></output></label>
+            <label class="setting">CAMERA SHAKE <input id="set-shake" type="range" min="0" max="100"/><output id="out-shake"></output></label>
+            <label class="setting">LOOK SPEED <input id="set-sensitivity" type="range" min="40" max="160"/><output id="out-sensitivity"></output></label>
+            <label class="setting toggle">SUBTITLES <input id="set-subtitles" type="checkbox"/></label>
+            <label class="setting toggle">HIGH CONTRAST <input id="set-contrast" type="checkbox"/></label>
+            <label class="setting toggle">REDUCED MOTION <input id="set-motion" type="checkbox"/></label>
+          </div>
+        </div>
         <div class="pkeys">
           <b>ARROWS / WASD</b> move &nbsp; <b>SHIFT</b> boost &nbsp; <b>SPACE</b> jump / fly &nbsp; <b>C</b> dash<br/>
           <b>A</b> or <b>click</b> attack &nbsp; <b>1-7</b> switch weapon &nbsp; <b>E</b> beam &nbsp; <b>Q</b> nova &nbsp; <b>G</b> quake<br/>
@@ -527,6 +608,39 @@ export class Hud {
   bindPause(onResume: () => void, onRestart: () => void): void {
     document.getElementById('p-resume')!.addEventListener('click', onResume);
     document.getElementById('p-restart')!.addEventListener('click', onRestart);
+  }
+
+  bindSettings(settings: GameSettings, onChange: (settings: GameSettings) => void): void {
+    const ranges: Array<[keyof GameSettings, string, number]> = [
+      ['music', 'music', 100], ['effects', 'effects', 100], ['shake', 'shake', 100],
+      ['sensitivity', 'sensitivity', 100],
+    ];
+    const emit = (): void => {
+      for (const [key, id, scale] of ranges) {
+        const input = document.getElementById('set-' + id) as HTMLInputElement;
+        (settings as any)[key] = Number(input.value) / scale;
+        document.getElementById('out-' + id)!.textContent = Math.round(Number(input.value)) + '%';
+      }
+      settings.subtitles = (document.getElementById('set-subtitles') as HTMLInputElement).checked;
+      settings.highContrast = (document.getElementById('set-contrast') as HTMLInputElement).checked;
+      settings.reducedMotion = (document.getElementById('set-motion') as HTMLInputElement).checked;
+      this.root.classList.toggle('subtitles-off', !settings.subtitles);
+      this.root.classList.toggle('hc-on', settings.highContrast);
+      this.root.classList.toggle('reduced-motion', settings.reducedMotion);
+      onChange({ ...settings });
+    };
+    for (const [key, id, scale] of ranges) {
+      const input = document.getElementById('set-' + id) as HTMLInputElement;
+      input.value = String(Math.round((settings[key] as number) * scale));
+      input.addEventListener('input', emit);
+    }
+    (document.getElementById('set-subtitles') as HTMLInputElement).checked = settings.subtitles;
+    (document.getElementById('set-contrast') as HTMLInputElement).checked = settings.highContrast;
+    (document.getElementById('set-motion') as HTMLInputElement).checked = settings.reducedMotion;
+    for (const id of ['set-subtitles', 'set-contrast', 'set-motion']) {
+      document.getElementById(id)!.addEventListener('change', emit);
+    }
+    emit();
   }
 
   bindChapterDebug(chapters: { no: number; title: string }[], onJump: (index: number) => void): void {
@@ -952,6 +1066,36 @@ export class Hud {
     this.hpFill.style.background = frac < 0.3
       ? 'linear-gradient(90deg,#ff3b3b,#ff9a3b)'
       : 'linear-gradient(90deg,#26e0a8,#7fdcff)';
+    const critical = frac > 0 && frac <= 0.25;
+    document.getElementById('critical-state')!.classList.toggle('on', critical);
+    document.getElementById('critical-label')!.classList.toggle('on', critical);
+  }
+
+  setTargetLock(
+    visible: boolean,
+    x = 0,
+    y = 0,
+    distance = 0,
+    state: 'track' | 'evade' | 'open' = 'track',
+  ): void {
+    const el = document.getElementById('target-lock')!;
+    el.style.display = visible ? 'block' : 'none';
+    if (!visible) return;
+    el.style.left = x + 'px';
+    el.style.top = y + 'px';
+    el.classList.toggle('evade', state === 'evade');
+    el.classList.toggle('open', state === 'open');
+    document.getElementById('target-data')!.textContent =
+      state === 'open' ? `PUNISH · ${Math.round(distance)}m`
+      : state === 'evade' ? `EVADE · ${Math.round(distance)}m`
+      : `LOCK · ${Math.round(distance)}m`;
+  }
+
+  perfectEvade(): void {
+    const el = document.getElementById('evade-flash')!;
+    el.style.animation = 'none';
+    void el.offsetWidth;
+    el.style.animation = 'perfectEvade 1.05s ease-out';
   }
 
   showBoss(name: string): void {
@@ -1003,6 +1147,13 @@ export class Hud {
   damageFlash(): void {
     this.vignette.style.opacity = '1';
     setTimeout(() => (this.vignette.style.opacity = '0'), 250);
+  }
+
+  shieldFlash(): void {
+    const el = document.getElementById('shield-flash')!;
+    el.classList.remove('on');
+    void el.offsetWidth;
+    el.classList.add('on');
   }
 
   update(dt: number): void {

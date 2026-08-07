@@ -27,7 +27,7 @@ import { Explosions } from './fx/explosions';
 import { Sky } from './fx/sky';
 import { sfx } from './fx/sound';
 import { ACT2_START, AYA_HINATA, BARKS, CHAPTERS, ENDLESS_LINES, EPILOGUE, HINATA_CHAPTER, JOTETSU_BARKS, JOTETSU_CHAPTER, KOTETSU_BARKS, KOTETSU_CHAPTER, LATE_MEMORIES, MEMORIES, MONSTER_BARKS, PROLOGUE, REVENANT_BEATS, RIFT_EPILOGUE } from './core/story';
-import { Hud, RadarKind, WEAPONS, WeaponId } from './ui/hud';
+import { GameSettings, Hud, RadarKind, WEAPONS, WeaponId } from './ui/hud';
 import { isTouchDevice, TouchControls } from './ui/touch';
 
 interface Projectile {
@@ -136,6 +136,7 @@ export class Game {
   private lastBark = '';
   private barkCursor = new Map<string, number>();
   private idleChatterT = 30;
+  private supportCallT = 8;
   private blocksWrecked = 0;
   private monsterBarkT = 0;   // gap between remarks about the current kaiju
   private monsterBarkFor = ''; // which kaiju those remarks are about
@@ -177,12 +178,24 @@ export class Game {
   private readonly bossIntroDuration = 3;
   private lockOn = false; // lock-on targets the boss
   private dashT = 0; // dash cooldown
+  private evadeT = 0;
+  private evadeRewarded = false;
   private comboWindow = 0; // time left to chain the next saber hit
   private comboStep = 0; // 0..2 in the saber combo
   private clock = new THREE.Clock();
   private time = 0;
+  private footstepT = 0;
+  private servoT = 0;
+  private settings: GameSettings = {
+    music: 0.62, effects: 0.68, shake: 0.85, sensitivity: 1,
+    subtitles: true, highContrast: false, reducedMotion: false,
+  };
 
   constructor() {
+    try {
+      const saved = JSON.parse(localStorage.getItem('mecha-city.settings.v1') ?? 'null');
+      if (saved && typeof saved === 'object') this.settings = { ...this.settings, ...saved };
+    } catch { /* settings are optional */ }
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     // cap DPR: phones report 3+ which tanks the frame rate on a full-screen voxel scene
@@ -240,8 +253,8 @@ export class Game {
         onQuake: () => this.quakeSlam(),
         onWheel: () => this.hud.toggleWheel(),
         onLook: (dx, dy) => {
-          this.camYaw -= dx * 0.006;
-          this.camPitch = Math.max(-0.5, Math.min(1.2, this.camPitch + dy * 0.005));
+          this.camYaw -= dx * 0.006 * this.settings.sensitivity;
+          this.camPitch = Math.max(-0.5, Math.min(1.2, this.camPitch + dy * 0.005 * this.settings.sensitivity));
         },
       });
     }
@@ -255,6 +268,11 @@ export class Game {
 
     this.hud.bindWeaponWheel((w) => this.selectWeapon(w));
     this.hud.bindPause(() => this.setPaused(false), () => this.restart());
+    this.hud.bindSettings(this.settings, (settings) => {
+      this.settings = settings;
+      sfx.setVolumes(settings.music, settings.effects);
+      try { localStorage.setItem('mecha-city.settings.v1', JSON.stringify(settings)); } catch { /* optional */ }
+    });
     // ?debug (or ?all) unlocks every ability/weapon up front for testing;
     // real players keep the defeat-a-boss-to-unlock progression
     const params = new URLSearchParams(location.search);
@@ -273,7 +291,7 @@ export class Game {
 
     this.hud.showStart(() => {
       sfx.ensure();
-      sfx.startMusic();
+      sfx.startMusic('intro');
       // open on the story, then hand control over
       void this.hud.showCard(
         'PROLOGUE',
@@ -282,6 +300,7 @@ export class Game {
         'The defence line is gone. The shelters are full.<br/><br/>' +
         'You are the last Terra-Armor standing.'
       ).then(() => {
+        sfx.setMusicMode('explore');
         this.started = true;
         if (!this.touch) this.renderer.domElement.requestPointerLock();
         this.hud.say(PROLOGUE);
@@ -343,7 +362,7 @@ export class Game {
     return {
       chapter: ch.no,
       title: ch.title,
-      onResume: () => { sfx.ensure(); sfx.startMusic(); this.resumeFrom(d); },
+      onResume: () => { sfx.ensure(); sfx.startMusic('explore'); this.resumeFrom(d); },
     };
   }
 
@@ -455,14 +474,14 @@ export class Game {
     window.addEventListener('contextmenu', (e) => e.preventDefault());
     window.addEventListener('mousemove', (e) => {
       if (this.locked) {
-        this.camYaw -= e.movementX * 0.0026;
-        this.camPitch = Math.max(-0.5, Math.min(1.2, this.camPitch + e.movementY * 0.0022));
+        this.camYaw -= e.movementX * 0.0026 * this.settings.sensitivity;
+        this.camPitch = Math.max(-0.5, Math.min(1.2, this.camPitch + e.movementY * 0.0022 * this.settings.sensitivity));
       } else if (this.drag) {
         // drag-to-rotate works without pointer lock
         const dx = e.clientX - this.drag.x, dy = e.clientY - this.drag.y;
         if (Math.abs(e.clientX - this.drag.sx) + Math.abs(e.clientY - this.drag.sy) > 5) this.drag.moved = true;
-        this.camYaw -= dx * 0.005;
-        this.camPitch = Math.max(-0.5, Math.min(1.2, this.camPitch + dy * 0.004));
+        this.camYaw -= dx * 0.005 * this.settings.sensitivity;
+        this.camPitch = Math.max(-0.5, Math.min(1.2, this.camPitch + dy * 0.004 * this.settings.sensitivity));
         this.drag.x = e.clientX;
         this.drag.y = e.clientY;
       }
@@ -498,6 +517,10 @@ export class Game {
   private dash(): void {
     if (this.dashT > 0 || !this.started) return;
     this.dashT = 0.9;
+    // A short invulnerability window makes the dash a deliberate defensive
+    // verb. The reward is only granted if an attack actually intersects it.
+    this.evadeT = 0.36;
+    this.evadeRewarded = false;
     const right = this.keys.has('KeyD') || this.keys.has('ArrowRight');
     const left = this.keys.has('ArrowLeft');
     const back = this.keys.has('KeyS') || this.keys.has('ArrowDown');
@@ -1057,6 +1080,16 @@ export class Game {
       at.y = f.groundY + 1;
       this.debris.burst(at, f.sampleIds, Math.min(40, 10 + f.blockCount / 8));
       this.explosions.boom(at, Math.min(12, 4 + f.blockCount / 60));
+      if (f.blockCount > 260) {
+        // Large structures do not disappear in a single clean pop: side bays
+        // fail a beat apart, leaving smoke and occasional fires in the rubble.
+        const left = at.clone().add(new THREE.Vector3(-4, 1.5, 2));
+        const right = at.clone().add(new THREE.Vector3(4, 2.5, -2));
+        this.explosions.boom(left, 5);
+        this.explosions.boom(right, 4);
+        this.explosions.smokePuff(at.clone().setY(at.y + 4), 8, 10, true);
+        if (f.blockCount > 700) this.fire.igniteSphere(this.world, at.x, at.y, at.z, 4);
+      }
       const vol = 1 - Math.min(1, at.distanceTo(this.player.pos) / 130);
       if (vol > 0.04) sfx.explode(Math.min(1, f.blockCount / 150), vol);
       this.npcs.scare(at, 40);
@@ -1452,6 +1485,7 @@ export class Game {
   private updateChatter(dt: number): void {
     this.barkT -= dt;
     this.idleChatterT -= dt;
+    this.supportCallT -= dt;
 
     const hpFrac = this.player.hp / this.player.maxHp;
     if (hpFrac > 0 && hpFrac < 0.28) this.bark('lowHealth');
@@ -1466,6 +1500,14 @@ export class Game {
       if (this.monster.hp / this.monster.maxHp < 0.2) this.bark('bossHurt');
       const d = this.monster.group.position.distanceTo(this.player.pos);
       if (d > 320) this.bark('bossFar');
+      if (this.monster.vulnerable && this.supportCallT <= 0 && !this.hud.busy) {
+        this.supportCallT = 18;
+        if (this.ally.active) {
+          this.hud.say([{ who: 'HINATA · PILOT', text: 'Core is open! I have your flank — go, senpai!' }]);
+        } else if (this.tank.active) {
+          this.hud.say([{ who: 'KOTETSU · SUPPORT', text: 'It stopped moving! Even I can hit that — probably!' }]);
+        }
+      }
 
       // Aya editorialising about whatever is currently wrecking her city
       if (this.monster.name !== this.monsterBarkFor) {
@@ -1610,7 +1652,7 @@ export class Game {
     this.hud.dismissStart();
     this.started = true;
     sfx.ensure();
-    sfx.startMusic();
+    sfx.startMusic('explore');
     this.restart();
     this.unlockEverything();
     this.bossIndex = index;
@@ -1704,6 +1746,8 @@ export class Game {
     this.hitStop = 0;
     this.impactZoom = 0;
     this.dashCameraT = 0;
+    this.evadeT = 0;
+    this.evadeRewarded = false;
     this.kick.set(0, 0, 0);
     this.camRoll = 0;
     this.rollTarget = 0;
@@ -1809,6 +1853,7 @@ export class Game {
     this.hitStop = Math.max(this.hitStop, 0.06);
     // TA-00 gets its own beat instead of the generic kaiju gear-change lines
     if (m instanceof Revenant) {
+      sfx.phaseStinger(phase === 3);
       this.revenantBeat(phase);
       this.hud.toast(
         phase === 3 ? 'IT HAS WORKED IT OUT' : 'IT IS REMEMBERING',
@@ -1820,6 +1865,7 @@ export class Game {
       return;
     }
     sfx.explode(0.8, 1);
+    sfx.phaseStinger(phase === 3);
     const at = m.group.position.clone().setY(m.group.position.y + 14);
     this.explosions.boom(at, phase === 3 ? 13 : 9);
     // the roar throws the player clear rather than damaging them — this is a
@@ -1979,6 +2025,12 @@ export class Game {
           this.shake = 1.4;
           this.explosions.boom(this.monster.group.position.clone().setY(this.monster.group.position.y + 14), 16);
           this.grantReward(this.monster.reward);
+          sfx.victoryStinger();
+          if (this.ally.active && !this.hud.busy) {
+            this.hud.say([{ who: 'HINATA · PILOT', text: 'Confirmed down! That was incredible, senpai!' }]);
+          } else if (this.tank.active && !this.hud.busy) {
+            this.hud.say([{ who: 'KOTETSU · SUPPORT', text: 'See? Perfect support fire. I definitely meant all of that.' }]);
+          }
           const finishedChapter = this.bossIndex - 1;
           if (CHAPTERS[finishedChapter]) {
             this.latestFinishedChapter = Math.max(this.latestFinishedChapter, finishedChapter);
@@ -1995,7 +2047,7 @@ export class Game {
         // — see the hold below — so the pause is exactly as long as it needs
         // to be and never longer.
         this.bossTimer = 13;
-        sfx.setMusicIntensity(0);
+        sfx.setMusicMode('explore');
         // don't stomp the campaign-complete objective set by the epilogue
         if (!this.campaignOver) this.hud.setObjective('Clear the drones — next contact inbound');
       }
@@ -2125,7 +2177,8 @@ export class Game {
         }
       }, 5200);
     }
-    sfx.setMusicIntensity(1);
+    sfx.setMusicMode(this.monster instanceof Revenant ? 'revenant' : 'boss');
+    sfx.bossStinger(this.monster instanceof Revenant);
   }
 
   private beginBossIntro(name: string, subtitle: string): void {
@@ -2222,12 +2275,27 @@ export class Game {
   }
 
   private damagePlayer(amount: number): void {
+    if (this.evadeT > 0) {
+      if (!this.evadeRewarded) {
+        this.evadeRewarded = true;
+        this.slowmo = Math.max(this.slowmo, 0.5);
+        this.impactZoom = Math.max(this.impactZoom, 0.75);
+        this.shake = Math.max(this.shake, 0.32);
+        this.monster?.rewardEvade(1.2);
+        this.addScore(180, true);
+        this.hud.perfectEvade();
+        sfx.impact(0.65, true);
+      }
+      return;
+    }
     if (this.player.abilities.shield) {
       amount *= 0.5;
       // shield shimmer
       const flash = this.player.pos.clone();
       flash.y += 5;
       this.explosions.boom(flash, 3);
+      this.hud.shieldFlash();
+      sfx.impact(0.45, true);
     }
     this.player.damage(amount);
     this.player.model.flinchT = 0.22; // visible recoil from the hit
@@ -2283,6 +2351,7 @@ export class Game {
     this.vulcanCooldown -= dt;
     this.quakeCooldown -= dt;
     this.dashT -= dt;
+    this.evadeT = Math.max(0, this.evadeT - rawDt);
     this.comboWindow -= dt;
     if (this.charging) this.chargeT += dt;
     // drop lock-on when the boss is gone
@@ -2339,12 +2408,25 @@ export class Game {
       this.player.update(dt, 0, 0, this.camYaw, false, false);
     }
     const standingNow = this.player.grounded || this.player.onPlatform;
+    sfx.setLowHealth(this.player.hp > 0 && this.player.hp / this.player.maxHp <= 0.25);
     if (!wasStanding && standingNow && incomingFallSpeed < -7) {
       const weight = Math.min(1, Math.abs(incomingFallSpeed) / 28);
       this.shake = Math.max(this.shake, 0.28 + weight * 0.55);
       this.impactZoom = Math.max(this.impactZoom, 0.35 + weight * 0.35);
       this.explosions.boom(this.player.pos.clone().setY(this.player.pos.y + 0.6), 2.5 + weight * 2);
       sfx.thud();
+    }
+    // Mechanical cadence follows actual ground speed. A low sub impact gives
+    // the frame mass; the quieter servo chirp fills the space between steps.
+    const groundSpeed = Math.hypot(this.player.vel.x, this.player.vel.z);
+    this.footstepT -= dt;
+    this.servoT -= dt;
+    if (standingNow && groundSpeed > 2 && this.footstepT <= 0) {
+      const stride = groundSpeed > 24 ? 0.27 : groundSpeed > 11 ? 0.38 : 0.52;
+      this.footstepT = stride;
+      sfx.footstep(Math.min(1, 0.45 + groundSpeed / 30));
+      if (this.servoT <= 0) { this.servoT = stride * 2; sfx.servo(0.7); }
+      this.shake = Math.max(this.shake, 0.035 + Math.min(0.06, groundSpeed * 0.002));
     }
     const crashes = this.planes.update(dt, this.player.pos,
       (x, z) => this.world.groundHeight(x, z, 60));
@@ -2457,6 +2539,7 @@ export class Game {
     this.updateSupportArrivals();
 
     this.updateCamera();
+    this.updateTargetLock();
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -2590,7 +2673,7 @@ export class Game {
     this.camera.position.add(this.kick);
     // additive shake — jitter the final camera position, never the input yaw/pitch
     if (this.shake > 0.01) {
-      const s = this.shake * 1.6;
+      const s = this.shake * 1.6 * this.settings.shake * (this.settings.reducedMotion ? 0.2 : 1);
       this.camera.position.x += (Math.random() - 0.5) * s;
       this.camera.position.y += (Math.random() - 0.5) * s;
       this.camera.position.z += (Math.random() - 0.5) * s;
@@ -2599,5 +2682,26 @@ export class Game {
     // Roll last: lookAt zeroes it, so banking and impact tilt have to be
     // applied to the already-oriented camera.
     if (Math.abs(this.camRoll) > 0.0005) this.camera.rotateZ(this.camRoll);
+  }
+
+  private updateTargetLock(): void {
+    const m = this.monster;
+    if (!this.lockOn || !m || m.dying) {
+      this.hud.setTargetLock(false);
+      return;
+    }
+    _v.copy(m.group.position);
+    _v.y += m.centerY;
+    const distance = _v.distanceTo(this.player.pos);
+    _v.project(this.camera);
+    const visible = _v.z > -1 && _v.z < 1 && Math.abs(_v.x) < 1.1 && Math.abs(_v.y) < 1.1;
+    if (!visible) {
+      this.hud.setTargetLock(false);
+      return;
+    }
+    const x = (_v.x * 0.5 + 0.5) * window.innerWidth;
+    const y = (-_v.y * 0.5 + 0.5) * window.innerHeight;
+    const state = m.vulnerable ? 'open' : m.threatening ? 'evade' : 'track';
+    this.hud.setTargetLock(true, x, y, distance, state);
   }
 }
