@@ -51,37 +51,44 @@ export class TouchControls {
                    transform:translate(-50%,-50%); pointer-events:none; display:none; }
         /* Thumb-shaped pad rather than a column. The old 2-wide stack ran
            310px up the screen — over a third of a phone — which put the
-           abilities out of reach and buried the comms panel underneath it.
-           Attack sits in the corner where the thumb rests; movement is one
-           reach away; abilities are a small strip along the top. */
+           abilities out of reach. Attack sits in the corner where the thumb
+           rests; movement is one reach away; abilities are a strip on top.
+           Rounded rectangles rather than circles: they carry a word legibly
+           at this size, and they tile without the wasted gaps discs leave. */
         .tc-btns { position:absolute; right:calc(10px + env(safe-area-inset-right));
-                   bottom:calc(16px + env(safe-area-inset-bottom)); display:grid;
-                   grid-template-columns:52px 58px 76px;
-                   grid-template-rows:44px 58px 76px;
+                   bottom:calc(14px + env(safe-area-inset-bottom)); display:grid;
+                   grid-template-columns:70px 70px 92px;
+                   grid-template-rows:44px 48px 58px;
                    grid-template-areas:
                      "nova  quake beam"
                      ".     wheel boost"
                      ".     jump  attack";
-                   gap:8px; }
-        .tc-btn { border-radius:50%; border:2px solid #3a5a7a;
-                  background:#0a1626d9; color:#eaf6ff; font-size:10px; letter-spacing:.5px;
+                   gap:7px; }
+        .tc-btn { border-radius:13px; border:1px solid #4d76a0;
+                  background:linear-gradient(180deg,#12263bd9,#0a1626e6);
+                  color:#dfeeff; font-size:11px; font-weight:600; letter-spacing:1.2px;
                   display:flex; align-items:center; justify-content:center; text-align:center;
-                  line-height:1.15; text-shadow:0 1px 2px #000; touch-action:none;
-                  backdrop-filter:blur(2px); }
+                  line-height:1.1; text-shadow:0 1px 2px #000a; touch-action:none;
+                  box-shadow:0 1px 0 #ffffff14 inset, 0 2px 6px #0006; }
         /* situational abilities read quieter than the things used every second */
-        .tc-btn.minor { font-size:9px; border-color:#33506e; background:#0a1626b0; color:#bcd8ee; }
+        .tc-btn.minor { font-size:9.5px; letter-spacing:1px; color:#a9c8e4;
+                        border-color:#31536f; background:linear-gradient(180deg,#0e1e2fc4,#0a1626cc); }
         #tc-nova { grid-area:nova; } #tc-quake { grid-area:quake; } #tc-beam { grid-area:beam; }
         #tc-wheel { grid-area:wheel; } #tc-boost { grid-area:boost; }
         #tc-jump { grid-area:jump; } #tc-attack { grid-area:attack; }
-        .tc-btn.big { border-color:#39e6e0; font-size:11px; box-shadow:0 0 16px #39e6e033; }
-        .tc-btn.held { background:#39e6e055; border-color:#39e6e0; }
+        /* the primary action reads as the primary action */
+        .tc-btn.big { border-color:#4fe6e0; color:#eaffff; font-size:12.5px; letter-spacing:1.6px;
+                      background:linear-gradient(180deg,#12414ce0,#0a2630e6);
+                      box-shadow:0 0 18px #39e6e03d, 0 1px 0 #ffffff1f inset, 0 2px 8px #0007; }
+        .tc-btn.held { background:linear-gradient(180deg,#2ea9b0,#1d7f8a); border-color:#7ff5ef;
+                       color:#f2ffff; box-shadow:0 0 22px #39e6e077; }
         .tc-btn.hidden { visibility:hidden; }
         /* Landscape phones are short. The portrait pad would take well over
            half the height, so it flattens into two rows and the abilities
            tuck in beside the movement keys instead of above them. */
         @media (orientation:landscape) and (max-height:520px) {
           .tc-btns { grid-template-columns:44px 48px 48px 64px;
-                     grid-template-rows:48px 64px;
+                     grid-template-rows:44px 60px;
                      grid-template-areas:
                        "nova quake beam  wheel"
                        ".    boost jump  attack";
@@ -119,7 +126,7 @@ export class TouchControls {
         <div class="tc-btn minor hidden" id="tc-nova">NOVA</div>
         <div class="tc-btn minor hidden" id="tc-quake">QUAKE</div>
         <div class="tc-btn minor hidden" id="tc-beam">BEAM</div>
-        <div class="tc-btn" id="tc-wheel">⚔</div>
+        <div class="tc-btn" id="tc-wheel">WEAPON</div>
         <div class="tc-btn" id="tc-boost">BOOST</div>
         <div class="tc-btn" id="tc-jump">JUMP</div>
         <div class="tc-btn big" id="tc-attack">ATTACK</div>
@@ -151,7 +158,10 @@ export class TouchControls {
   setWeapon(w: WeaponId): void {
     const meta = WEAPONS.find((x) => x.id === w)!;
     const atk = this.layer.querySelector('#tc-attack') as HTMLElement | null;
-    if (atk) atk.innerHTML = meta.icon + '<br/>' + meta.label;
+    // Label only. The weapon icons are text-presentation emoji (U+2694 and
+    // friends) with no glyph in the HUD font stack, so they drew as a tofu
+    // box — which is what the stray "x" on the pad actually was.
+    if (atk) atk.textContent = meta.label;
   }
 
   // hold buttons set a flag while pressed; tap buttons fire a callback
