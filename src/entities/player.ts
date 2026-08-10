@@ -12,11 +12,13 @@ const JUMP_V = 17;
 const WALK = 14;
 const RUN = 23;
 const FLY_V = 15;
+export const DASH_DURATION = 1.4;
 
 export interface Abilities {
   beam: boolean;
   boots: boolean; // rocket boots — on from the start
   thrust: boolean; // overdrive: faster, higher flight
+  dash: boolean; // blue boot burst, earned with overdrive after boss two
   nova: boolean;
   shield: boolean;
   blades: boolean; // twin sabers: faster, harder combo
@@ -37,12 +39,13 @@ export class Player {
   maxHp = 100;
   // rocket boots ship with the mecha; everything else is earned from bosses
   abilities: Abilities = {
-    beam: false, boots: true, thrust: false, nova: false,
+    beam: false, boots: true, thrust: false, dash: false, nova: false,
     shield: false, blades: false, quake: false,
   };
   private animT = 0;
   private dashVel = new THREE.Vector3();
   private dashTime = 0;
+  private impulseDuration = 1;
 
   constructor(private world: World) {}
 
@@ -77,9 +80,9 @@ export class Player {
     // dash impulse decays over its short lifetime, layered on top of input
     if (this.dashTime > 0) {
       this.dashTime -= dt;
-      this.vel.x += this.dashVel.x;
-      this.vel.z += this.dashVel.z;
-      this.dashVel.multiplyScalar(Math.max(0, 1 - dt * 4));
+      const fade = Math.max(0, this.dashTime / this.impulseDuration);
+      this.vel.x += this.dashVel.x * fade;
+      this.vel.z += this.dashVel.z * fade;
     }
 
     // A deck counts as ground: you stand on it, and jumping lifts off it.
@@ -171,7 +174,7 @@ export class Player {
   // Evasive burst: a decaying horizontal impulse layered on normal movement.
   dash(dir: THREE.Vector3): void {
     this.dashVel.set(dir.x, 0, dir.z).normalize().multiplyScalar(52);
-    this.dashTime = 0.28;
+    this.dashTime = this.impulseDuration = DASH_DURATION;
     if (this.grounded) this.vel.y = 6;
     this.yaw = Math.atan2(dir.x, dir.z);
   }
@@ -185,6 +188,7 @@ export class Player {
   knockback(dir: THREE.Vector3, force: number, lift = 0): void {
     this.dashVel.set(dir.x, 0, dir.z).normalize().multiplyScalar(force);
     this.dashTime = Math.max(this.dashTime, 0.34);
+    this.impulseDuration = this.dashTime;
     if (lift) this.vel.y = Math.max(this.vel.y, lift);
   }
 

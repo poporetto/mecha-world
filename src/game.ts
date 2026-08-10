@@ -6,7 +6,7 @@ import { World } from './core/world';
 import { corruptionAt, RIFT_SITE } from './core/worldgen';
 import { Revenant } from './entities/revenant';
 import { ChunkManager } from './render/chunkManager';
-import { Player } from './entities/player';
+import { DASH_DURATION, Player } from './entities/player';
 import { NpcManager } from './entities/npcs';
 import { CinderWyrm, CrimsonMantis, DeepMaw, IronColossus, Kaiju, MagmaGolem, Monster, MonsterCtx, Phase, Reward, RocketBeast, SkyReaver, TideLeviathan, VoltSerpent } from './entities/monsters';
 import { FireManager } from './fx/fire';
@@ -51,6 +51,7 @@ interface SaveData {
 }
 
 const _v = new THREE.Vector3();
+const PLAYER_BOSS_DAMAGE = 0.72;
 /** What a kaiju's palette drains toward after a long stay in the seam. */
 const _riftTint = new THREE.Color(0x4a3060);
 
@@ -178,6 +179,7 @@ export class Game {
   private readonly bossIntroDuration = 3;
   private lockOn = false; // lock-on targets the boss
   private dashT = 0; // dash cooldown
+  private dashFxT = 0;
   private evadeT = 0;
   private evadeRewarded = false;
   private comboWindow = 0; // time left to chain the next saber hit
@@ -251,6 +253,7 @@ export class Game {
         onAttackUp: () => this.attackUp(),
         onNova: () => this.novaPulse(),
         onQuake: () => this.quakeSlam(),
+        onDash: () => this.dash(),
         onWheel: () => this.hud.toggleWheel(),
         onLook: (dx, dy) => {
           this.camYaw -= dx * 0.006 * this.settings.sensitivity;
@@ -267,6 +270,7 @@ export class Game {
     (window as any).__game = this; // debug handle
 
     this.hud.bindWeaponWheel((w) => this.selectWeapon(w));
+    this.hud.bindDash(() => this.dash());
     this.hud.bindPause(() => this.setPaused(false), () => this.restart());
     this.hud.bindSettings(this.settings, (settings) => {
       this.settings = settings;
@@ -384,6 +388,9 @@ export class Game {
     this.bossTimer = 4;
     this.unlockedWeapons = new Set(d.weapons);
     this.player.abilities = { ...this.player.abilities, ...d.abilities };
+    // Older checkpoints predate the separate dash flag; overdrive was already
+    // the second-boss reward, so migrate those saves into the new ability.
+    if (this.player.abilities.thrust) this.player.abilities.dash = true;
     for (const w of this.unlockedWeapons) {
       this.hud.unlockWeapon(w);
       this.touch?.unlockWeapon(w);
@@ -391,6 +398,7 @@ export class Game {
     if (this.powerLevel > 1) this.hud.setPowerLevel(this.powerLevel);
     if (this.player.abilities.beam) this.hud.unlock('beam', '<b>E (hold)</b> PLASMA BEAM');
     if (this.player.abilities.thrust) this.hud.unlock('boots', '<b>SPACE</b> OVERDRIVE THRUSTERS');
+    if (this.player.abilities.dash) { this.hud.unlockDash(); this.touch?.unlockDash(); }
     if (this.player.abilities.nova) this.hud.unlock('nova', '<b>Q</b> NOVA PULSE');
     if (this.player.abilities.shield) this.hud.unlock('shield', 'AEGIS SHIELD 50%');
     if (this.player.abilities.blades) this.hud.unlock('blades', 'TWIN SABERS');
@@ -515,8 +523,8 @@ export class Game {
 
   // Quick evasive dash in the current movement (or facing) direction.
   private dash(): void {
-    if (this.dashT > 0 || !this.started) return;
-    this.dashT = 0.9;
+    if (this.dashT > 0 || !this.started || !this.player.abilities.dash) return;
+    this.dashT = DASH_DURATION;
     // A short invulnerability window makes the dash a deliberate defensive
     // verb. The reward is only granted if an attack actually intersects it.
     this.evadeT = 0.36;
@@ -538,6 +546,8 @@ export class Game {
     }
     this.player.dash(dir);
     this.player.model.dashT = 0.3; // forward lunge pose
+    this.player.model.setDashThrusters(true);
+    this.dashFxT = DASH_DURATION;
     this.dashCameraT = 0.3;
     this.shake = Math.max(this.shake, 0.18);
     this.explosions.boom(this.player.pos.clone().setY(this.player.pos.y + 3), 3);
@@ -787,7 +797,7 @@ export class Game {
     }
     if (this.monster && !this.monster.dying) {
       const d = this.monster.group.position.distanceTo(this.player.pos);
-      if (d < 40) this.monster.takeDamage(60 * this.power, 'quake');
+      if (d < 40) this.monster.takeDamage(60 * this.power * PLAYER_BOSS_DAMAGE, 'quake');
     }
   }
 
@@ -846,7 +856,7 @@ export class Game {
     }
     if (this.monster && !this.monster.dying) {
       const d = this.monster.group.position.distanceTo(this.player.pos);
-      if (d < 34) this.monster.takeDamage(45 * this.power, 'nova');
+      if (d < 34) this.monster.takeDamage(45 * this.power * PLAYER_BOSS_DAMAGE, 'nova');
     }
   }
 
@@ -937,7 +947,7 @@ export class Game {
         // catching it mid-recovery is the big payoff, so the feedback for it
         // has to be louder than an ordinary weak-point hit
         const open = m.vulnerable;
-        const dealt = m.takeDamage(dmg * bonus, src ?? this.selectedWeapon);
+        const dealt = m.takeDamage(dmg * bonus * PLAYER_BOSS_DAMAGE, src ?? this.selectedWeapon);
         const big = bonus > 1 || open;
         const strength = Math.min(1.9, Math.max(0.25, dealt / 28) * impactScale);
         this.hitStop = Math.max(this.hitStop, 0.012 + strength * 0.03 + (big ? 0.018 : 0) + (open ? 0.022 : 0));
@@ -981,7 +991,7 @@ export class Game {
     const perp = toM.sub(dir.clone().multiplyScalar(along)).length();
     if (perp < m.hitRadius) {
       const open = m.vulnerable;
-      const dealt = m.takeDamage(dmg, src ?? this.selectedWeapon);
+      const dealt = m.takeDamage(dmg * PLAYER_BOSS_DAMAGE, src ?? this.selectedWeapon);
       this.addScore(Math.round(dealt * 2), true);
       this.hud.popDamage(dealt, open);
     }
@@ -1629,6 +1639,7 @@ export class Game {
     // replaying reward toasts.
     if (abilities.beam) this.hud.unlock('beam', '<b>E (hold)</b> PLASMA BEAM');
     if (abilities.thrust) this.hud.unlock('boots', '<b>SPACE</b> OVERDRIVE THRUSTERS');
+    if (abilities.dash) { this.hud.unlockDash(); this.touch?.unlockDash(); }
     if (abilities.nova) this.hud.unlock('nova', '<b>Q</b> NOVA PULSE');
     if (abilities.shield) this.hud.unlock('shield', 'AEGIS SHIELD 50%');
     if (abilities.quake) this.hud.unlock('quake', '<b>G</b> QUAKE SLAM');
@@ -1737,7 +1748,7 @@ export class Game {
     this.revenantBeats.clear();
     this.unlockedWeapons = new Set<WeaponId>(['saber', 'rifle', 'missiles']);
     this.player.abilities = {
-      beam: false, boots: true, thrust: false, nova: false,
+      beam: false, boots: true, thrust: false, dash: false, nova: false,
       shield: false, blades: false, quake: false,
     };
     this.player.respawn();
@@ -1746,6 +1757,9 @@ export class Game {
     this.hitStop = 0;
     this.impactZoom = 0;
     this.dashCameraT = 0;
+    this.dashT = 0;
+    this.dashFxT = 0;
+    this.player.model.setDashThrusters(false);
     this.evadeT = 0;
     this.evadeRewarded = false;
     this.kick.set(0, 0, 0);
@@ -1835,7 +1849,7 @@ export class Game {
     if (!m) return 1;
     m.corePos(_v);
     // tight radius: the core has to actually be what you hit
-    return _v.distanceTo(p) < 8 ? 2.5 : 1;
+    return _v.distanceTo(p) < 8 ? 2.1 : 1;
   }
 
   /**
@@ -2126,6 +2140,11 @@ export class Game {
         sz = at.z + Math.cos(ra) * rd;
       }
       this.monster = entry.make(sx, sz);
+      // Act II revisits already-defeated kaiju. They advance the story and
+      // restore some integrity, but never replay an ability or weapon unlock.
+      if (chapterNo >= ACT2_START && !(this.monster instanceof Revenant)) {
+        this.monster.reward = 'none';
+      }
       // the Revenant is not seam-rotted scenery; it arrives as itself
       if (adv && !(this.monster instanceof Revenant)) {
         this.corruptMonster(this.monster, adv.frac);
@@ -2171,7 +2190,7 @@ export class Game {
       this.taughtWeakPoint = true;
       setTimeout(() => {
         if (this.monster && !this.monster.dying) {
-          this.hud.toast('WEAK POINT: DORSAL CORE', 'Strike high on its back for 2.5x damage', 4);
+          this.hud.toast('WEAK POINT: DORSAL CORE', 'Strike high on its back for 2.1x damage', 4);
         }
       }, 5200);
     }
@@ -2189,7 +2208,9 @@ export class Game {
   // DEBUG helper: hand the player every ability + weapon up front
   private unlockEverything(): void {
     const a = this.player.abilities;
-    a.beam = a.boots = a.thrust = a.nova = a.shield = a.blades = a.quake = true;
+    a.beam = a.boots = a.thrust = a.dash = a.nova = a.shield = a.blades = a.quake = true;
+    this.hud.unlockDash();
+    this.touch?.unlockDash();
     this.hud.unlock('beam', '<b>E (hold)</b> PLASMA BEAM');
     this.hud.unlock('boots', '<b>SPACE</b> OVERDRIVE THRUSTERS');
     this.hud.unlock('nova', '<b>Q</b> NOVA PULSE');
@@ -2216,6 +2237,11 @@ export class Game {
   }
 
   private grantReward(reward: Reward): void {
+    if (reward === 'none') {
+      this.player.heal(28);
+      this.hud.toast('SALVAGE RECOVERED', 'Integrity restored · no duplicate upgrade', 3.5);
+      return;
+    }
     sfx.jingle();
     switch (reward) {
       case 'beam':
@@ -2226,8 +2252,11 @@ export class Game {
         break;
       case 'thrust':
         this.player.abilities.thrust = true;
+        this.player.abilities.dash = true;
         this.hud.unlock('boots', '<b>SPACE</b> OVERDRIVE THRUSTERS');
-        this.hud.toast('OVERDRIVE THRUSTERS', 'Your boots climb higher and sprint faster', 5);
+        this.hud.unlockDash();
+        this.touch?.unlockDash();
+        this.hud.toast('OVERDRIVE DASH ONLINE', 'Press C or DASH for a blue-thruster evasive burst', 5);
         break;
       case 'nova':
         this.player.abilities.nova = true;
@@ -2354,7 +2383,9 @@ export class Game {
     this.railCooldown -= dt;
     this.vulcanCooldown -= dt;
     this.quakeCooldown -= dt;
-    this.dashT -= dt;
+    this.dashT = Math.max(0, this.dashT - rawDt);
+    this.dashFxT = Math.max(0, this.dashFxT - rawDt);
+    this.player.model.setDashThrusters(this.dashFxT > 0);
     this.evadeT = Math.max(0, this.evadeT - rawDt);
     this.comboWindow -= dt;
     if (this.charging) this.chargeT += dt;

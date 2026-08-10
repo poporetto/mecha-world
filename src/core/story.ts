@@ -349,14 +349,10 @@ export const CHAPTERS: Chapter[] = [
       { who: AYA, text: '…Contact inbound. Go.' },
     ],
     debrief: [
-      { who: KUROSAWA, text: 'Something is bleeding onto our channel. Routing it through.' },
-      { who: REI, text: '—get the shelters clear. I will catch up.' },
-      { who: HINATA, text: 'Who was that? Aya, who was that?' },
-      { who: REI, text: '—Kuroki? Kuroki, I have lost you on the turn. Say again.' },
-      { who: KUROKI, text: '…That is the archive. That is the archived transmission.' },
-      { who: KUROSAWA, text: 'It is not. The archive has four lines. This has said six.' },
-      { who: AYA, text: '[TRANSMISSION ENDED]' },
-      { who: HINATA, text: 'Aya cut the channel. …Aya has cut her own channel.' },
+      { who: KUROSAWA, text: 'Something is pressing against the carrier wave. No voice pattern yet.' },
+      { who: HINATA, text: 'It is matching Kuroki\'s transponder rhythm.' },
+      { who: KUROKI, text: 'Then it knows we are coming.' },
+      { who: AYA, text: 'Do not answer it. Not until we can see what is transmitting.' },
     ],
   },
   {
@@ -395,12 +391,8 @@ export const CHAPTERS: Chapter[] = [
     debrief: [
       { who: KUROSAWA, text: 'The Terra-Armor is moving to intercept. It is coming to you.' },
       { who: AYA, text: 'All units break off. BREAK OFF.' },
-      { who: REI, text: 'You called the turn.' },
-      { who: KUROKI, text: '…' },
-      { who: REI, text: 'I followed it. I followed it because it was you.' },
-      { who: REI, text: 'Where were you?' },
-      { who: AYA, text: 'Rei—' },
-      { who: REI, text: 'Where WERE you?' },
+      { who: KUROKI, text: 'It has locked onto my old wing channel.' },
+      { who: AYA, text: 'Do not open it. We identify the frame first.' },
       { who: KUROSAWA, text: 'It is powering weapons. Kuroki — it is powering weapons.' },
     ],
   },
@@ -814,7 +806,7 @@ export const MEMORIES: Line[][] = [
   [
     { who: KUROKI, text: 'You never ask about that day.' },
     { who: AYA, text: 'I was on comms that day, Kuroki. I do not need to ask.' },
-    { who: REI, text: '[ARCHIVED TRANSMISSION] Aya, get the shelters clear. I will catch up.' },
+    { who: AYA, text: 'The last order on the recording was to clear the shelters. I heard it once. That was enough.' },
     { who: AYA, text: 'I heard my sister go quiet. I do not need anybody to describe it to me.' },
   ],
   [

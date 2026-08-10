@@ -7,7 +7,8 @@ import { World } from '../core/world';
 export type Reward =
   | 'beam' | 'thrust' | 'nova' | 'shield' | 'blades' | 'quake' // abilities
   | 'railgun' | 'vulcan' | 'flamer' | 'aqua' // wheel weapons
-  | 'repair'; // endless mode: repairs + power level
+  | 'repair' // endless mode: repairs + power level
+  | 'none'; // story rematches: recovery only, never duplicate upgrades
 
 export interface MonsterCtx {
   world: World;
@@ -68,7 +69,7 @@ export abstract class Monster {
     return this.vulnT > 0;
   }
   /** Damage multiplier applied to hits landed inside a punish window. */
-  static readonly PUNISH = 1.9;
+  static readonly PUNISH = 1.65;
 
   protected deathT = 0;
   protected flashT = 0;
@@ -214,6 +215,29 @@ export abstract class Monster {
     );
     this.weakCore.position.set(0, localY, localZ);
     this.group.add(this.weakCore);
+
+    // Shared predator language across the roster: an uneven dorsal crown and
+    // outward shoulder spikes. Every boss keeps its authored anatomy, but no
+    // silhouette ends in a clean toy-like rectangle anymore.
+    const spikeMat = new THREE.MeshLambertMaterial({ color: 0x241d29, emissive: 0x22060b, emissiveIntensity: 0.28 });
+    for (let i = 0; i < 5; i++) {
+      const h = 1.5 + i * 0.32;
+      const spike = new THREE.Mesh(new THREE.BoxGeometry(0.7, h, 0.7), spikeMat.clone());
+      spike.position.set((i % 2 ? 0.35 : -0.35), localY - 5 + i * 1.55, localZ - 1.2);
+      spike.rotation.x = -0.48 - i * 0.04;
+      spike.rotation.z = (i % 2 ? 1 : -1) * 0.12;
+      this.group.add(spike);
+    }
+    for (const side of [-1, 1]) {
+      const horn = new THREE.Mesh(new THREE.BoxGeometry(0.85, 4.2, 0.85), spikeMat.clone());
+      horn.position.set(side * 4.8, localY - 3.4, -0.2);
+      horn.rotation.z = side * -0.88;
+      horn.rotation.x = -0.18;
+      this.group.add(horn);
+      const vent = box(1.15, 0.45, 0.35, 0x401019, 0xff2418);
+      vent.position.set(side * 2.2, localY - 3.2, 2.6);
+      this.group.add(vent);
+    }
   }
 
   /** World position of the weak point, for hit tests and aiming. */

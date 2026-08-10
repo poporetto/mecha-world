@@ -57,6 +57,9 @@ export class DroneManager {
     const body = box(2.6, 1.2, 2.6, HULL);
     const eye = box(1.1, 0.45, 0.3, 0xff4d4d, 0xff2222);
     eye.position.set(0, 0.1, 1.4);
+    const eyeL = box(0.34, 0.28, 0.18, 0xff2727, 0xff0000);
+    eyeL.position.set(-0.78, 0.02, 1.38);
+    const eyeR = eyeL.clone(); eyeR.position.x = 0.78;
     const skirt = box(2.2, 0.5, 2.2, TRIM);
     skirt.position.y = -0.75;
     // four stubby arms with a spinning rotor disc on top
@@ -68,10 +71,24 @@ export class DroneManager {
       const pod = box(0.7, 0.5, 0.7, 0x2f333c);
       pod.position.set(dx * 2.1, 0.35, dz * 2.1);
       g.add(pod);
+      const claw = box(0.22, 1.15, 0.22, 0x242830);
+      claw.position.set(dx * 2.24, -0.42, dz * 2.24);
+      claw.rotation.x = dz * 0.24;
+      claw.rotation.z = dx * -0.24;
+      g.add(claw);
+    }
+    for (const side of [-1, 1]) {
+      const mandible = box(0.28, 0.34, 1.5, TRIM);
+      mandible.position.set(side * 0.75, -0.35, 1.65);
+      mandible.rotation.y = side * -0.24;
+      const fin = box(0.2, 1.25, 0.7, 0x2f333c);
+      fin.position.set(side * 1.1, 0.75, -0.55);
+      fin.rotation.z = side * -0.45;
+      g.add(mandible, fin);
     }
     const rotor = box(5.6, 0.12, 0.5, 0xb9c0cc);
     rotor.position.y = 0.95;
-    g.add(body, eye, skirt, rotor);
+    g.add(body, eye, eyeL, eyeR, skirt, rotor);
     g.scale.setScalar(1.6);
 
     return {

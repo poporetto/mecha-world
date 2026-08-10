@@ -390,6 +390,13 @@ export class Hud {
                      color:#ffd86a; background:#17150dcc; border:1px solid #ffd86a99;
                      border-radius:4px; padding:7px 10px; font-size:9px; letter-spacing:2px; }
         .debug-btn:hover { background:#3a3213; box-shadow:0 0 14px #ffd86a55; }
+        .dash-action { display:none; position:absolute; right:24px; top:182px; width:74px; height:42px;
+                       pointer-events:auto; cursor:pointer; z-index:18; border-radius:5px;
+                       border:1px solid #58c8ff; color:#eaffff; background:#09233ddd;
+                       font-size:10px; letter-spacing:2px; box-shadow:0 0 15px #168cff44; }
+        .dash-action.ready { display:block; }
+        .dash-action:active { background:#168cff; transform:scale(.96); }
+        .tc-on .dash-action { display:none !important; }
         .debug-panel { position:absolute; right:108px; top:60px; width:250px; padding:12px;
                        display:none; pointer-events:auto; z-index:36; background:#080d16f2;
                        border:1px solid #ffd86a88; border-radius:6px; box-shadow:0 8px 28px #000b; }
@@ -456,6 +463,7 @@ export class Hud {
       <div class="cross"></div>
       <div class="wbtn" id="wbtn"><b id="wbtn-ico">⚔</b><span id="wbtn-name">SABER</span></div>
       <button class="debug-btn" id="debug-btn" type="button">DEBUG</button>
+      <button class="dash-action" id="dash-action" type="button"><b>C</b> DASH</button>
       <div class="debug-panel" id="debug-panel">
         <div class="debug-title">JUMP TO CHAPTER</div>
         <div class="debug-grid" id="debug-grid"></div>
@@ -561,6 +569,17 @@ export class Hud {
     this.onSelectWeapon = cb;
   }
 
+  bindDash(cb: () => void): void {
+    document.getElementById('dash-action')!.addEventListener('click', (e) => {
+      e.stopPropagation();
+      cb();
+    });
+  }
+
+  unlockDash(): void {
+    document.getElementById('dash-action')!.classList.add('ready');
+  }
+
   // reveal a weapon in the wheel once its boss has been beaten
   unlockWeapon(w: WeaponId): void {
     document.getElementById('w-' + w)!.classList.remove('locked');
@@ -580,6 +599,7 @@ export class Hud {
 
   /** Re-lock every earned ability and weapon, for a fresh run. */
   resetUnlocks(): void {
+    document.getElementById('dash-action')!.classList.remove('ready');
     const labels: Record<string, string> = {
       beam: '<b>E</b> BEAM — ???',
       nova: '<b>Q</b> NOVA — ???',

@@ -13,6 +13,7 @@ export interface TouchCallbacks {
   onAttackUp: () => void;
   onNova: () => void;
   onQuake: () => void;
+  onDash: () => void;
   onWheel: () => void;
   onLook: (dx: number, dy: number) => void;
 }
@@ -61,7 +62,7 @@ export class TouchControls {
                    grid-template-rows:44px 48px 58px;
                    grid-template-areas:
                      "nova  quake beam"
-                     ".     wheel boost"
+                     "dash  wheel boost"
                      ".     jump  attack";
                    gap:7px; }
         .tc-btn { border-radius:13px; border:1px solid #4d76a0;
@@ -74,7 +75,7 @@ export class TouchControls {
         .tc-btn.minor { font-size:9.5px; letter-spacing:1px; color:#a9c8e4;
                         border-color:#31536f; background:linear-gradient(180deg,#0e1e2fc4,#0a1626cc); }
         #tc-nova { grid-area:nova; } #tc-quake { grid-area:quake; } #tc-beam { grid-area:beam; }
-        #tc-wheel { grid-area:wheel; } #tc-boost { grid-area:boost; }
+        #tc-wheel { grid-area:wheel; } #tc-boost { grid-area:boost; } #tc-dash { grid-area:dash; }
         #tc-jump { grid-area:jump; } #tc-attack { grid-area:attack; }
         /* the primary action reads as the primary action */
         .tc-btn.big { border-color:#4fe6e0; color:#eaffff; font-size:12.5px; letter-spacing:1.6px;
@@ -91,7 +92,7 @@ export class TouchControls {
                      grid-template-rows:44px 60px;
                      grid-template-areas:
                        "nova quake beam  wheel"
-                       ".    boost jump  attack";
+                       "dash boost jump  attack";
                      gap:7px; bottom:calc(10px + env(safe-area-inset-bottom)); }
           .tc-btn { font-size:9px; }
           .tc-btn.big { font-size:10px; }
@@ -127,6 +128,7 @@ export class TouchControls {
         <div class="tc-btn minor hidden" id="tc-quake">QUAKE</div>
         <div class="tc-btn minor hidden" id="tc-beam">BEAM</div>
         <div class="tc-btn" id="tc-wheel">WEAPON</div>
+        <div class="tc-btn hidden" id="tc-dash">DASH</div>
         <div class="tc-btn" id="tc-boost">BOOST</div>
         <div class="tc-btn" id="tc-jump">JUMP</div>
         <div class="tc-btn big" id="tc-attack">ATTACK</div>
@@ -154,6 +156,10 @@ export class TouchControls {
   // wheel weapons are earned from bosses; nothing to reveal on the pad itself
   // (the radial wheel handles that) — kept so game.ts can call it uniformly
   unlockWeapon(_w: WeaponId): void {}
+
+  unlockDash(): void {
+    this.layer.querySelector('#tc-dash')?.classList.remove('hidden');
+  }
 
   setWeapon(w: WeaponId): void {
     const meta = WEAPONS.find((x) => x.id === w)!;
@@ -196,6 +202,7 @@ export class TouchControls {
     tap('tc-wheel', () => this.cb.onWheel());
     tap('tc-nova', () => this.cb.onNova());
     tap('tc-quake', () => this.cb.onQuake());
+    tap('tc-dash', () => this.cb.onDash());
     // attack button: press fires / starts charge, release ends charge
     const atk = this.layer.querySelector('#tc-attack')! as HTMLElement;
     atk.addEventListener('touchstart', (e) => {

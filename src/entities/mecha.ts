@@ -142,6 +142,8 @@ export class MechaModel {
   saberBlade: THREE.Mesh;
   private thrusterL: THREE.Mesh;
   private thrusterR: THREE.Mesh;
+  private dashJetL: THREE.Group;
+  private dashJetR: THREE.Group;
 
   swingT = -1; // 0..1 while swinging
   /** 0 horizontal, 1 reverse horizontal, 2 overhead finisher */
@@ -174,6 +176,30 @@ export class MechaModel {
     this.kneeL = (this.legL as THREE.Group & { lower: THREE.Group }).lower;
     this.kneeR = (this.legR as THREE.Group & { lower: THREE.Group }).lower;
     g.add(this.legL, this.legR);
+
+    const makeDashJet = (x: number): THREE.Group => {
+      const jet = new THREE.Group();
+      jet.position.set(x, 0.48, -0.42);
+      const core = new THREE.Mesh(
+        new THREE.BoxGeometry(0.16, 0.16, 2.1),
+        new THREE.MeshBasicMaterial({ color: 0xbff7ff, toneMapped: false })
+      );
+      core.position.z = -1.05;
+      const halo = new THREE.Mesh(
+        new THREE.BoxGeometry(0.42, 0.42, 2.5),
+        new THREE.MeshBasicMaterial({ color: 0x168cff, transparent: true, opacity: 0.48,
+          blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false })
+      );
+      halo.position.z = -1.2;
+      const light = new THREE.PointLight(0x249dff, 7, 7, 2);
+      light.position.z = -0.65;
+      jet.add(halo, core, light);
+      jet.visible = false;
+      g.add(jet);
+      return jet;
+    };
+    this.dashJetL = makeDashJet(-0.37);
+    this.dashJetR = makeDashJet(0.37);
 
     // Narrow mechanical pelvis, red belt clasp, and four independent skirt
     // plates reproduce the front/rear pattern without a single large cube.
@@ -584,6 +610,11 @@ export class MechaModel {
     this.flying = on;
   }
 
+  setDashThrusters(on: boolean): void {
+    this.dashJetL.visible = on;
+    this.dashJetR.visible = on;
+  }
+
   private flickerThrusters(t: number): void {
     if (!this.thrusterL.visible) return;
     const s = 0.85 + Math.abs(Math.sin(t * 31)) * 0.5;
@@ -593,6 +624,11 @@ export class MechaModel {
 
   animate(t: number, speed: number, grounded: boolean, dt: number): void {
     this.flickerThrusters(t);
+    if (this.dashJetL.visible) {
+      const s = 0.82 + Math.abs(Math.sin(t * 43)) * 0.5;
+      this.dashJetL.scale.set(1, 1, s);
+      this.dashJetR.scale.set(1, 1, 1.32 - (s - 0.82));
+    }
 
     // decay the one-shot triggers
     this.landT = Math.max(0, this.landT - dt);
