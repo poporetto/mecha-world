@@ -21,6 +21,12 @@ export interface Chapter {
   /** Played once it goes down. */
   debrief: Line[];
   /**
+   * The line under the chapter title on the full-screen card. Every chapter
+   * outside Act II used to share one hardcoded sentence, which made ten
+   * separate cold-opens read as the same beat repeated.
+   */
+  cold: string;
+  /**
    * Act II only. Where the line has moved to, as a fraction of the way from
    * home base to the rift. The staging shelter relocates just behind it and
    * contacts drop around it, so each chapter is physically further in.
@@ -59,6 +65,7 @@ export const CHAPTERS: Chapter[] = [
   {
     no: 1,
     title: 'FIRST CONTACT',
+    cold: 'The bay is still open.<br/>Whatever came through is in the eastern wards, and it is not leaving.',
     brief: [
       { who: AYA, text: 'Contact in the eastern wards — it is tearing the district apart!' },
       { who: KUROKI, text: 'Finally. Thought I got dressed up for nothing.' },
@@ -75,6 +82,7 @@ export const CHAPTERS: Chapter[] = [
   {
     no: 2,
     title: 'THE SKY OPENS',
+    cold: 'It has been circling since dawn without landing.<br/>It was not lost. It was choosing.',
     brief: [
       { who: AYA, text: 'Airborne contact. It has circled since dawn — it was WAITING.' },
       { who: KUROKI, text: 'Patient. I respect that. Does not change how this ends.' },
@@ -96,6 +104,7 @@ export const CHAPTERS: Chapter[] = [
   {
     no: 3,
     title: 'BENEATH THE STREETS',
+    cold: 'The seismographs under the subway line will not settle.<br/>Something is using the tunnels.',
     brief: [
       { who: KUROSAWA, text: 'Seismic readings all down the subway line. It is underneath you.' },
       { who: KUROKI, text: 'Under me. Perfect. My favourite place for a two-hundred-tonne snake.' },
@@ -120,6 +129,7 @@ export const CHAPTERS: Chapter[] = [
   {
     no: 4,
     title: 'THE MACHINE IN THE MONSTER',
+    cold: 'It came up the boulevard in daylight, in the open,<br/>and it did not hurry.',
     brief: [
       { who: AYA, text: 'This one is walking straight up the boulevard. No stealth. No fear.' },
       { who: KUROKI, text: 'Something we have in common.' },
@@ -146,6 +156,7 @@ export const CHAPTERS: Chapter[] = [
   {
     no: 5,
     title: 'WHAT CIRCLES ABOVE',
+    cold: 'The shadow crossed three districts before anyone<br/>thought to look up.',
     brief: [
       { who: KUROSAWA, text: 'It has been mapping us. Flight paths in a perfect survey grid.' },
       { who: AYA, text: 'It is scouting. Something is using it to look at our city.' },
@@ -164,6 +175,7 @@ export const CHAPTERS: Chapter[] = [
   {
     no: 6,
     title: 'BLADE AND BONE',
+    cold: 'It clears a city block in under four seconds.<br/>Nothing that big should move like that.',
     brief: [
       { who: AYA, text: 'Fast mover closing on the old quarter — do not let it flank you!' },
       { who: KUROKI, text: 'Relax. Nothing out here is faster than me.' },
@@ -182,6 +194,7 @@ export const CHAPTERS: Chapter[] = [
   {
     no: 7,
     title: 'THE GROUND BREAKS',
+    cold: 'The asphalt has been warm since midnight.<br/>Kurosawa says that is the least of it.',
     brief: [
       { who: KUROSAWA, text: 'Magma surge under the western hills. It is coming up through the rock.' },
       { who: AYA, text: 'If it lands a slam it will BURY you. Do you understand me?' },
@@ -201,6 +214,7 @@ export const CHAPTERS: Chapter[] = [
   {
     no: 8,
     title: 'FROM BELOW',
+    cold: 'No contact on any scope.<br/>Only the sound of something moving under the foundations.',
     brief: [
       { who: AYA, text: 'It burrows. No visual, no warning — then it is on top of you.' },
       { who: HINATA, text: 'I will watch the ground! If it moves under you I will shout!' },
@@ -221,6 +235,7 @@ export const CHAPTERS: Chapter[] = [
   {
     no: 9,
     title: 'THE CITY BURNS',
+    cold: 'Six wards are alight and the wind is turning.<br/>The fire is the weapon, not the wound.',
     brief: [
       { who: KUROSAWA, text: 'The countdown ended. THIS is what it was waiting for.' },
       { who: AYA, text: 'It is torching the wards faster than we can evacuate them!' },
@@ -246,6 +261,7 @@ export const CHAPTERS: Chapter[] = [
   {
     no: 10,
     title: 'WHAT CAME THROUGH FIRST',
+    cold: 'Everything since the bay split has been an escort.<br/>This is what they were escorting.',
     brief: [
       { who: KUROSAWA, text: 'This is the one that opened the bay. Everything else was an escort.' },
       { who: AYA, text: 'If it reaches the mainland there is nothing after it. Nothing, Kuroki.' },
@@ -277,6 +293,7 @@ export const CHAPTERS: Chapter[] = [
   {
     no: 11,
     title: 'THE ROAD OUT',
+    cold: 'Sealing the seam from this side has stopped working.<br/>So the line moves. Outward.',
     advance: { frac: 0.22, name: 'STAGING · THE CAUSEWAY' },
     brief: [
       { who: KUROSAWA, text: 'The seam is widening again. Sealing it from this side has stopped working.' },
@@ -300,6 +317,7 @@ export const CHAPTERS: Chapter[] = [
   {
     no: 12,
     title: 'WHAT THE TIDE LEFT',
+    cold: 'Past the causeway the maps stop being useful.<br/>Nothing out here has been surveyed since it opened.',
     advance: { frac: 0.4, name: 'STAGING · THE SHALLOWS' },
     brief: [
       { who: AYA, text: 'City is behind you now. Everything ahead of this point is ours only while you are standing on it.' },
@@ -320,6 +338,7 @@ export const CHAPTERS: Chapter[] = [
   {
     no: 13,
     title: 'DEAD GROUND',
+    cold: 'This ground has been inside the seam and come back.<br/>Nothing grows on it now.',
     advance: { frac: 0.58, name: 'STAGING · DEAD GROUND' },
     brief: [
       { who: KUROSAWA, text: 'No terrain, no salvage, no life. This stretch has been inside the seam and come back out.' },
@@ -343,6 +362,7 @@ export const CHAPTERS: Chapter[] = [
   {
     no: 14,
     title: 'IT WILL NOT ENGAGE',
+    cold: 'It has matched your advance for two days<br/>and has not once taken a shot.',
     advance: { frac: 0.76, name: 'STAGING · THE APPROACH' },
     brief: [
       { who: AYA, text: 'I am back on. I am fine. Do not ask.' },
@@ -364,6 +384,7 @@ export const CHAPTERS: Chapter[] = [
   {
     no: 15,
     title: 'THE MOUTH',
+    cold: 'Past this line the seam stops being a place<br/>and becomes a direction.',
     advance: { frac: 0.9, name: 'STAGING · THE MOUTH' },
     brief: [
       { who: KUROSAWA, text: 'This is the threshold. Past this the seam is not a place, it is a direction.' },
@@ -386,6 +407,7 @@ export const CHAPTERS: Chapter[] = [
   {
     no: 16,
     title: 'THE FIRST PROTOTYPE',
+    cold: 'It has been waiting three years for someone<br/>to answer the question.',
     advance: { frac: 0.98, name: 'STAGING · THE SEAM' },
     brief: [
       { who: KUROSAWA, text: 'Designation TA-00. That frame is not a copy of yours, Kuroki.' },

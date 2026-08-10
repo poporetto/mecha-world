@@ -188,7 +188,15 @@ export class Player {
     if (lift) this.vel.y = Math.max(this.vel.y, lift);
   }
 
+  /**
+   * Seconds of invulnerability remaining. Redeploying at half integrity into
+   * the same kaiju that just killed you, with no grace at all, is how a bad
+   * moment turns into an unrecoverable one.
+   */
+  invulnT = 0;
+
   damage(amount: number): void {
+    if (this.invulnT > 0) return;
     this.hp = Math.max(0, this.hp - amount);
   }
 

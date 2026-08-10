@@ -2144,9 +2144,7 @@ export class Game {
       void this.hud.showCard(
         `CHAPTER ${ch.no}`,
         ch.title,
-        adv
-          ? `The line moves to ${adv.name.replace('STAGING · ', '')}.<br/>Everyone left is behind you.`
-          : `A new signature has broken through.<br/>Neo Tokyo is counting on you.`
+        ch.cold
       ).then(() => {
         this.beginBossIntro(this.monster?.name ?? entry.toast[0], entry.toast[1]);
         this.hud.say(ch.brief);
@@ -2318,6 +2316,7 @@ export class Game {
       this.hud.setScore(this.score, this.combo);
       this.player.respawn();
       this.player.hp = Math.round(this.player.maxHp * 0.5);
+      this.player.invulnT = 2.5; // grace to get clear before taking hits again
       this.slowmo = 0.8;
       this.shake = 1.2;
       this.hud.toast('MECHA DOWN', `-${lost} score · combo lost · redeployed at 50% integrity`, 4);
@@ -2328,7 +2327,11 @@ export class Game {
 
   private frame(): void {
     const rawDt = Math.min(0.05, this.clock.getDelta());
-    if (this.paused) {
+    // A full-screen story card takes the controls away, but the world used to
+    // keep running underneath it — so a kaiju standing on you during a chapter
+    // title chewed through your health while you could not move, dodge or
+    // even see it. The card is modal for the simulation too now.
+    if (this.paused || this.hud.cardOpen) {
       this.renderer.render(this.scene, this.camera);
       return;
     }
@@ -2338,6 +2341,7 @@ export class Game {
     if (this.bossIntroT > 0) this.bossIntroT = Math.max(0, this.bossIntroT - rawDt);
     this.impactZoom = Math.max(0, this.impactZoom - rawDt * 4.2);
     this.dashCameraT = Math.max(0, this.dashCameraT - rawDt);
+    this.player.invulnT = Math.max(0, this.player.invulnT - rawDt);
     const dt = this.hitStop > 0 ? 0
       : this.bossIntroT > 0 ? rawDt * 0.16
       : this.slowmo > 0 ? rawDt * 0.35

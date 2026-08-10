@@ -221,9 +221,9 @@ export class Hud {
            gives to two, so it is laid out as explicit rows rather than left
            to overlap: integrity and score share row one, the boss bar takes
            row two full width, the objective row three, radar below that. */
-        .tc-on .hud-bar { left:10px; top:8px; width:118px; }
-        .tc-on .hud-label { font-size:8px; letter-spacing:1.2px; margin-bottom:3px; }
-        .tc-on .hud-track { height:9px; border-radius:5px; }
+        .tc-on .hud-bar { left:10px; top:6px; width:118px; }
+        .tc-on .hud-label { font-size:8px; letter-spacing:1.2px; margin-bottom:2px; }
+        .tc-on .hud-track { height:8px; border-radius:4px; }
         /* Wave and score share one line so the block stays short enough to
            clear the boss bar; the combo drops below so a long "x9 COMBO"
            cannot widen the row into the integrity bar on the far side. */
@@ -237,6 +237,21 @@ export class Hud {
                       max-width:74vw; overflow:hidden; text-overflow:ellipsis; }
         /* a smaller dial on touch, so dialogue has room beside it */
         .tc-on .minimap { width:112px; height:112px; right:10px; top:112px; }
+        /* The boss reveal is a full-screen overlay and was never scaled for a
+           phone: at clamp(34px,6vw,76px) with 12px letter-spacing, a name like
+           TIDE LEVIATHAN is ~450px wide on a 390px screen, so it ran off both
+           edges and sat on top of the objective and the radio panel. */
+        /* Only appears below 25% integrity, which is why the layout audit
+           never caught it: at its desktop position it lands straight on the
+           boss name. Tucked under the compacted integrity bar instead. */
+        .tc-on .critical-label { left:10px; top:32px; font-size:7.5px; letter-spacing:.8px; }
+        .tc-on .boss-intro { padding:0 16px; }
+        .tc-on .boss-intro .threat { font-size:9px; letter-spacing:clamp(2px,1.4vw,6px); }
+        .tc-on .boss-intro .name { font-size:clamp(19px,6.4vw,34px);
+                                   letter-spacing:clamp(1px,1vw,5px); margin:5px 0;
+                                   max-width:100%; overflow-wrap:anywhere; }
+        .tc-on .boss-intro .subtitle { font-size:10.5px; letter-spacing:1.4px;
+                                       max-width:100%; line-height:1.5; }
         /* Landscape phones are short and wide. Everything moves up and the
            radio narrows so it clears the radar — these have to come after the
            portrait .tc-on rules or equal specificity lets those win. */
