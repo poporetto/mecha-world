@@ -278,19 +278,19 @@ export class MechaModel {
 
     // Layered red butterfly chest motif from the front turnaround.
     for (const side of [-1, 1]) {
-      const pectoral = frustum(0.38, 0.47, 0.30, 0.132, 0.176, RED);
-      pectoral.position.set(side * 0.40, 1.28, 0.52);
+      const pectoral = frustum(0.24, 0.30, 0.21, 0.115, 0.15, RED);
+      pectoral.position.set(side * 0.46, 1.29, 0.52);
       pectoral.rotation.z = side * 0.22;
-      const lowerPec = frustum(0.25, 0.33, 0.17, 0.10, 0.128, RED);
-      lowerPec.position.set(side * 0.33, 1.00, 0.515);
+      const lowerPec = frustum(0.16, 0.21, 0.13, 0.088, 0.11, RED);
+      lowerPec.position.set(side * 0.40, 1.03, 0.515);
       lowerPec.rotation.z = side * -0.22;
       const whiteEdge = frustum(0.18, 0.28, 0.48, 0.08, 0.1, WHITE);
       whiteEdge.position.set(side * 0.72, 1.13, 0.46);
       whiteEdge.rotation.z = side * -0.12;
       this.torso.add(pectoral, lowerPec, whiteEdge);
     }
-    const sternum = frustum(0.26, 0.36, 0.70, 0.16, 0.2, WHITE);
-    sternum.position.set(0, 1.16, 0.50);
+    const sternum = frustum(0.46, 0.54, 0.74, 0.17, 0.21, WHITE);
+    sternum.position.set(0, 1.15, 0.50);
     const sternumRed = frustum(0.09, 0.16, 0.3, 0.058, 0.092, RED);
     sternumRed.position.set(0, 1.08, 0.596);
     this.torso.add(sternum, sternumRed);
@@ -312,7 +312,12 @@ export class MechaModel {
     collarL.position.set(-0.43, 1.62, 0);
     collarL.rotation.z = -0.12;
     addMirrored(this.torso, collarL);
-    this.torso.add(neck);
+    // small gold intake under the collar — a reference detail that was missing
+    const collarVent = plate(0.3, 0.09, 0.06, 0xffdc69);
+    collarVent.position.set(0, 1.5, 0.5);
+    const collarVentRim = plate(0.36, 0.05, 0.05, DARK);
+    collarVentRim.position.set(0, 1.44, 0.5);
+    this.torso.add(neck, collarVent, collarVentRim);
 
     // Compact reference-accurate rear pack: dark central machinery, white
     // cover panels and two lower nozzles visible from the back/side views.
@@ -470,15 +475,19 @@ export class MechaModel {
     // misplaced red spike seen in the previous render.
     for (const side of [-1, 1]) {
       const horn = new THREE.Group();
-      for (let i = 0; i < 5; i++) {
-        const segment = plate(0.1, 0.11, 0.1, RED);
-        segment.position.set(side * i * 0.012, i * 0.1, -i * 0.028);
+      // Eight segments with real backward rake: the reference antennae are
+      // long and sweep up AND back into a clear V, not short vertical spikes.
+      for (let i = 0; i < 8; i++) {
+        const t = i / 7;
+        const segment = plate(0.1 - t * 0.03, 0.12, 0.1 - t * 0.03, RED);
+        segment.position.set(side * i * 0.028, i * 0.115, -i * 0.075);
         horn.add(segment);
       }
       // Identical mount depth and mirrored lateral placement keep the red
       // antennae perfectly symmetrical from the front and rear.
       horn.position.set(side * 0.23, 0.35, -0.245);
-      horn.rotation.z = side * -0.125;
+      horn.rotation.z = side * -0.42;
+      horn.rotation.x = 0.16;
       this.head.add(horn);
     }
     this.torso.add(this.head);
@@ -674,10 +683,12 @@ export class MechaModel {
     shinInset.position.set(0, -0.58, 0.3);
     const shinBlade = frustum(0.22, 0.31, 0.75, 0.1, 0.14, WHITE);
     shinBlade.position.set(0, -0.53, 0.35);
-    const shinRed = frustum(0.19, 0.26, 0.3, 0.08, 0.1, RED);
-    shinRed.position.set(x < 0 ? -0.17 : 0.17, -0.28, 0.43);
-    const calfRed = frustum(0.12, 0.18, 0.45, 0.11, 0.16, RED);
-    calfRed.position.set(x < 0 ? 0.26 : -0.26, -0.6, -0.17);
+    // Thin red trim only. Full red shin and calf blocks made the legs read
+    // red-based; the reference keeps them white below the knee cap.
+    const shinRed = frustum(0.07, 0.10, 0.26, 0.06, 0.075, RED);
+    shinRed.position.set(x < 0 ? -0.19 : 0.19, -0.30, 0.42);
+    const calfRed = frustum(0.05, 0.07, 0.30, 0.07, 0.10, RED);
+    calfRed.position.set(x < 0 ? 0.27 : -0.27, -0.62, -0.17);
     const ankle = cylinder(0.18, 0.28, JOINT, 12);
     ankle.position.y = -1.27;
     ankle.rotation.z = Math.PI / 2;
@@ -711,14 +722,15 @@ export class MechaModel {
     // thinner red outer cheek: in the reference the pauldron reads white with
     // a red edge, not a red block with white behind it
     const outerCap = sphere(0.40, RED);
-    outerCap.scale.set(0.26, 0.80, 0.80);
-    outerCap.position.set(x > 0 ? 0.54 : -0.54, 0.17, 0);
+    outerCap.scale.set(0.15, 0.74, 0.74);
+    outerCap.position.set(x > 0 ? 0.575 : -0.575, 0.15, 0);
     const topInset = frustum(0.42, 0.3, 0.14, 0.6, 0.5, WHITE);
     topInset.position.set(0, 0.4, 0);
     topInset.rotation.x = -0.1;
-    const capBrow = frustum(0.26, 0.38, 0.16, 0.52, 0.62, RED);
-    capBrow.position.set(x > 0 ? 0.18 : -0.18, 0.34, 0);
-    capBrow.rotation.z = x > 0 ? -0.18 : 0.18;
+    // single red cap sitting across the whole top surface of the pauldron
+    const capBrow = frustum(0.62, 0.80, 0.17, 0.50, 0.64, RED);
+    capBrow.position.set(x > 0 ? 0.05 : -0.05, 0.40, 0);
+    capBrow.rotation.z = x > 0 ? -0.06 : 0.06;
     // From the right side the pauldron is a red outer frame around a recessed
     // charcoal panel, with a white lower cheek rather than a solid red slab.
     const shoulderInset = plate(0.045, 0.22, 0.23, 0x090a0d);
@@ -733,8 +745,8 @@ export class MechaModel {
     upperCore.position.y = -0.5;
     const upperFront = frustum(0.31, 0.38, 0.62, 0.27, 0.33, WHITE);
     upperFront.position.set(0, -0.49, 0.08);
-    const upperRed = frustum(0.1, 0.16, 0.27, 0.08, 0.1, RED);
-    upperRed.position.set(x > 0 ? 0.21 : -0.21, -0.56, 0.22);
+    const upperRed = frustum(0.05, 0.08, 0.22, 0.06, 0.075, RED);
+    upperRed.position.set(x > 0 ? 0.23 : -0.23, -0.56, 0.21);
     const upperRear = frustum(0.27, 0.34, 0.58, 0.24, 0.29, WHITE);
     upperRear.position.set(0, -0.49, -0.10);
     const elbowJoint = cylinder(0.21, 0.38, DARK, 14);
@@ -749,8 +761,8 @@ export class MechaModel {
     foreCore.position.y = -0.43;
     const fore = frustum(0.36, 0.28, 0.78, 0.38, 0.29, WHITE);
     fore.position.set(0, -0.42, 0.04);
-    const foreGuard = frustum(0.24, 0.31, 0.42, 0.1, 0.13, RED);
-    foreGuard.position.set(0, -0.38, 0.25);
+    const foreGuard = frustum(0.13, 0.17, 0.24, 0.08, 0.10, RED);
+    foreGuard.position.set(0, -0.34, 0.27);
     const fist = sphere(0.21, JOINT);
     fist.position.y = -0.91;
     fist.scale.set(0.9, 1.05, 0.9);
