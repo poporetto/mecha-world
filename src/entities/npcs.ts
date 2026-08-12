@@ -137,8 +137,10 @@ export class NpcManager {
       if (speed > 0) {
         const nx = n.pos.x + Math.sin(n.dir) * speed * dt;
         const nz = n.pos.z + Math.cos(n.dir) * speed * dt;
-        const gh = this.world.groundHeight(nx, nz, 12);
-        if (gh <= n.pos.y + 1.2 && this.world.getBlock(Math.floor(nx), Math.max(0, gh - 1), Math.floor(nz)) !== 4) {
+        const ceiling = Math.max(3, Math.ceil(n.pos.y + 0.9));
+        const gh = this.world.groundHeight(nx, nz, ceiling);
+        if (isOpenStreet(Math.floor(nx), Math.floor(nz)) && Math.abs(gh - n.pos.y) <= 0.72 &&
+            this.world.getBlock(Math.floor(nx), Math.max(0, gh - 1), Math.floor(nz)) !== 4) {
           n.pos.x = nx;
           n.pos.z = nz;
           n.pos.y = gh;
@@ -170,7 +172,11 @@ export class NpcManager {
         );
         n.petPos.x += (target.x - n.petPos.x) * Math.min(1, dt * 4);
         n.petPos.z += (target.z - n.petPos.z) * Math.min(1, dt * 4);
-        n.petPos.y = this.world.groundHeight(n.petPos.x, n.petPos.z, 12);
+        // Dogs inherit the pedestrian's traversable level instead of sampling
+        // rooftops independently while cutting the corner behind their owner.
+        const petCeiling = Math.max(3, Math.ceil(n.pos.y + 0.9));
+        const petGround = this.world.groundHeight(n.petPos.x, n.petPos.z, petCeiling);
+        n.petPos.y = Math.abs(petGround - n.pos.y) <= 0.72 ? petGround : n.pos.y;
         n.pet.position.copy(n.petPos);
         n.pet.position.y += speed > 0 ? Math.abs(Math.sin(t * 12 + n.phase)) * 0.08 : 0;
         n.pet.rotation.y = Math.atan2(n.pos.x - n.petPos.x, n.pos.z - n.petPos.z);

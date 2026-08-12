@@ -445,8 +445,8 @@ export class Hud {
         <div class="chip locked" id="chip-beam"><b>E</b> BEAM — ???</div>
         <div class="chip locked" id="chip-nova"><b>Q</b> NOVA — ???</div>
         <div class="chip locked" id="chip-quake"><b>G</b> QUAKE — ???</div>
-        <div class="chip locked" id="chip-blades">TWIN SABERS — ???</div>
-        <div class="chip locked" id="chip-shield">SHIELD — ???</div>
+        <div class="chip locked" id="chip-blades">CRIMSON EDGE — ???</div>
+        <div class="chip locked" id="chip-shield">AEGIS ARMOR — ???</div>
         <div class="chip" id="chip-power" style="display:none"></div>
       </div>
       <div class="toast" id="toast"><h1 id="toast-h"></h1><p id="toast-p"></p></div>
@@ -532,7 +532,7 @@ export class Hud {
           <b>L</b> or <b>middle-click</b> lock on &nbsp; <b>ESC</b> pause
         </div>
       </div>
-      <div class="hint">ARROWS / WASD move · SHIFT boost · SPACE jump · C dash<br/>A / click attack · L or middle-click lock-on · drag to rotate camera</div>
+      <div class="hint">ARROWS / WASD move · SHIFT boost · SPACE rise · X descend · C dash<br/>A / click attack · F Crimson Breaker · L or middle-click lock-on</div>
     `;
     this.hpFill = document.getElementById('hpfill')!;
     this.bossWrap = document.getElementById('boss')!;
@@ -604,8 +604,8 @@ export class Hud {
       beam: '<b>E</b> BEAM — ???',
       nova: '<b>Q</b> NOVA — ???',
       quake: '<b>G</b> QUAKE — ???',
-      blades: 'TWIN SABERS — ???',
-      shield: 'SHIELD — ???',
+      blades: 'CRIMSON EDGE — ???',
+      shield: 'AEGIS ARMOR — ???',
     };
     for (const k of Object.keys(labels)) {
       const chip = this.chips[k];
@@ -1029,10 +1029,10 @@ export class Hud {
     el.classList.add('show');
   }
 
-  setWeapon(w: WeaponId): void {
+  setWeapon(w: WeaponId, upgradedLabel?: string): void {
     const meta = WEAPONS.find((x) => x.id === w)!;
     document.getElementById('wbtn-ico')!.textContent = meta.icon;
-    document.getElementById('wbtn-name')!.textContent = meta.label;
+    document.getElementById('wbtn-name')!.textContent = upgradedLabel ?? meta.label;
     for (const x of WEAPONS) {
       document.getElementById('w-' + x.id)!.classList.toggle('sel', x.id === w);
     }

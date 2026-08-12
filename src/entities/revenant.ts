@@ -17,13 +17,15 @@ import { Monster, MonsterCtx, MONSTER_SCALE, Phase, Reward } from './monsters';
 /** Original palette of the player's frame, and what it becomes in the seam. */
 const RECOLOR: Array<[number, number]> = [
   [0xf4f5f8, 0x1d1a24], // white armour -> near black
-  [0xd8352a, 0x6d2352], // red trim -> deep violet
+  [0xe13b30, 0x6d2352], // red trim -> deep violet
   [0x28dff2, 0xb078ff], // cyan optics -> rift violet
   [0x63ff83, 0xc79bff], // saber green -> the colour of the tear
+  [0xff2448, 0xc79bff], // Crimson Edge -> rift blade
   [0x89919d, 0x4a4655], // steel
   [0x3a3d45, 0x25222c], // joints
   [0x23262b, 0x141118], // dark
-  [0xffdc69, 0xd0a0ff], // buckle light
+  [0xffd34e, 0xd0a0ff], // hip lamps
+  [0xffdc69, 0xd0a0ff], // legacy buckle light
 ];
 
 /**
@@ -56,6 +58,7 @@ export class Revenant extends Monster {
   private orbitDir = Math.random() < 0.5 ? 1 : -1;
   private bob = 0;
   private plowT = 0;
+  private corruption = new THREE.Group();
 
   /** Damage absorbed per weapon, which becomes resistance to it. */
   private learned = new Map<string, number>();
@@ -72,7 +75,12 @@ export class Revenant extends Monster {
     // is a mecha, not a kaiju, so undo it and take back a little more than
     // the player's own size — it should read as the same frame, a head taller.
     this.inner.scale.setScalar(1.18 / MONSTER_SCALE);
+    // It uses the same earned blade rig as Terra-Armor, but the seam has
+    // overwritten the emitter and beam with its own rift colour.
+    this.model.setCrimsonEdge(true);
     this.inner.add(this.model.group);
+    this.buildCorruption();
+    this.model.group.add(this.corruption);
     this.group.add(this.inner);
 
     const map = new Map(RECOLOR);
@@ -102,6 +110,55 @@ export class Revenant extends Monster {
     this.addCore(4.8, -0.75);
     this.weakCore.scale.setScalar(0.42);
     this.rememberEmissives();
+  }
+
+  /**
+   * Corruption is an overlay on the shared Terra-Armor skeleton, never a
+   * replacement rig. That keeps every joint and authored pose identical while
+   * making the prototype read as older, predatory and partially crystallised.
+   */
+  private buildCorruption(): void {
+    const shardMat = new THREE.MeshStandardMaterial({
+      color: 0x3c174c,
+      emissive: 0x7b24a8,
+      emissiveIntensity: 1.15,
+      metalness: 0.48,
+      roughness: 0.3,
+      flatShading: true,
+    });
+    const darkMat = new THREE.MeshStandardMaterial({
+      color: 0x100c15,
+      metalness: 0.7,
+      roughness: 0.34,
+      flatShading: true,
+    });
+    const addShard = (
+      x: number, y: number, z: number,
+      sx: number, sy: number, sz: number,
+      rx = 0, rz = 0, dark = false,
+    ) => {
+      const shard = new THREE.Mesh(
+        new THREE.ConeGeometry(0.5, 1.8, 4),
+        dark ? darkMat : shardMat,
+      );
+      shard.position.set(x, y, z);
+      shard.scale.set(sx, sy, sz);
+      shard.rotation.set(rx, 0, rz);
+      shard.castShadow = true;
+      this.corruption.add(shard);
+    };
+
+    // Uneven crown and cheek thorns break the heroic helmet outline.
+    addShard(-0.47, 5.02, -0.05, 0.22, 0.5, 0.22, -0.08, -0.28);
+    addShard(0.5, 4.9, -0.18, 0.18, 0.38, 0.18, 0.12, 0.38, true);
+    // Shoulder/back growths point away from the torso like torn armour.
+    addShard(-1.35, 4.15, -0.12, 0.42, 0.68, 0.42, 0.25, -0.92);
+    addShard(1.42, 4.0, -0.28, 0.34, 0.56, 0.34, -0.2, 0.98);
+    addShard(-0.72, 3.75, -0.72, 0.3, 0.62, 0.3, -0.75, -0.28, true);
+    addShard(0.58, 3.55, -0.78, 0.26, 0.5, 0.26, -0.68, 0.25);
+    // Smaller outer-leg spurs keep the corruption visible in chase/profile.
+    addShard(-0.67, 1.25, -0.05, 0.24, 0.42, 0.24, 0, -0.88);
+    addShard(0.65, 0.72, -0.12, 0.2, 0.36, 0.2, 0, 0.9, true);
   }
 
   /** Current resistance to a weapon, 1 = fresh, MIN_MULT = fully learned. */
@@ -204,8 +261,11 @@ export class Revenant extends Monster {
     // drive the shared frame's own animation so it walks and swings like you
     this.bob += dt;
     const speed = Math.hypot(this.vel.x, this.vel.z);
-    this.model.animate(t, speed, true, dt);
+    // Drive the exact same walk, flight, knee, elbow and weapon animation
+    // branches as the player's Terra-Armor.
+    this.model.animate(t, speed, !lit, dt);
     this.inner.position.y = Math.sin(this.bob * 3) * 0.06;
+    this.corruption.rotation.y = Math.sin(t * 1.7) * 0.012;
 
     // Now that towers no longer stop it, it has to go through them visibly
     // rather than clipping. A charge carves its own corridor.

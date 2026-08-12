@@ -13,6 +13,7 @@ import { FireManager } from './fx/fire';
 import { FloodManager } from './fx/flood';
 import { CarManager } from './entities/cars';
 import { Plane, PlaneManager } from './entities/planes';
+import { DefenseWing } from './entities/defensePlanes';
 import { DroneManager } from './entities/drones';
 import { TrafficManager } from './entities/traffic';
 import { Ally } from './entities/ally';
@@ -66,6 +67,9 @@ export class Game {
   private cars: CarManager;
   private debris = new Debris();
   private planes = new PlaneManager();
+  private defenseWing = new DefenseWing();
+  private defenseWingAnnounced = false;
+  private defenseLossCursor = 0;
   private drones = new DroneManager();
   private traffic = new TrafficManager();
   private ally = new Ally();
@@ -181,6 +185,16 @@ export class Game {
   private dashT = 0; // dash cooldown
   private dashFxT = 0;
   private evadeT = 0;
+  private counterWindow = 0;
+  private crimsonCooldown = 0;
+  private redeploying = false;
+  private chapterStartScore = 0;
+  private chapterStartDeaths = 0;
+  private chapterStartDamage = 0;
+  private bossTelegraph = new THREE.Mesh(
+    new THREE.RingGeometry(5.5, 7.3, 32),
+    new THREE.MeshBasicMaterial({ color: 0xff5a35, transparent: true, opacity: 0.55, depthWrite: false, side: THREE.DoubleSide })
+  );
   private evadeRewarded = false;
   private comboWindow = 0; // time left to chain the next saber hit
   private comboStep = 0; // 0..2 in the saber combo
@@ -235,7 +249,10 @@ export class Game {
     this.evacuees = new EvacueeManager(this.shelters.shelters.length);
     this.scene.add(this.evacuees.group);
     this.scene.add(this.npcs.group, this.cars.group, this.debris.mesh, this.explosions.group, this.fire.group);
-    this.scene.add(this.planes.group, this.drones.group, this.traffic.group, this.ally.group, this.tank.group, this.digger.group);
+    this.scene.add(this.planes.group, this.defenseWing.group, this.drones.group, this.traffic.group, this.ally.group, this.tank.group, this.digger.group);
+    this.bossTelegraph.rotation.x = -Math.PI / 2;
+    this.bossTelegraph.visible = false;
+    this.scene.add(this.bossTelegraph);
 
 
     // beam (unlockable): a long emissive box scaled to hit distance
@@ -388,6 +405,8 @@ export class Game {
     this.bossTimer = 4;
     this.unlockedWeapons = new Set(d.weapons);
     this.player.abilities = { ...this.player.abilities, ...d.abilities };
+    this.player.model.setCrimsonEdge(this.player.abilities.blades);
+    this.player.model.setAegisArmor(this.player.abilities.shield);
     // Older checkpoints predate the separate dash flag; overdrive was already
     // the second-boss reward, so migrate those saves into the new ability.
     if (this.player.abilities.thrust) this.player.abilities.dash = true;
@@ -400,8 +419,8 @@ export class Game {
     if (this.player.abilities.thrust) this.hud.unlock('boots', '<b>SPACE</b> OVERDRIVE THRUSTERS');
     if (this.player.abilities.dash) { this.hud.unlockDash(); this.touch?.unlockDash(); }
     if (this.player.abilities.nova) this.hud.unlock('nova', '<b>Q</b> NOVA PULSE');
-    if (this.player.abilities.shield) this.hud.unlock('shield', 'AEGIS SHIELD 50%');
-    if (this.player.abilities.blades) this.hud.unlock('blades', 'TWIN SABERS');
+    if (this.player.abilities.shield) this.hud.unlock('shield', 'AEGIS ARMOR · DAMAGE -50%');
+    if (this.player.abilities.blades) this.hud.unlock('blades', 'CRIMSON EDGE');
     if (this.player.abilities.quake) this.hud.unlock('quake', '<b>G</b> QUAKE SLAM');
     this.selectWeapon('saber');
     this.droneBase = Math.min(10, 3 + Math.floor(d.chapter * 0.7));
@@ -434,6 +453,7 @@ export class Game {
       if ((e.code === 'KeyL' || e.code === 'Tab') && !e.repeat) { e.preventDefault(); this.toggleLockOn(); }
       // A: main attack — fires the selected weapon (hold to charge the rifle)
       if (e.code === 'KeyA' && !e.repeat) this.attackDown();
+      if (e.code === 'KeyF' && !e.repeat) this.crimsonFinisher();
       // number keys pick a weapon directly
       // number keys 1..7 pick a weapon directly (locked ones are ignored)
       if (e.code.startsWith('Digit')) {
@@ -552,6 +572,7 @@ export class Game {
     this.shake = Math.max(this.shake, 0.18);
     this.explosions.boom(this.player.pos.clone().setY(this.player.pos.y + 3), 3);
     sfx.rocket(0.6); // whoosh
+    this.rumble(150, 0.2, 0.38);
   }
 
   private swingSaber(): void {
@@ -569,13 +590,21 @@ export class Game {
     } else {
       this.player.yaw = this.camYaw + Math.PI;
     }
+    const counter = this.counterWindow > 0;
+    if (counter) {
+      this.counterWindow = 0;
+      this.hud.toast('REVERSAL', 'Perfect-evade counter · amplified strike', 1.5);
+    }
+    const aerial = !this.player.grounded && !this.player.onPlatform;
+    const dashStrike = this.dashFxT > 0;
     sfx.swing();
+    this.rumble(55, 0.08, 0.16);
     setTimeout(() => {
       const dir = this.aimDir();
       // 3rd hit is a heavier, wider finisher
       const finisher = step === 2;
       const arcs = finisher ? [-0.7, -0.35, 0, 0.35, 0.7] : [-0.45, 0, 0.45];
-      const reach = finisher ? 11 : 9;
+      const reach = (finisher ? 11 : 9) + (aerial ? 2 : 0) + (dashStrike ? 3 : 0);
       for (const ang of arcs) {
         const cos = Math.cos(ang), sin = Math.sin(ang);
         const d = new THREE.Vector3(dir.x * cos - dir.z * sin, dir.y, dir.x * sin + dir.z * cos);
@@ -587,11 +616,32 @@ export class Game {
       pc.y += 5.6;
       // twin sabers cut ~60% deeper
       const blades = this.player.abilities.blades ? 1.6 : 1;
-      const dmg = (finisher ? 26 : 12 + step * 4) * this.power * blades;
+      const technique = (counter ? 2.15 : 1) * (aerial ? 1.25 : 1) * (dashStrike ? 1.35 : 1);
+      const dmg = (finisher ? 26 : 12 + step * 4) * this.power * blades * technique;
       if (this.hitMonster(pc, finisher ? 14 : 11, dmg, finisher ? 1.6 : 1.05) && finisher) {
         this.shake = Math.max(this.shake, 0.8);
       }
     }, 190);
+  }
+
+  /** Earned Crimson Edge technique: a committed charged overhead cleave. */
+  private crimsonFinisher(): void {
+    if (!this.started || !this.player.abilities.blades || this.crimsonCooldown > 0) return;
+    if (!this.player.model.startSwing(2)) return;
+    this.crimsonCooldown = 4.5;
+    this.comboWindow = 0;
+    this.hud.toast('CRIMSON BREAKER', 'Charged edge released', 1.25);
+    sfx.swing();
+    setTimeout(() => {
+      if (!this.started) return;
+      const dir = this.aimDir();
+      const p = this.player.pos.clone().addScaledVector(dir, 14);
+      p.y += 6;
+      this.destroyAt(p, 7.5, 0.75);
+      this.hitMonster(p, 16, 48 * this.power, 1.9, 'crimson-breaker');
+      this.shake = Math.max(this.shake, 0.8);
+      this.rumble(180, 0.45, 0.85);
+    }, 220);
   }
 
   private fireLaser(): void {
@@ -620,7 +670,7 @@ export class Game {
   selectWeapon(w: WeaponId): void {
     if (!this.unlockedWeapons.has(w)) return; // not earned yet
     this.selectedWeapon = w;
-    this.hud.setWeapon(w);
+    this.hud.setWeapon(w, w === 'saber' && this.player.abilities.blades ? 'CRIMSON EDGE' : undefined);
     this.touch?.setWeapon(w);
   }
 
@@ -958,6 +1008,7 @@ export class Game {
         this.addKick(p.clone().sub(this.player.pos), strength * (open ? 2.6 : 1.7));
         sfx.impact(strength, big);
         this.debris.burst(p, [15], open ? 12 : 6);
+        this.rumble(big ? 135 : 80, Math.min(1, 0.22 + strength * 0.25), Math.min(1, 0.35 + strength * 0.38));
         this.addScore(Math.round(dealt * 2), true);
         this.hud.popDamage(dealt, open);
         hit = true;
@@ -1416,6 +1467,23 @@ export class Game {
     // A cleared chapter is the checkpoint. Written here, after the reward has
     // been granted, so a resumed run gets back the weapon it just earned.
     this.saveProgress();
+    const earned = Math.max(0, this.score - this.chapterStartScore);
+    const chapterDeaths = Math.max(0, this.deaths - this.chapterStartDeaths);
+    const cityDamage = Math.max(0, this.blocksWrecked - this.chapterStartDamage);
+    const integrity = Math.round(this.player.hp / this.player.maxHp * 100);
+    const grade = chapterDeaths === 0 && integrity >= 75 && cityDamage < 180 ? 'S'
+      : chapterDeaths === 0 && integrity >= 45 && cityDamage < 350 ? 'A'
+      : chapterDeaths <= 1 ? 'B' : 'C';
+    setTimeout(() => {
+      if (this.hud.cardOpen) return;
+      void this.hud.showCard(
+        `CHAPTER ${ch.no} COMPLETE`, `COMBAT RANK · ${grade}`,
+        `Score earned: <b>${earned.toLocaleString()}</b><br/>` +
+        `Terra-Armor integrity: <b>${integrity}%</b><br/>` +
+        `City blocks damaged: <b>${cityDamage}</b><br/>` +
+        `Redeployments: <b>${chapterDeaths}</b>`
+      );
+    }, 1000);
     this.hud.say(ch.debrief);
     // The lull after a kill is the natural place for them to talk, so drip a
     // backstory scene here too rather than relying on the player idling.
@@ -1627,6 +1695,8 @@ export class Game {
     this.bossTimer = 2;
     this.wave = chapter;
     this.player.abilities = abilities;
+    this.player.model.setCrimsonEdge(abilities.blades);
+    this.player.model.setAegisArmor(abilities.shield);
     this.unlockedWeapons = weapons;
     this.powerLevel = powerLevel;
     this.power = power;
@@ -1641,9 +1711,9 @@ export class Game {
     if (abilities.thrust) this.hud.unlock('boots', '<b>SPACE</b> OVERDRIVE THRUSTERS');
     if (abilities.dash) { this.hud.unlockDash(); this.touch?.unlockDash(); }
     if (abilities.nova) this.hud.unlock('nova', '<b>Q</b> NOVA PULSE');
-    if (abilities.shield) this.hud.unlock('shield', 'AEGIS SHIELD 50%');
+    if (abilities.shield) this.hud.unlock('shield', 'AEGIS ARMOR · DAMAGE -50%');
     if (abilities.quake) this.hud.unlock('quake', '<b>G</b> QUAKE SLAM');
-    if (abilities.blades) this.hud.unlock('blades', 'TWIN SABERS');
+    if (abilities.blades) this.hud.unlock('blades', 'CRIMSON EDGE');
     for (const weapon of weapons) {
       this.hud.unlockWeapon(weapon);
       this.touch?.unlockWeapon(weapon);
@@ -1751,6 +1821,8 @@ export class Game {
       beam: false, boots: true, thrust: false, dash: false, nova: false,
       shield: false, blades: false, quake: false,
     };
+    this.player.model.setCrimsonEdge(false);
+    this.player.model.setAegisArmor(false);
     this.player.respawn();
     this.ridingPlane = null;
     this.slowmo = 0;
@@ -1760,8 +1832,14 @@ export class Game {
     this.dashT = 0;
     this.dashFxT = 0;
     this.player.model.setDashThrusters(false);
+    this.defenseWing.reset();
+    this.defenseWingAnnounced = false;
+    this.defenseLossCursor = 0;
     this.evadeT = 0;
     this.evadeRewarded = false;
+    this.counterWindow = 0;
+    this.crimsonCooldown = 0;
+    this.redeploying = false;
     this.kick.set(0, 0, 0);
     this.camRoll = 0;
     this.rollTarget = 0;
@@ -2101,7 +2179,7 @@ export class Game {
       { make: (x2, z2) => new VoltSerpent(x2, z2), toast: ['⚠ SEISMIC WEAVE ⚠', 'VOLT SERPENT surfacing. Defeat it to learn the NOVA PULSE.'] },
       { make: (x2, z2) => new IronColossus(x2, z2), toast: ['⚠ HEAVY FOOTFALLS ⚠', 'IRON COLOSSUS approaching. Defeat it to earn the AEGIS SHIELD.'] },
       { make: (x2, z2) => new SkyReaver(x2, z2), toast: ['⚠ SHADOW OVERHEAD ⚠', 'SKY REAVER circling above. Defeat it to salvage its RAILGUN.'] },
-      { make: (x2, z2) => new CrimsonMantis(x2, z2), toast: ['⚠ RAPID MOVEMENT ⚠', 'CRIMSON MANTIS closing fast. Defeat it to earn TWIN SABERS.'] },
+      { make: (x2, z2) => new CrimsonMantis(x2, z2), toast: ['⚠ RAPID MOVEMENT ⚠', 'CRIMSON MANTIS closing fast. Defeat it to forge the CRIMSON EDGE.'] },
       { make: (x2, z2) => new MagmaGolem(x2, z2), toast: ['⚠ MOLTEN MASS ⚠', 'MAGMA GOLEM erupting. Defeat it to learn the QUAKE SLAM.'] },
       { make: (x2, z2) => new DeepMaw(x2, z2), toast: ['⚠ TREMORS ⚠', 'DEEP MAW burrowing below. Defeat it to mount HEAD VULCANS.'] },
       { make: (x2, z2) => new CinderWyrm(x2, z2), toast: ['⚠ FIRESTORM ⚠', 'CINDER WYRM torching the district. Defeat it to claim its FLAMETHROWER.'] },
@@ -2140,6 +2218,9 @@ export class Game {
         sz = at.z + Math.cos(ra) * rd;
       }
       this.monster = entry.make(sx, sz);
+      this.chapterStartScore = this.score;
+      this.chapterStartDeaths = this.deaths;
+      this.chapterStartDamage = this.blocksWrecked;
       // Act II revisits already-defeated kaiju. They advance the story and
       // restore some integrity, but never replay an ability or weapon unlock.
       if (chapterNo >= ACT2_START && !(this.monster instanceof Revenant)) {
@@ -2209,14 +2290,16 @@ export class Game {
   private unlockEverything(): void {
     const a = this.player.abilities;
     a.beam = a.boots = a.thrust = a.dash = a.nova = a.shield = a.blades = a.quake = true;
+    this.player.model.setCrimsonEdge(true);
+    this.player.model.setAegisArmor(true);
     this.hud.unlockDash();
     this.touch?.unlockDash();
     this.hud.unlock('beam', '<b>E (hold)</b> PLASMA BEAM');
     this.hud.unlock('boots', '<b>SPACE</b> OVERDRIVE THRUSTERS');
     this.hud.unlock('nova', '<b>Q</b> NOVA PULSE');
-    this.hud.unlock('shield', 'AEGIS SHIELD 50%');
+    this.hud.unlock('shield', 'AEGIS ARMOR · DAMAGE -50%');
     this.hud.unlock('quake', '<b>G</b> QUAKE SLAM');
-    this.hud.unlock('blades', 'TWIN SABERS');
+    this.hud.unlock('blades', 'CRIMSON EDGE');
     this.touch?.unlock('beam');
     this.touch?.unlock('nova');
     this.touch?.unlock('quake');
@@ -2266,13 +2349,16 @@ export class Game {
         break;
       case 'shield':
         this.player.abilities.shield = true;
-        this.hud.unlock('shield', 'AEGIS SHIELD 50%');
-        this.hud.toast('AEGIS SHIELD ONLINE', 'All damage is halved', 5);
+        this.player.model.setAegisArmor(true);
+        this.hud.unlock('shield', 'AEGIS ARMOR · DAMAGE -50%');
+        this.hud.toast('AEGIS ARMOR ONLINE', 'Reinforced plating deployed · all damage is halved', 5);
         break;
       case 'blades':
         this.player.abilities.blades = true;
-        this.hud.unlock('blades', 'TWIN SABERS');
-        this.hud.toast('TWIN SABERS EQUIPPED', 'Saber combos swing faster and cut deeper', 5);
+        this.player.model.setCrimsonEdge(true);
+        this.hud.unlock('blades', 'CRIMSON EDGE');
+        this.selectWeapon('saber');
+        this.hud.toast('CRIMSON EDGE FORGED', 'Red laser saber · 60% stronger strikes', 5);
         break;
       case 'quake':
         this.player.abilities.quake = true;
@@ -2302,6 +2388,7 @@ export class Game {
   }
 
   private damagePlayer(amount: number): void {
+    if (this.redeploying) return;
     if (this.evadeT > 0) {
       if (!this.evadeRewarded) {
         this.evadeRewarded = true;
@@ -2309,6 +2396,7 @@ export class Game {
         this.impactZoom = Math.max(this.impactZoom, 0.75);
         this.shake = Math.max(this.shake, 0.32);
         this.monster?.rewardEvade(1.2);
+        this.counterWindow = 1.5;
         this.addScore(180, true);
         this.hud.perfectEvade();
         sfx.impact(0.65, true);
@@ -2317,12 +2405,14 @@ export class Game {
     }
     if (this.player.abilities.shield) {
       amount *= 0.5;
+      this.player.model.pulseAegis();
       // shield shimmer
       const flash = this.player.pos.clone();
       flash.y += 5;
       this.explosions.boom(flash, 3);
       this.hud.shieldFlash();
       sfx.impact(0.45, true);
+      this.rumble(120, 0.3, 0.6);
     }
     this.player.damage(amount);
     this.player.model.flinchT = 0.22; // visible recoil from the hit
@@ -2334,7 +2424,7 @@ export class Game {
     this.shake = Math.max(this.shake, Math.min(0.9, 0.25 + amount * 0.022));
     this.hitStop = Math.max(this.hitStop, Math.min(0.05, amount * 0.0022));
     sfx.thud();
-    if (this.player.hp <= 0) {
+    if (this.player.hp <= 0 && !this.redeploying) {
       // dying costs the run: the combo breaks, score is docked, and the mecha
       // comes back only partly repaired, so attrition actually matters
       this.deaths++;
@@ -2343,12 +2433,28 @@ export class Game {
       this.combo = 1;
       this.comboTimer = 0;
       this.hud.setScore(this.score, this.combo);
-      this.player.respawn();
-      this.player.hp = Math.round(this.player.maxHp * 0.5);
-      this.player.invulnT = 2.5; // grace to get clear before taking hits again
+      this.redeploying = true;
+      this.started = false;
       this.slowmo = 0.8;
       this.shake = 1.2;
-      this.hud.toast('MECHA DOWN', `-${lost} score · combo lost · redeployed at 50% integrity`, 4);
+      this.explosions.boom(this.player.pos.clone().setY(this.player.pos.y + 5), 12);
+      this.hud.say([{ who: 'AYA · COMMAND', text: 'Terra-Armor signal lost! Recovery team, lock onto Kuroki’s beacon. Emergency frame inbound.' }]);
+      setTimeout(() => {
+        void this.hud.showCard(
+          'TERRA-ARMOR DESTROYED',
+          'EMERGENCY REDEPLOYMENT',
+          `Combat score lost: <b>${lost.toLocaleString()}</b><br/>Combo chain terminated.<br/><br/>` +
+          'Command has restored the latest frame backup at 50% integrity.'
+        ).then(() => {
+          this.player.respawn();
+          this.player.hp = Math.round(this.player.maxHp * 0.5);
+          this.player.invulnT = 3.5;
+          this.redeploying = false;
+          this.started = true;
+          this.hud.toast('REDEPLOYED', 'Emergency invulnerability active', 2.5);
+          if (!this.touch) this.renderer.domElement.requestPointerLock();
+        });
+      }, 700);
     }
   }
 
@@ -2383,10 +2489,12 @@ export class Game {
     this.railCooldown -= dt;
     this.vulcanCooldown -= dt;
     this.quakeCooldown -= dt;
+    this.crimsonCooldown -= dt;
     this.dashT = Math.max(0, this.dashT - rawDt);
     this.dashFxT = Math.max(0, this.dashFxT - rawDt);
     this.player.model.setDashThrusters(this.dashFxT > 0);
     this.evadeT = Math.max(0, this.evadeT - rawDt);
+    this.counterWindow = Math.max(0, this.counterWindow - rawDt);
     this.comboWindow -= dt;
     if (this.charging) this.chargeT += dt;
     // drop lock-on when the boss is gone
@@ -2404,7 +2512,8 @@ export class Game {
       let off = heading - this.camYaw;
       while (off > Math.PI) off -= Math.PI * 2;
       while (off < -Math.PI) off += Math.PI * 2;
-      this.rollTarget += (Math.sin(off) * Math.min(1, lateral / 34) * 0.05 - this.rollTarget) * Math.min(1, rawDt * 3);
+      const bankStrength = (!this.player.grounded && !this.player.onPlatform) ? 0.09 : 0.05;
+      this.rollTarget += (Math.sin(off) * Math.min(1, lateral / 34) * bankStrength - this.rollTarget) * Math.min(1, rawDt * 3);
     } else {
       this.rollTarget *= Math.max(0, 1 - rawDt * 4);
     }
@@ -2427,6 +2536,7 @@ export class Game {
       let mz = (fwd ? 1 : 0) - (back ? 1 : 0);
       jump = this.keys.has('Space');
       let boost = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
+      const descend = this.keys.has('KeyX');
       if (this.touch) {
         mx += this.touch.moveX;
         mz += this.touch.moveZ;
@@ -2438,9 +2548,9 @@ export class Game {
         this.player.pos.x += this.ridingPlane.dx;
         this.player.pos.z += this.ridingPlane.dz;
       }
-      this.player.update(dt, mx, mz, this.camYaw, jump, boost);
+      this.player.update(dt, mx, mz, this.camYaw, jump, boost, descend);
     } else {
-      this.player.update(dt, 0, 0, this.camYaw, false, false);
+      this.player.update(dt, 0, 0, this.camYaw, false, false, false);
     }
     const standingNow = this.player.grounded || this.player.onPlatform;
     sfx.setLowHealth(this.player.hp > 0 && this.player.hp / this.player.maxHp <= 0.25);
@@ -2469,6 +2579,34 @@ export class Game {
     for (const c of crashes) this.planeCrash(c);
     this.updatePlaneRiding(jump);
 
+    const wingEvents = this.defenseWing.update(dt, this.time, this.player.pos,
+      this.monster && !this.monster.dying ? this.monster : null);
+    if (wingEvents.respawned > 0 && !this.defenseWingAnnounced) {
+      this.defenseWingAnnounced = true;
+      this.hud.toast('N.T.D.F. DEFENSE WING', 'Allied interceptors commencing attack runs', 4);
+      this.hud.say([{ who: 'DEFENSE LEAD', text: 'Terra-Armor, Defense Wing is on station. We will keep its attention off the shelters.' }]);
+    }
+    for (const hit of wingEvents.hits) {
+      const monster = this.monster;
+      if (!monster || monster.dying) break;
+      monster.takeDamage(hit.damage, 'defense-wing');
+      this.debris.burst(hit.at, [15], 2);
+    }
+    for (const at of wingEvents.crashes) {
+      this.explosions.boom(at, 7);
+      this.debris.burst(at, [6, 12, 15], 14);
+      this.shake = Math.max(this.shake, at.distanceTo(this.player.pos) < 80 ? 0.3 : 0.12);
+      sfx.explode(0.45, 1 - Math.min(1, at.distanceTo(this.player.pos) / 140));
+      const ayaLosses = [
+        'Interceptor lost! Their airframes cannot survive a direct hit — keep that monster occupied.',
+        'Defense aircraft down. Search and rescue is moving, but replacement launch will take time.',
+        'We just lost another pilot. Kuroki, break the monster’s attack pattern before the next run.',
+        'One hit was all it took. Defense Wing, widen your spacing and stay out of its reach.',
+      ];
+      const line = ayaLosses[this.defenseLossCursor++ % ayaLosses.length];
+      this.hud.say([{ who: 'AYA · COMMAND', text: line }]);
+    }
+
     this.chunks.update(this.player.pos.x, this.player.pos.z);
     this.traffic.update(dt, this.time, this.player.pos,
       (x, z) => this.world.groundHeight(x, z, 40),
@@ -2484,6 +2622,19 @@ export class Game {
     this.cars.update(dt, this.player.pos);
 
     this.updateBosses(dt);
+    // Major attacks project a pulsing danger zone at Terra-Armor's current
+    // position. This turns the existing animation tell into spatially useful
+    // information without filling the HUD with another warning panel.
+    if (this.monster && !this.monster.dying && this.monster.threatening) {
+      this.bossTelegraph.visible = true;
+      const gy = this.world.groundHeight(this.player.pos.x, this.player.pos.z, 60);
+      this.bossTelegraph.position.set(this.player.pos.x, gy + 0.18, this.player.pos.z);
+      const pulse = 1 + Math.sin(this.time * 18) * 0.12;
+      this.bossTelegraph.scale.setScalar(pulse);
+      (this.bossTelegraph.material as THREE.MeshBasicMaterial).opacity = 0.42 + Math.sin(this.time * 18) * 0.18;
+    } else {
+      this.bossTelegraph.visible = false;
+    }
     // shelters: only kaiju hurt them, and losing one ends the run
     const dronePos = this.drones.group.children.map((d) => d.position);
     const bossPos = this.monster && !this.monster.dying ? this.monster.group.position : null;
@@ -2668,6 +2819,27 @@ export class Game {
     // roll away from the impact so the frame tilts with the blow
     this.rollTarget += (Math.random() < 0.5 ? -1 : 1) * amount * 0.012;
     this.rollTarget = THREE.MathUtils.clamp(this.rollTarget, -0.09, 0.09);
+  }
+
+  /** Optional controller tactility; silently degrades on keyboard-only devices. */
+  private rumble(duration: number, weak: number, strong: number): void {
+    const pads = navigator.getGamepads?.();
+    if (!pads) return;
+    type RumbleActuator = {
+      playEffect: (type: string, options: {
+        duration: number; weakMagnitude: number; strongMagnitude: number;
+      }) => Promise<unknown>;
+    };
+    for (const pad of pads) {
+      const actuator = (pad as Gamepad & { vibrationActuator?: RumbleActuator } | null)?.vibrationActuator;
+      if (!actuator?.playEffect) continue;
+      void actuator.playEffect('dual-rumble', {
+        duration,
+        weakMagnitude: THREE.MathUtils.clamp(weak, 0, 1),
+        strongMagnitude: THREE.MathUtils.clamp(strong, 0, 1),
+      }).catch(() => undefined);
+      break;
+    }
   }
 
   private updateCamera(): void {

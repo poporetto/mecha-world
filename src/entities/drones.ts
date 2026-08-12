@@ -62,6 +62,33 @@ export class DroneManager {
     const eyeR = eyeL.clone(); eyeR.position.x = 0.78;
     const skirt = box(2.2, 0.5, 2.2, TRIM);
     skirt.position.y = -0.75;
+    // The swarm now reads as a biomechanical hunting insect rather than a
+    // floating box: layered carapace, recessed face, feeding mandibles and a
+    // visible hot underbelly preserve its silhouette without adding hit cost.
+    const crown = box(2.15, 0.42, 1.85, 0x747d8d);
+    crown.position.set(0, 0.78, -0.05);
+    crown.rotation.x = -0.08;
+    const face = box(1.75, 0.72, 0.48, 0x252933);
+    face.position.set(0, -0.12, 1.48);
+    const gullet = box(0.74, 0.34, 0.36, 0x7d1820, 0xff192d);
+    gullet.position.set(0, -0.48, 1.7);
+    const abdomen = box(1.55, 0.85, 1.85, 0x343943);
+    abdomen.position.set(0, -0.75, -1.35);
+    const abdomenGlow = box(0.72, 0.3, 1.25, 0xef6a6a, 0x8b1018);
+    abdomenGlow.position.set(0, -1.18, -1.3);
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < 3; i++) {
+        const fang = box(0.18, 0.22, 0.72 + i * 0.12, 0xcbd0d8);
+        fang.position.set(side * (0.28 + i * 0.3), -0.52, 1.82 + i * 0.1);
+        fang.rotation.x = -0.36;
+        fang.rotation.y = side * (0.12 + i * 0.08);
+        g.add(fang);
+      }
+      const brow = box(0.92, 0.2, 0.42, TRIM);
+      brow.position.set(side * 0.62, 0.34, 1.52);
+      brow.rotation.z = side * -0.16;
+      g.add(brow);
+    }
     // four stubby arms with a spinning rotor disc on top
     for (const [dx, dz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {
       const arm = box(1.5, 0.3, 0.5, HULL);
@@ -88,7 +115,7 @@ export class DroneManager {
     }
     const rotor = box(5.6, 0.12, 0.5, 0xb9c0cc);
     rotor.position.y = 0.95;
-    g.add(body, eye, eyeL, eyeR, skirt, rotor);
+    g.add(body, eye, eyeL, eyeR, skirt, crown, face, gullet, abdomen, abdomenGlow, rotor);
     g.scale.setScalar(1.6);
 
     return {

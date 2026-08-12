@@ -11,11 +11,13 @@
 
 import * as THREE from 'three';
 import { World } from '../core/world';
+import { isOpenStreet } from '../core/worldgen';
 import { makePerson } from './npcs';
 
 const MAX_ACTIVE = 46;  // matches the street population, so the city stays cheap
 const SPEED = 7.5;
 const ARRIVE = 17;      // close enough to count as inside
+const MAX_STEP = 0.72;  // civilians can step onto kerbs, never onto structures
 
 interface Walker {
   group: THREE.Group;
@@ -91,11 +93,20 @@ export class EvacueeManager {
       }
       if (best < 0) return; // nowhere left to run to
       const target = shelters[best]!;
-      const a = Math.random() * Math.PI * 2;
-      const r = 4 + Math.random() * 10;
-      const x = at.x + Math.sin(a) * r, z = at.z + Math.cos(a) * r;
+      // A collapsed tower can report a point high inside its footprint. Search
+      // outward for an actual street spawn so nobody materialises on rubble or
+      // a surviving roof course.
+      let x = at.x, z = at.z;
+      for (let attempt = 0; attempt < 16; attempt++) {
+        const a = Math.random() * Math.PI * 2;
+        const r = 7 + Math.random() * 18;
+        const sx = at.x + Math.sin(a) * r, sz = at.z + Math.cos(a) * r;
+        if (!isOpenStreet(Math.floor(sx), Math.floor(sz))) continue;
+        x = sx; z = sz;
+        break;
+      }
       const w = this.take();
-      w.pos.set(x, world.groundHeight(x, z, 60), z);
+      w.pos.set(x, world.groundHeight(x, z, 6), z);
       w.target = target;
       w.shelter = best;
       w.phase = Math.random() * 10;
@@ -118,13 +129,33 @@ export class EvacueeManager {
         this.walkers.splice(i, 1);
         continue;
       }
-      w.pos.x += (dx / d) * SPEED * dt;
-      w.pos.z += (dz / d) * SPEED * dt;
-      w.pos.y += (world.groundHeight(w.pos.x, w.pos.z, 60) - w.pos.y) * Math.min(1, dt * 6);
+      const desired = Math.atan2(dx, dz);
+      const stride = SPEED * dt;
+      // Try forward first, then progressively wider street-level detours. A
+      // candidate is valid only if it remains on a generated road and the
+      // terrain change is a human-sized step. Crucially, groundHeight is
+      // capped just above the walker's feet, so skyscraper roofs are invisible
+      // to pedestrian navigation.
+      const steering = [0, 0.42, -0.42, 0.82, -0.82, 1.25, -1.25, Math.PI];
+      let moved = false;
+      for (const offset of steering) {
+        const a = desired + offset + Math.sin(w.phase) * 0.035;
+        const nx = w.pos.x + Math.sin(a) * stride;
+        const nz = w.pos.z + Math.cos(a) * stride;
+        if (!isOpenStreet(Math.floor(nx), Math.floor(nz))) continue;
+        const ceiling = Math.max(3, Math.ceil(w.pos.y + MAX_STEP + 0.2));
+        const gh = world.groundHeight(nx, nz, ceiling);
+        if (Math.abs(gh - w.pos.y) > MAX_STEP) continue;
+        if (world.getBlock(Math.floor(nx), Math.max(0, gh - 1), Math.floor(nz)) === 4) continue;
+        w.pos.set(nx, gh, nz);
+        moved = true;
+        break;
+      }
+      if (!moved) w.phase += 0.6; // vary the next detour instead of hopping
 
       w.group.position.copy(w.pos);
       w.group.position.y += Math.abs(Math.sin(t * 16 + w.phase)) * 0.2; // hurried bob
-      w.group.rotation.y = Math.atan2(dx, dz);
+      w.group.rotation.y = desired;
       // arms up, same as the street civilians do when they are fleeing
       w.armL.rotation.x = Math.PI - 0.3 + Math.sin(t * 14 + w.phase) * 0.2;
       w.armR.rotation.x = Math.PI - 0.3 - Math.sin(t * 14 + w.phase) * 0.2;

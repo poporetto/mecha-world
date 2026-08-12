@@ -9,11 +9,12 @@ export const MECHA_SCALE = 2.2;
 export const MECHA_NAME = 'TERRA-ARMOR';
 
 const WHITE = 0xf4f5f8;
-const RED = 0xd8352a;
+const RED = 0xe13b30;
 const CYAN = 0x28dff2;
 const JOINT = 0x3a3d45;
 const DARK = 0x23262b;
 const SABER = 0x63ff83;
+const CRIMSON = 0xff2448;
 const STEEL = 0x89919d;
 
 function box(w: number, h: number, d: number, color: number, emissive = 0): THREE.Mesh {
@@ -140,6 +141,14 @@ export class MechaModel {
   private torso: THREE.Group;
   private head: THREE.Group;
   saberBlade: THREE.Mesh;
+  private saberGlow!: THREE.Mesh;
+  private saberTrails: THREE.Mesh[] = [];
+  private crimsonEmitter!: THREE.Mesh;
+  private crimsonEdge = false;
+  private aegisParts: THREE.Object3D[] = [];
+  private aegisBarrier!: THREE.Mesh;
+  private aegisEnabled = false;
+  private aegisPulseT = 0;
   private thrusterL: THREE.Mesh;
   private thrusterR: THREE.Mesh;
   private dashJetL: THREE.Group;
@@ -206,13 +215,21 @@ export class MechaModel {
     const hipCore = cylinder(0.48, 0.34, DARK, 12);
     hipCore.position.y = 2.08;
     hipCore.rotation.z = Math.PI / 2;
-    const belt = frustum(0.98, 0.9, 0.24, 0.58, 0.54, WHITE);
+    const belt = frustum(0.82, 0.76, 0.2, 0.5, 0.46, DARK);
     belt.position.y = 2.08;
     const buckle = plate(0.26, 0.2, 0.11, RED);
     buckle.position.set(0, 2.08, 0.34);
     const buckleLight = plate(0.1, 0.1, 0.025, 0xffdc69);
     buckleLight.position.set(0, 2.08, 0.405);
     g.add(hipCore, belt, buckle, buckleLight);
+
+    for (const side of [-1, 1]) {
+      const hipBlock = frustum(0.25, 0.28, 0.24, 0.22, 0.25, WHITE);
+      hipBlock.position.set(side * 0.31, 2.08, 0.27);
+      const hipLamp = plate(0.075, 0.075, 0.025, 0xffd34e);
+      hipLamp.position.set(side * 0.31, 2.08, 0.405);
+      g.add(hipBlock, hipLamp);
+    }
 
     for (const side of [-1, 1]) {
       const frontSkirt = frustum(0.22, 0.32, 0.55, 0.12, 0.16, WHITE);
@@ -243,7 +260,7 @@ export class MechaModel {
       rib.scale.z = 0.78;
       this.torso.add(rib);
     }
-    const chestCore = frustum(1.1, 1.48, 0.92, 0.72, 0.82, WHITE);
+    const chestCore = frustum(1.1, 1.48, 0.92, 0.62, 0.7, WHITE);
     chestCore.position.y = 1.03;
     this.torso.add(chestCore);
     // Sloped clavicle rails give the upper body the raised, angular shoulder
@@ -261,11 +278,11 @@ export class MechaModel {
 
     // Layered red butterfly chest motif from the front turnaround.
     for (const side of [-1, 1]) {
-      const pectoral = frustum(0.5, 0.63, 0.38, 0.138, 0.184, RED);
-      pectoral.position.set(side * 0.37, 1.26, 0.502);
-      pectoral.rotation.z = side * 0.19;
-      const lowerPec = frustum(0.38, 0.49, 0.24, 0.115, 0.15, RED);
-      lowerPec.position.set(side * 0.28, 0.97, 0.5);
+      const pectoral = frustum(0.48, 0.61, 0.36, 0.138, 0.184, RED);
+      pectoral.position.set(side * 0.35, 1.27, 0.52);
+      pectoral.rotation.z = side * 0.22;
+      const lowerPec = frustum(0.33, 0.43, 0.21, 0.105, 0.135, RED);
+      lowerPec.position.set(side * 0.27, 0.98, 0.515);
       lowerPec.rotation.z = side * -0.22;
       const whiteEdge = frustum(0.18, 0.28, 0.48, 0.08, 0.1, WHITE);
       whiteEdge.position.set(side * 0.72, 1.13, 0.46);
@@ -280,7 +297,7 @@ export class MechaModel {
     // Narrow stepped side ribs preserve the reference's sharp chest wedge
     // when the model is viewed in profile.
     for (const side of [-1, 1]) {
-      const sideRib = frustum(0.08, 0.13, 0.66, 0.48, 0.62, WHITE);
+      const sideRib = frustum(0.08, 0.13, 0.66, 0.4, 0.52, WHITE);
       sideRib.position.set(side * 0.78, 1.08, -0.01);
       sideRib.rotation.z = side * -0.08;
       const sideCut = plate(0.055, 0.25, 0.38, DARK);
@@ -299,12 +316,12 @@ export class MechaModel {
 
     // Compact reference-accurate rear pack: dark central machinery, white
     // cover panels and two lower nozzles visible from the back/side views.
-    const backpack = frustum(0.78, 0.92, 0.9, 0.28, 0.34, DARK);
-    backpack.position.set(0, 1.02, -0.56);
-    const packCover = frustum(0.58, 0.72, 0.58, 0.12, 0.16, WHITE);
-    packCover.position.set(0, 1.13, -0.75);
-    const packInset = plate(0.3, 0.33, 0.06, STEEL);
-    packInset.position.set(0, 1.08, -0.86);
+    const backpack = frustum(0.66, 0.76, 0.7, 0.22, 0.27, DARK);
+    backpack.position.set(0, 1.06, -0.5);
+    const packCover = frustum(0.52, 0.58, 0.48, 0.1, 0.13, WHITE);
+    packCover.position.set(0, 1.13, -0.66);
+    const packInset = plate(0.24, 0.28, 0.045, DARK);
+    packInset.position.set(0, 1.1, -0.75);
     // The dark pack core must not read as a tall black rectangle in profile.
     // Small white side casings leave only a narrow machinery seam exposed.
     const packSideL = frustum(0.06, 0.08, 0.62, 0.34, 0.28, WHITE);
@@ -357,7 +374,7 @@ export class MechaModel {
     // The reference helmet is compact relative to the shoulder armour; keeping
     // the underlying voxels slightly compressed vertically prevents the long
     // face/neck seen in the rejected in-game profile.
-    this.head.scale.set(0.95, 0.8, 0.9);
+    this.head.scale.set(0.95, 0.75, 0.84);
     const headCore = plate(0.46, 0.38, 0.42, DARK);
     headCore.position.set(0, 0.01, -0.03);
 
@@ -368,11 +385,11 @@ export class MechaModel {
     const crownMid = plate(0.54, 0.09, 0.46, WHITE);
     crownMid.position.set(0, 0.2895, -0.06);
     const crownHigh = plate(0.46, 0.081, 0.38, WHITE);
-    crownHigh.position.set(0, 0.3705, -0.1);
+    crownHigh.position.set(0, 0.34, -0.1);
     const crownTop = plate(0.34, 0.072, 0.28, WHITE);
-    crownTop.position.set(0, 0.447, -0.14);
-    const rearShell = plate(0.56, 0.34, 0.16, WHITE);
-    rearShell.position.set(0, 0.12, -0.31);
+    crownTop.position.set(0, 0.405, -0.13);
+    const rearShell = plate(0.56, 0.34, 0.13, WHITE);
+    rearShell.position.set(0, 0.12, -0.27);
 
     // The brow projects only a little beyond the dome. The eye sits inside a
     // black socket instead of protruding as a turquoise block.
@@ -384,28 +401,30 @@ export class MechaModel {
     visorMask.position.set(0, 0.045, 0.35);
     const visorRows: THREE.Mesh[] = [];
     const visorSpecs = [
-      { w: 0.43, h: 0.055, d: 0.045, y: 0.095, z: 0.426 },
-      { w: 0.37, h: 0.055, d: 0.045, y: 0.04, z: 0.426 },
-      { w: 0.29, h: 0.05, d: 0.045, y: -0.012, z: 0.426 },
+      { w: 0.18, h: 0.05, y: 0.078, x: 0.095 },
+      { w: 0.15, h: 0.045, y: 0.032, x: 0.075 },
+      { w: 0.11, h: 0.038, y: -0.008, x: 0.055 },
     ];
     for (const spec of visorSpecs) {
-      const row = plate(spec.w, spec.h, spec.d, CYAN);
-      (row.material as THREE.MeshStandardMaterial).emissive.setHex(CYAN);
-      (row.material as THREE.MeshStandardMaterial).emissiveIntensity = 1.9;
-      row.position.set(0, spec.y, spec.z);
-      visorRows.push(row);
+      for (const side of [-1, 1]) {
+        const row = plate(spec.w, spec.h, 0.04, CYAN);
+        (row.material as THREE.MeshStandardMaterial).emissive.setHex(CYAN);
+        (row.material as THREE.MeshStandardMaterial).emissiveIntensity = 1.9;
+        row.position.set(side * spec.x, spec.y, 0.426);
+        visorRows.push(row);
+      }
     }
 
     // Short, tightly layered face. The previous jaw hung too far below the
     // visor and made the helmet look like a long animal muzzle.
     const noseBridge = plate(0.3, 0.09, 0.12, WHITE);
     noseBridge.position.set(0, -0.035, 0.43);
-    const mouth = plate(0.32, 0.085, 0.13, WHITE);
+    const mouth = plate(0.27, 0.085, 0.13, WHITE);
     mouth.position.set(0, -0.125, 0.385);
-    const jaw = plate(0.35, 0.1, 0.18, WHITE);
+    const jaw = plate(0.3, 0.1, 0.18, WHITE);
     jaw.position.set(0, -0.215, 0.29);
-    const chin = plate(0.21, 0.08, 0.12, WHITE);
-    chin.position.set(0, -0.29, 0.325);
+    const chin = plate(0.17, 0.08, 0.12, WHITE);
+    chin.position.set(0, -0.29, 0.29);
     const neckGap = plate(0.46, 0.09, 0.38, DARK);
     neckGap.position.set(0, -0.29, -0.005);
 
@@ -451,21 +470,21 @@ export class MechaModel {
     // misplaced red spike seen in the previous render.
     for (const side of [-1, 1]) {
       const horn = new THREE.Group();
-      for (let i = 0; i < 4; i++) {
-        const segment = plate(0.1375, 0.12, 0.1375, RED);
-        segment.position.set(0, i * 0.105, -i * 0.035);
+      for (let i = 0; i < 5; i++) {
+        const segment = plate(0.1, 0.11, 0.1, RED);
+        segment.position.set(side * i * 0.012, i * 0.1, -i * 0.028);
         horn.add(segment);
       }
       // Identical mount depth and mirrored lateral placement keep the red
       // antennae perfectly symmetrical from the front and rear.
       horn.position.set(side * 0.23, 0.35, -0.245);
-      horn.rotation.z = side * -0.06;
+      horn.rotation.z = side * -0.125;
       this.head.add(horn);
     }
     this.torso.add(this.head);
 
-    this.armL = this.makeArm(-1.03, true);
-    this.armR = this.makeArm(1.03, false);
+    this.armL = this.makeArm(-0.97, true);
+    this.armR = this.makeArm(0.97, false);
     this.elbowL = (this.armL as THREE.Group & { lower: THREE.Group }).lower;
     this.elbowR = (this.armR as THREE.Group & { lower: THREE.Group }).lower;
     this.torso.add(this.armL, this.armR);
@@ -477,12 +496,142 @@ export class MechaModel {
     this.saberBlade = finished(new THREE.BoxGeometry(0.13, 3.15, 0.13), SABER, SABER);
     this.saberBlade.position.set(0, -2.82, 0.22);
     this.saberBlade.visible = false;
-    const glow = new THREE.Mesh(
+    this.saberGlow = new THREE.Mesh(
       new THREE.BoxGeometry(0.3, 3.2, 0.3),
       new THREE.MeshBasicMaterial({ color: SABER, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false })
     );
-    this.saberBlade.add(glow);
+    this.saberBlade.add(this.saberGlow);
+    // A short fan of translucent blade echoes turns the animated joint motion
+    // into a readable cutting arc. They are parented to the forearm rather
+    // than the blade so each echo can lag at a different angle.
+    for (let i = 0; i < 4; i++) {
+      const trail = new THREE.Mesh(
+        new THREE.BoxGeometry(0.08 + i * 0.045, 3.08, 0.09),
+        new THREE.MeshBasicMaterial({
+          color: SABER, transparent: true, opacity: 0,
+          blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
+        })
+      );
+      trail.position.set(0, -2.82, 0.22);
+      trail.visible = false;
+      this.elbowR.add(trail);
+      this.saberTrails.push(trail);
+    }
+    // The upgrade remains visible even while the blade is retracted: a red
+    // emitter cage locks around the original hilt.
+    this.crimsonEmitter = cylinder(0.145, 0.18, CRIMSON, 12);
+    this.crimsonEmitter.position.set(0, -1.23, 0.22);
+    const emitterMat = this.crimsonEmitter.material as THREE.MeshStandardMaterial;
+    emitterMat.emissive.setHex(0x8e061d);
+    emitterMat.emissiveIntensity = 2.2;
+    this.crimsonEmitter.visible = false;
+    this.elbowR.add(this.crimsonEmitter);
     this.elbowR.add(this.saberBlade);
+    this.buildAegisArmor();
+
+    this.aegisBarrier = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(2.35, 1),
+      new THREE.MeshBasicMaterial({
+        color: 0x45eaff, transparent: true, opacity: 0,
+        blending: THREE.AdditiveBlending, depthWrite: false, wireframe: true,
+        toneMapped: false,
+      })
+    );
+    this.aegisBarrier.position.y = 2.45;
+    this.aegisBarrier.scale.set(0.72, 1.18, 0.72);
+    this.aegisBarrier.visible = false;
+    this.group.add(this.aegisBarrier);
+  }
+
+  /** Toggle the earned weapon skin without replacing the existing rig. */
+  setCrimsonEdge(on: boolean): void {
+    this.crimsonEdge = on;
+    this.crimsonEmitter.visible = on;
+    const bladeMat = this.saberBlade.material as THREE.MeshStandardMaterial;
+    bladeMat.color.setHex(on ? CRIMSON : SABER);
+    bladeMat.emissive.setHex(on ? 0xff0b32 : SABER);
+    bladeMat.emissiveIntensity = on ? 3.6 : 1.65;
+    bladeMat.toneMapped = !on;
+    const glowMat = this.saberGlow.material as THREE.MeshBasicMaterial;
+    glowMat.color.setHex(on ? 0xff163d : SABER);
+    glowMat.opacity = on ? 0.58 : 0.35;
+    for (const trail of this.saberTrails) {
+      (trail.material as THREE.MeshBasicMaterial).color.setHex(on ? 0xff1744 : SABER);
+    }
+  }
+
+  /** Show the physical Aegis reinforcement kit earned with the shield. */
+  setAegisArmor(on: boolean): void {
+    this.aegisEnabled = on;
+    for (const part of this.aegisParts) part.visible = on;
+    if (!on) {
+      this.aegisPulseT = 0;
+      this.aegisBarrier.visible = false;
+    }
+  }
+
+  /** Briefly flare the projected shield through the physical armor seams. */
+  pulseAegis(): void {
+    if (!this.aegisEnabled) return;
+    this.aegisPulseT = 0.34;
+    this.aegisBarrier.visible = true;
+  }
+
+  private buildAegisArmor(): void {
+    const add = (parent: THREE.Object3D, part: THREE.Object3D) => {
+      part.visible = false;
+      parent.add(part);
+      this.aegisParts.push(part);
+      return part;
+    };
+
+    // Split chest carapace preserves the red Terra-Armor emblem beneath it.
+    for (const side of [-1, 1]) {
+      const chest = frustum(0.42, 0.62, 0.72, 0.14, 0.2, WHITE);
+      chest.position.set(side * 0.53, 1.13, 0.67);
+      chest.rotation.z = side * -0.17;
+      add(this.torso, chest);
+      const chestRim = plate(0.12, 0.56, 0.08, CYAN);
+      chestRim.position.set(side * 0.29, 1.12, 0.79);
+      chestRim.rotation.z = side * -0.1;
+      const rimMat = chestRim.material as THREE.MeshStandardMaterial;
+      rimMat.emissive.setHex(0x087d9d);
+      rimMat.emissiveIntensity = 1.8;
+      add(this.torso, chestRim);
+
+      const shoulder = frustum(0.66, 0.46, 0.24, 0.76, 0.58, WHITE);
+      shoulder.position.set(side * 0.08, 0.6, -0.02);
+      shoulder.rotation.z = side * -0.1;
+      add(side < 0 ? this.armL : this.armR, shoulder);
+
+      const forearm = frustum(0.46, 0.36, 0.58, 0.16, 0.12, WHITE);
+      forearm.position.set(side * 0.05, -0.42, 0.42);
+      add(side < 0 ? this.elbowL : this.elbowR, forearm);
+
+      const thigh = frustum(0.45, 0.33, 0.62, 0.14, 0.1, WHITE);
+      thigh.position.set(side * 0.04, -0.48, 0.46);
+      add(side < 0 ? this.legL : this.legR, thigh);
+
+      const shin = frustum(0.5, 0.36, 0.66, 0.16, 0.11, WHITE);
+      shin.position.set(side * 0.04, -0.55, 0.48);
+      add(side < 0 ? this.kneeL : this.kneeR, shin);
+    }
+
+    const aegisCore = plate(0.26, 0.32, 0.1, CYAN);
+    aegisCore.position.set(0, 1.2, 0.81);
+    const coreMat = aegisCore.material as THREE.MeshStandardMaterial;
+    coreMat.emissive.setHex(CYAN);
+    coreMat.emissiveIntensity = 2.5;
+    add(this.torso, aegisCore);
+
+    // Rear stabilisers make the upgrade readable from the normal chase camera.
+    for (const side of [-1, 1]) {
+      const fin = frustum(0.13, 0.2, 0.74, 0.42, 0.3, WHITE);
+      fin.position.set(side * 0.62, 1.15, -0.74);
+      fin.rotation.z = side * -0.18;
+      fin.rotation.x = -0.1;
+      add(this.torso, fin);
+    }
   }
 
   // The leg is two pivots: a hip group, and a knee group holding everything
@@ -491,46 +640,48 @@ export class MechaModel {
     const leg = new THREE.Group();
     leg.position.set(x, 2.08, 0);
     const hipJoint = sphere(0.25, JOINT);
-    const thighCore = capsule(0.2, 0.62, JOINT);
-    thighCore.position.y = -0.53;
-    const thighFront = frustum(0.36, 0.48, 0.82, 0.28, 0.38, WHITE);
-    thighFront.position.set(0, -0.48, 0.14);
-    const thighSideL = frustum(0.1, 0.15, 0.65, 0.33, 0.4, WHITE);
-    thighSideL.position.set(-0.25, -0.48, -0.01);
+    const thighCore = capsule(0.2, 0.72, JOINT);
+    thighCore.position.y = -0.58;
+    const thighFront = frustum(0.34, 0.42, 0.92, 0.27, 0.35, WHITE);
+    thighFront.position.set(0, -0.53, 0.14);
+    const thighSideL = frustum(0.09, 0.14, 0.74, 0.31, 0.38, WHITE);
+    thighSideL.position.set(-0.22, -0.53, -0.01);
     const thighSideR = thighSideL.clone();
-    thighSideR.position.x = 0.25;
+    thighSideR.position.x = 0.22;
     const thighRed = frustum(0.2, 0.28, 0.22, 0.08, 0.1, RED);
-    thighRed.position.set(x < 0 ? -0.16 : 0.16, -0.68, 0.35);
-    const kneePad = frustum(0.34, 0.43, 0.35, 0.12, 0.18, RED);
-    kneePad.position.set(0, -1.08, 0.3);
+    thighRed.position.set(x < 0 ? -0.16 : 0.16, -0.73, 0.31);
+    const kneePad = frustum(0.3, 0.38, 0.35, 0.12, 0.18, RED);
+    kneePad.position.set(x < 0 ? -0.1 : 0.1, -1.18, 0.3);
     leg.add(hipJoint, thighCore, thighFront, thighSideL, thighSideR, thighRed, kneePad);
 
     const lower = new THREE.Group();
-    lower.position.y = -1.1;
+    lower.position.y = -1.2;
     const knee = cylinder(0.25, 0.42, JOINT, 14);
     knee.rotation.z = Math.PI / 2;
-    const calfCore = capsule(0.19, 0.65, JOINT);
-    calfCore.position.y = -0.56;
-    const shin = frustum(0.48, 0.37, 0.92, 0.39, 0.29, WHITE);
-    shin.position.set(0, -0.55, 0.08);
-    const shinBlade = frustum(0.25, 0.35, 0.68, 0.11, 0.15, WHITE);
-    shinBlade.position.set(0, -0.48, 0.34);
+    const calfCore = capsule(0.18, 0.77, JOINT);
+    calfCore.position.y = -0.62;
+    const shin = frustum(0.43, 0.34, 1.04, 0.36, 0.27, WHITE);
+    shin.position.set(0, -0.61, 0.08);
+    const shinInset = plate(0.15, 0.45, 0.035, DARK);
+    shinInset.position.set(0, -0.58, 0.3);
+    const shinBlade = frustum(0.22, 0.31, 0.75, 0.1, 0.14, WHITE);
+    shinBlade.position.set(0, -0.53, 0.35);
     const shinRed = frustum(0.19, 0.26, 0.3, 0.08, 0.1, RED);
     shinRed.position.set(x < 0 ? -0.17 : 0.17, -0.28, 0.43);
     const calfRed = frustum(0.12, 0.18, 0.45, 0.11, 0.16, RED);
     calfRed.position.set(x < 0 ? 0.26 : -0.26, -0.6, -0.17);
     const ankle = cylinder(0.18, 0.28, JOINT, 12);
-    ankle.position.y = -1.15;
+    ankle.position.y = -1.27;
     ankle.rotation.z = Math.PI / 2;
-    const heel = frustum(0.45, 0.34, 0.33, 0.58, 0.48, WHITE);
-    heel.position.set(0, -1.22, -0.1);
-    const foot = frustum(0.55, 0.45, 0.3, 0.94, 0.72, WHITE);
-    foot.position.set(0, -1.37, 0.19);
-    const sole = plate(0.59, 0.12, 1.0, RED);
-    sole.position.set(0, -1.53, 0.2);
-    const toe = frustum(0.59, 0.48, 0.2, 0.38, 0.54, RED);
-    toe.position.set(0, -1.37, 0.64);
-    lower.add(knee, calfCore, shin, shinBlade, shinRed, calfRed, ankle, heel, foot, sole, toe);
+    const heel = frustum(0.41, 0.32, 0.31, 0.48, 0.42, WHITE);
+    heel.position.set(0, -1.34, -0.08);
+    const foot = frustum(0.51, 0.43, 0.28, 0.82, 0.67, WHITE);
+    foot.position.set(0, -1.48, 0.17);
+    const sole = plate(0.55, 0.1, 0.86, RED);
+    sole.position.set(0, -1.63, 0.18);
+    const toe = frustum(0.53, 0.43, 0.19, 0.34, 0.49, RED);
+    toe.position.set(0, -1.48, 0.56);
+    lower.add(knee, calfCore, shin, shinInset, shinBlade, shinRed, calfRed, ankle, heel, foot, sole, toe);
     leg.add(lower);
     (leg as THREE.Group & { lower: THREE.Group }).lower = lower;
     return leg;
@@ -541,12 +692,12 @@ export class MechaModel {
     arm.position.set(x, 1.3, 0);
     const shoulderJoint = sphere(0.29, JOINT);
     // Three layers create the red-edged rounded pauldron in the reference.
-    const pauldron = sphere(0.4, WHITE);
-    pauldron.scale.set(1.05, 0.72, 0.9);
-    pauldron.position.y = 0.08;
+    const pauldron = frustum(0.64, 0.82, 0.43, 0.55, 0.7, WHITE);
+    pauldron.scale.set(1, 1, 1);
+    pauldron.position.set(x > 0 ? 0.04 : -0.04, 0.16, 0);
     const outerCap = sphere(0.39, RED);
-    outerCap.scale.set(0.24, 0.7, 0.82);
-    outerCap.position.set(x > 0 ? 0.43 : -0.43, 0.1, 0);
+    outerCap.scale.set(0.38, 0.82, 0.82);
+    outerCap.position.set(x > 0 ? 0.47 : -0.47, 0.16, 0);
     const topInset = frustum(0.42, 0.3, 0.14, 0.6, 0.5, WHITE);
     topInset.position.set(0, 0.4, 0);
     topInset.rotation.x = -0.1;
@@ -565,7 +716,7 @@ export class MechaModel {
     rimRear.position.z = -0.21;
     const upperCore = capsule(0.18, 0.5, JOINT);
     upperCore.position.y = -0.5;
-    const upperFront = frustum(0.35, 0.43, 0.62, 0.3, 0.38, WHITE);
+    const upperFront = frustum(0.31, 0.38, 0.62, 0.27, 0.33, WHITE);
     upperFront.position.set(0, -0.49, 0.08);
     const upperRed = frustum(0.1, 0.16, 0.27, 0.08, 0.1, RED);
     upperRed.position.set(x > 0 ? 0.21 : -0.21, -0.56, 0.22);
@@ -579,11 +730,11 @@ export class MechaModel {
     lower.position.y = -0.91;
     const foreCore = capsule(0.17, 0.56, JOINT);
     foreCore.position.y = -0.43;
-    const fore = frustum(0.38, 0.3, 0.78, 0.4, 0.31, WHITE);
+    const fore = frustum(0.36, 0.28, 0.78, 0.38, 0.29, WHITE);
     fore.position.set(0, -0.42, 0.04);
     const foreGuard = frustum(0.24, 0.31, 0.42, 0.1, 0.13, RED);
     foreGuard.position.set(0, -0.38, 0.25);
-    const fist = sphere(0.24, JOINT);
+    const fist = sphere(0.21, JOINT);
     fist.position.y = -0.91;
     fist.scale.set(0.9, 1.05, 0.9);
     lower.add(foreCore, fore, foreGuard, fist);
@@ -635,6 +786,18 @@ export class MechaModel {
     this.flinchT = Math.max(0, this.flinchT - dt);
     this.recoilT = Math.max(0, this.recoilT - dt);
     this.dashT = Math.max(0, this.dashT - dt);
+    this.aegisPulseT = Math.max(0, this.aegisPulseT - dt);
+    if (this.aegisBarrier.visible) {
+      const life = this.aegisPulseT / 0.34;
+      const flare = Math.sin(Math.max(0, life) * Math.PI);
+      const barrierMat = this.aegisBarrier.material as THREE.MeshBasicMaterial;
+      barrierMat.opacity = flare * 0.48;
+      const swell = 1 + (1 - life) * 0.12;
+      this.aegisBarrier.scale.set(0.72 * swell, 1.18 * swell, 0.72 * swell);
+      this.aegisBarrier.rotation.y += dt * 1.8;
+      this.aegisBarrier.rotation.x = Math.sin(t * 2.4) * 0.04;
+      if (this.aegisPulseT <= 0) this.aegisBarrier.visible = false;
+    }
 
     // landing squash: fire when we touch down after being airborne
     if (grounded && this.wasAirborne) this.landT = 0.18;
@@ -768,6 +931,19 @@ export class MechaModel {
     this.group.rotation.z = this.bank;
     this.torso.rotation.x = this.lean + (this.flinchT > 0 ? -Math.sin(this.flinchT / 0.22 * Math.PI) * 0.28 : 0);
 
+    // Shoulder yaw and forearm roll are reserved for weapon actions. Blend
+    // them home independently from the locomotion pose so the saber never
+    // leaves an arm twisted after a combo is interrupted by movement.
+    if (this.swingT < 0) {
+      const unwind = 1 - Math.exp(-dt * 11);
+      this.armL.rotation.y = THREE.MathUtils.lerp(this.armL.rotation.y, 0, unwind);
+      this.armR.rotation.y = THREE.MathUtils.lerp(this.armR.rotation.y, 0, unwind);
+      this.elbowL.rotation.y = THREE.MathUtils.lerp(this.elbowL.rotation.y, 0, unwind);
+      this.elbowR.rotation.y = THREE.MathUtils.lerp(this.elbowR.rotation.y, 0, unwind);
+      this.elbowL.rotation.z = THREE.MathUtils.lerp(this.elbowL.rotation.z, 0, unwind);
+      this.elbowR.rotation.z = THREE.MathUtils.lerp(this.elbowR.rotation.z, 0, unwind);
+    }
+
     // Saber swing. Three phases with real easing: a deliberate wind-up, an
     // explosive strike that decelerates through the arc, then a settle. The
     // blade extends as it ignites and retracts on the way out, and the hips
@@ -782,8 +958,23 @@ export class MechaModel {
       this.saberBlade.visible = true;
       // ignition: the blade shoots out, then draws back at the end
       const ignite = s < 0.14 ? s / 0.14 : s > 0.86 ? Math.max(0, (1 - s) / 0.14) : 1;
-      this.saberBlade.scale.set(1, Math.max(0.05, ignite), 1);
+      const bladeWidth = this.crimsonEdge ? 1.28 : 1;
+      this.saberBlade.scale.set(bladeWidth, Math.max(0.05, ignite), bladeWidth);
       this.saberBlade.position.y = -2.82 + (1 - ignite) * 1.58;
+      const trailLife = s > 0.2 && s < 0.74
+        ? Math.sin(((s - 0.2) / 0.54) * Math.PI)
+        : 0;
+      for (let i = 0; i < this.saberTrails.length; i++) {
+        const trail = this.saberTrails[i];
+        const trailMat = trail.material as THREE.MeshBasicMaterial;
+        trail.visible = trailLife > 0.01;
+        trailMat.opacity = trailLife * (0.24 - i * 0.035) * (this.crimsonEdge ? 1.45 : 1);
+        trail.position.y = this.saberBlade.position.y;
+        trail.scale.set(bladeWidth, Math.max(0.05, ignite), bladeWidth);
+        const trailDir = style === 1 ? -1 : 1;
+        trail.rotation.z = trailDir * (0.055 + i * 0.065) * trailLife;
+        trail.rotation.y = -trailDir * i * 0.035 * trailLife;
+      }
 
       if (s < 0.3) {
         // WIND UP — ease out, so it snaps back then hangs for anticipation
@@ -795,6 +986,12 @@ export class MechaModel {
           this.armL.rotation.z = THREE.MathUtils.lerp(-0.08, -0.16, k);
           this.elbowR.rotation.x = THREE.MathUtils.lerp(-0.28, -1.02, k);
           this.elbowL.rotation.x = THREE.MathUtils.lerp(-0.24, -1.12, k);
+          this.armR.rotation.y = -0.12 * k;
+          this.armL.rotation.y = 0.16 * k;
+          this.elbowR.rotation.y = 0.18 * k;
+          this.elbowL.rotation.y = -0.12 * k;
+          this.elbowR.rotation.z = -0.1 * k;
+          this.elbowL.rotation.z = 0.08 * k;
           this.torso.rotation.y = 0.22 * k;
           this.torso.rotation.x = this.lean - 0.15 * k;
         } else {
@@ -806,6 +1003,15 @@ export class MechaModel {
           this.armL.rotation.z = THREE.MathUtils.lerp(-0.08, 0.26 * dir, k);
           this.elbowR.rotation.x = THREE.MathUtils.lerp(-0.28, -1.02, k);
           this.elbowL.rotation.x = THREE.MathUtils.lerp(-0.24, -0.88, k);
+          // Draw the weapon behind the shoulder and across the body. Shoulder
+          // yaw creates the broad arc; forearm roll keeps the blade edge
+          // aligned instead of letting it paddle flat through the target.
+          this.armR.rotation.y = -0.54 * dir * k;
+          this.armL.rotation.y = 0.3 * dir * k;
+          this.elbowR.rotation.y = 0.38 * dir * k;
+          this.elbowL.rotation.y = -0.2 * dir * k;
+          this.elbowR.rotation.z = -0.13 * dir * k;
+          this.elbowL.rotation.z = 0.08 * dir * k;
           this.torso.rotation.y = 0.58 * k * dir;
           this.torso.rotation.x = this.lean - 0.08 * k;
         }
@@ -830,6 +1036,12 @@ export class MechaModel {
           // The elbows extend through impact, then retain a safe amount of bend.
           this.elbowR.rotation.x = -(1.02 - 0.74 * k);
           this.elbowL.rotation.x = -(1.12 - 0.7 * k);
+          this.armR.rotation.y = THREE.MathUtils.lerp(-0.12, 0.18, k);
+          this.armL.rotation.y = THREE.MathUtils.lerp(0.16, -0.12, k);
+          this.elbowR.rotation.y = THREE.MathUtils.lerp(0.18, -0.1, k);
+          this.elbowL.rotation.y = THREE.MathUtils.lerp(-0.12, 0.08, k);
+          this.elbowR.rotation.z = THREE.MathUtils.lerp(-0.1, 0.08, k);
+          this.elbowL.rotation.z = THREE.MathUtils.lerp(0.08, -0.05, k);
           this.torso.rotation.y = 0.22 - 0.38 * k;
           this.torso.rotation.x = this.lean - 0.15 + 0.49 * k;
         } else {
@@ -839,6 +1051,12 @@ export class MechaModel {
           this.armL.rotation.z = (0.26 + 0.32 * k) * dir;
           this.elbowR.rotation.x = -(1.02 - 0.68 * k);
           this.elbowL.rotation.x = -(0.88 - 0.32 * k);
+          this.armR.rotation.y = THREE.MathUtils.lerp(-0.54, 0.82, k) * dir;
+          this.armL.rotation.y = THREE.MathUtils.lerp(0.3, -0.42, k) * dir;
+          this.elbowR.rotation.y = THREE.MathUtils.lerp(0.38, -0.28, k) * dir;
+          this.elbowL.rotation.y = THREE.MathUtils.lerp(-0.2, 0.16, k) * dir;
+          this.elbowR.rotation.z = THREE.MathUtils.lerp(-0.13, 0.12, k) * dir;
+          this.elbowL.rotation.z = THREE.MathUtils.lerp(0.08, -0.07, k) * dir;
           this.torso.rotation.y = (0.58 - 1.25 * k) * dir;
           this.torso.rotation.x = this.lean - 0.08 + 0.28 * k;
         }
@@ -867,6 +1085,12 @@ export class MechaModel {
           this.armL.rotation.z = THREE.MathUtils.lerp(0.09, -0.08, k);
           this.elbowR.rotation.x = THREE.MathUtils.lerp(-0.28, -0.28, k);
           this.elbowL.rotation.x = THREE.MathUtils.lerp(-0.42, -0.24, k);
+          this.armR.rotation.y = THREE.MathUtils.lerp(0.18, 0, k);
+          this.armL.rotation.y = THREE.MathUtils.lerp(-0.12, 0, k);
+          this.elbowR.rotation.y = THREE.MathUtils.lerp(-0.1, 0, k);
+          this.elbowL.rotation.y = THREE.MathUtils.lerp(0.08, 0, k);
+          this.elbowR.rotation.z = THREE.MathUtils.lerp(0.08, 0, k);
+          this.elbowL.rotation.z = THREE.MathUtils.lerp(-0.05, 0, k);
           this.torso.rotation.x = this.lean + 0.34 * (1 - k);
         } else {
           this.armR.rotation.x = THREE.MathUtils.lerp(-1.6 - over, 0.035, k);
@@ -875,6 +1099,12 @@ export class MechaModel {
           this.armL.rotation.z = THREE.MathUtils.lerp(0.58 * dir, -0.08, k);
           this.elbowR.rotation.x = THREE.MathUtils.lerp(-0.34, -0.28, k);
           this.elbowL.rotation.x = THREE.MathUtils.lerp(-0.56, -0.24, k);
+          this.armR.rotation.y = THREE.MathUtils.lerp(0.82 * dir, 0, k);
+          this.armL.rotation.y = THREE.MathUtils.lerp(-0.42 * dir, 0, k);
+          this.elbowR.rotation.y = THREE.MathUtils.lerp(-0.28 * dir, 0, k);
+          this.elbowL.rotation.y = THREE.MathUtils.lerp(0.16 * dir, 0, k);
+          this.elbowR.rotation.z = THREE.MathUtils.lerp(0.12 * dir, 0, k);
+          this.elbowL.rotation.z = THREE.MathUtils.lerp(-0.07 * dir, 0, k);
           this.torso.rotation.x = this.lean + 0.2 * (1 - k);
         }
         this.torso.rotation.y = (overhead ? -0.16 : -0.67 * dir) * (1 - k);
@@ -889,8 +1119,10 @@ export class MechaModel {
       } else {
         this.swingT = -1;
         this.saberBlade.visible = false;
-        this.saberBlade.scale.set(1, 1, 1);
+        const bladeWidth = this.crimsonEdge ? 1.28 : 1;
+        this.saberBlade.scale.set(bladeWidth, 1, bladeWidth);
         this.saberBlade.position.y = -2.82;
+        for (const trail of this.saberTrails) trail.visible = false;
       }
     } else if (grounded && walk > 0.05) {
       this.armR.rotation.x = Math.sin(ph) * 0.42 * walk;

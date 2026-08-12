@@ -40,7 +40,10 @@ function box(w: number, h: number, d: number, color: number, emissive = 0): THRE
   );
 }
 
-// A chunky voxel airliner, nose pointing +Z (the group's heading direction).
+// A detailed block-built wide-body airliner, nose pointing +Z. The collision
+// deck remains intentionally forgiving, but the visible model follows real
+// aircraft anatomy: pressure tube, tapered nose and tail, swept lifting
+// surfaces, engine nacelles, cockpit glazing and navigation lights.
 function buildPlane(): { group: THREE.Group; deckY: number; halfLen: number; halfWide: number } {
   const g = new THREE.Group();
   const WHITE = 0xfafbff;
@@ -48,70 +51,170 @@ function buildPlane(): { group: THREE.Group; deckY: number; halfLen: number; hal
   const BLUE = 0x8fbfe8;
   const RED = 0xef8378;
   const DARK = 0x3a3f4a;
+  const STEEL = 0x87909d;
 
-  const LEN = 74, R = 5.5; // fuselage length / radius
-  // fuselage: a flat-topped tube so there is a real deck to stand on
-  const body = box(R * 2, R * 1.7, LEN, WHITE);
-  body.position.y = 0;
-  const belly = box(R * 1.7, R * 0.9, LEN * 0.96, GREY);
-  belly.position.y = -R * 0.9;
-  // nose cone + tail taper
-  const nose = box(R * 1.4, R * 1.2, 8, WHITE);
-  nose.position.set(0, -0.3, LEN / 2 + 3.5);
-  const cockpit = box(R * 1.1, 1.4, 3, DARK);
-  cockpit.position.set(0, 1.2, LEN / 2 + 1.5);
-  const tailCone = box(R * 1.3, R * 1.2, 8, WHITE);
-  tailCone.position.set(0, 1.2, -LEN / 2 - 3);
-  g.add(body, belly, nose, cockpit, tailCone);
+  const LEN = 78, R = 5.4;
+  const addCourse = (w: number, h: number, d: number, z: number, y = 0, color = WHITE) => {
+    const m = box(w, h, d, color);
+    m.position.set(0, y, z);
+    g.add(m);
+    return m;
+  };
+
+  // Main pressure vessel: narrower crown and belly courses create a rounded
+  // cross-section while retaining a flat top that Terra-Armor can stand on.
+  addCourse(9.7, 7.4, 54, 0, 0.15);
+  addCourse(8.3, 1.8, 53, 0, 4.35, WHITE);
+  addCourse(8.5, 2.1, 52, -0.2, -4.15, GREY);
+  addCourse(6.5, 1.0, 49, -0.4, -5.45, DARK);
+
+  // Five stepped forward courses form an aerodynamic radome instead of one
+  // blunt cube. The lowest course projects furthest to suggest the nose droop.
+  const noseCourses = [
+    [9.4, 7.0, 5.0, 28.8, 0.05], [8.2, 6.2, 4.0, 33.2, -0.05],
+    [6.7, 5.0, 3.2, 36.7, -0.25], [4.8, 3.6, 2.4, 39.5, -0.55],
+    [2.7, 2.0, 1.6, 41.5, -0.85],
+  ] as const;
+  for (const [w, h, d, z, y] of noseCourses) addCourse(w, h, d, z, y);
+
+  // The aft pressure body pinches upward into the tail cone.
+  const tailCourses = [
+    [9.0, 6.8, 5.0, -29, 0.25], [7.5, 5.6, 4.0, -33.4, 0.65],
+    [5.8, 4.3, 3.2, -36.9, 1.1], [4.0, 3.0, 2.6, -39.8, 1.55],
+    [2.2, 1.8, 2.0, -42.1, 1.95],
+  ] as const;
+  for (const [w, h, d, z, y] of tailCourses) addCourse(w, h, d, z, y);
+
+  // Angled cockpit windshield, eyebrow frames and lower radome glazing.
+  const cockpit = box(6.2, 1.35, 1.0, DARK);
+  cockpit.position.set(0, 2.25, 35.5);
+  cockpit.rotation.x = -0.12;
+  g.add(cockpit);
+  for (const side of [-1, 1]) {
+    const windshield = box(2.45, 1.15, 0.28, 0x6dc8ec, 0x16374c);
+    windshield.position.set(side * 1.45, 2.25, 36.08);
+    windshield.rotation.z = side * -0.12;
+    windshield.rotation.x = -0.12;
+    const eyebrow = box(2.65, 0.22, 0.38, WHITE);
+    eyebrow.position.set(side * 1.45, 3.05, 35.9);
+    eyebrow.rotation.z = side * -0.1;
+    g.add(windshield, eyebrow);
+  }
 
   // cabin window stripe down both flanks
-  for (let i = 0; i < 16; i++) {
-    const z = -LEN / 2 + 6 + i * 4.2;
+  for (let i = 0; i < 18; i++) {
+    const z = -25.5 + i * 3.05;
     for (const side of [-1, 1]) {
-      const win = box(0.4, 0.8, 2.2, BLUE, 0x223344);
-      win.position.set(side * (R + 0.05), 1.1, z);
+      const win = box(0.3, 0.62, 1.28, BLUE, 0x223344);
+      win.position.set(side * 4.98, 1.35, z);
       g.add(win);
     }
   }
-  // livery stripe
-  const stripe = box(R * 2.02, 0.9, LEN * 0.9, RED);
-  stripe.position.set(0, -1.6, 0);
-  g.add(stripe);
+  // Side-only livery stripes, doors, cargo holds and belly beacon.
+  for (const side of [-1, 1]) {
+    const stripe = box(0.22, 0.7, 51, RED);
+    stripe.position.set(side * 4.96, -0.85, 0);
+    g.add(stripe);
+    for (const z of [-20, 21]) {
+      const door = box(0.26, 3.0, 2.0, GREY);
+      door.position.set(side * 5.04, 0.05, z);
+      const handle = box(0.12, 0.18, 0.6, DARK);
+      handle.position.set(side * 5.2, 0.7, z + 0.45);
+      g.add(door, handle);
+    }
+    const cargo = box(0.2, 1.7, 8, DARK);
+    cargo.position.set(side * 4.58, -3.3, -8);
+    g.add(cargo);
+  }
+  const beacon = box(0.65, 0.35, 0.65, RED, 0xff1818);
+  beacon.position.set(0, -5.95, -2);
+  g.add(beacon);
 
-  // wings: broad and flat — the widest part of the landing deck
+  // Swept wings are built in narrowing chordwise courses. Each course moves
+  // aft as it moves outward, producing a genuine leading/trailing edge sweep.
   const WINGSPAN = 62;
   for (const side of [-1, 1]) {
-    const wing = box(WINGSPAN / 2, 1.6, 20, WHITE);
-    wing.geometry.translate((side * WINGSPAN) / 4, 0, 0);
-    wing.position.set(0, -1.2, -2);
-    g.add(wing);
-    const tip = box(2, 3.5, 5, RED);
-    tip.position.set(side * (WINGSPAN / 2 - 1), 1, -2);
-    g.add(tip);
-    // two engines slung under each wing
-    for (const [ox, oz] of [[0.34, 3], [0.6, 1]] as const) {
-      const eng = box(5, 5, 12, GREY);
-      eng.position.set(side * WINGSPAN * ox, -4.2, oz);
-      const intake = box(5.4, 5.4, 1.2, DARK);
-      intake.position.set(side * WINGSPAN * ox, -4.2, oz + 6.2);
-      g.add(eng, intake);
+    for (let i = 0; i < 7; i++) {
+      const chord = 19 - i * 2.0;
+      const section = box(4.5, 1.05 - i * 0.08, chord, i === 6 ? RED : WHITE);
+      section.position.set(side * (6.3 + i * 4.15), -1.15 + i * 0.08, -1.5 - i * 1.85);
+      section.rotation.y = side * -0.018;
+      g.add(section);
+      const leading = box(4.2, 0.28, 0.55, GREY);
+      leading.position.set(section.position.x, section.position.y + 0.12, section.position.z + chord / 2);
+      g.add(leading);
     }
+    const winglet = box(1.15, 5.2, 3.1, RED);
+    winglet.position.set(side * 31, 1.3, -13.3);
+    winglet.rotation.z = side * -0.2;
+    g.add(winglet);
+
+    // Four high-bypass turbofans. Round nacelles and visible fan hubs make the
+    // propulsion immediately recognizable even from below.
+    for (const [x, z, scale] of [[12.5, 2.1, 1], [21.5, -3.0, 0.88]] as const) {
+      const nacelleMat = new THREE.MeshLambertMaterial({ color: GREY });
+      const nacelle = new THREE.Mesh(new THREE.CylinderGeometry(2.55 * scale, 2.25 * scale, 9.5, 16), nacelleMat);
+      nacelle.rotation.x = Math.PI / 2;
+      nacelle.position.set(side * x, -4.2, z);
+      const intake = new THREE.Mesh(
+        new THREE.CylinderGeometry(2.45 * scale, 2.45 * scale, 0.65, 16),
+        new THREE.MeshLambertMaterial({ color: DARK })
+      );
+      intake.rotation.x = Math.PI / 2;
+      intake.position.set(side * x, -4.2, z + 4.95);
+      const fan = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.72 * scale, 0.72 * scale, 0.75, 12),
+        new THREE.MeshLambertMaterial({ color: STEEL })
+      );
+      fan.rotation.x = Math.PI / 2;
+      fan.position.set(side * x, -4.2, z + 5.33);
+      const exhaust = box(2.7 * scale, 2.7 * scale, 0.7, DARK);
+      exhaust.position.set(side * x, -4.2, z - 4.9);
+      const pylon = box(1.1, 2.4, 3.8, GREY);
+      pylon.position.set(side * x, -2.35, z - 0.3);
+      pylon.rotation.x = -0.1;
+      g.add(nacelle, intake, fan, exhaust, pylon);
+    }
+    const nav = box(0.65, 0.55, 1.0, side < 0 ? 0xff3030 : 0x37ff73, side < 0 ? 0xff1010 : 0x10ff45);
+    nav.position.set(side * 31.4, 0.2, -12.0);
+    g.add(nav);
   }
 
   // tail: vertical fin + horizontal stabilizers
-  const fin = box(1.6, 16, 14, RED);
-  fin.position.set(0, 11, -LEN / 2 + 2);
-  g.add(fin);
-  for (const side of [-1, 1]) {
-    const stab = box(15, 1.2, 9, WHITE);
-    stab.geometry.translate((side * 15) / 2, 0, 0);
-    stab.position.set(0, 3, -LEN / 2 + 2);
-    g.add(stab);
+  // Swept vertical stabilizer, dorsal fairing and segmented tailplanes.
+  for (let i = 0; i < 5; i++) {
+    const fin = box(1.15, 3.1, 9.5 - i * 1.45, i > 2 ? RED : WHITE);
+    fin.position.set(0, 5.1 + i * 2.8, -32.2 - i * 1.05);
+    g.add(fin);
   }
+  const dorsal = box(1.8, 1.2, 11, GREY);
+  dorsal.position.set(0, 5.3, -29.5);
+  g.add(dorsal);
+  for (const side of [-1, 1]) {
+    for (let i = 0; i < 4; i++) {
+      const stab = box(3.7, 0.75, 8.5 - i * 1.2, i === 3 ? RED : WHITE);
+      stab.position.set(side * (5.7 + i * 3.45), 3.0 + i * 0.08, -32.5 - i * 1.2);
+      g.add(stab);
+    }
+  }
+
+  // Retracted landing-gear doors and anti-collision light complete the belly.
+  for (const side of [-1, 1]) {
+    const gearDoor = box(1.6, 0.2, 5.4, DARK);
+    gearDoor.position.set(side * 2.1, -5.7, -5.5);
+    g.add(gearDoor);
+  }
+  const tailLight = box(0.5, 0.5, 0.55, WHITE, 0xffffff);
+  tailLight.position.set(0, 2.1, -43.2);
+  g.add(tailLight);
 
   // deck sits on top of the fuselage; wings are slightly lower but the flat
   // deck band covers the whole silhouette so landings feel forgiving
-  return { group: g, deckY: R * 0.85, halfLen: LEN / 2, halfWide: WINGSPAN / 2 };
+  g.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (mesh.isMesh) { mesh.castShadow = true; mesh.receiveShadow = true; }
+  });
+  return { group: g, deckY: R * 0.96, halfLen: LEN / 2, halfWide: WINGSPAN / 2 };
 }
 
 export class PlaneManager {

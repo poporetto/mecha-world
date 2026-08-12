@@ -21,7 +21,7 @@ export interface Abilities {
   dash: boolean; // blue boot burst, earned with overdrive after boss two
   nova: boolean;
   shield: boolean;
-  blades: boolean; // twin sabers: faster, harder combo
+  blades: boolean; // Crimson Edge: stronger saber and longer combo window
   quake: boolean; // ground-slam shockwave
 }
 
@@ -58,7 +58,7 @@ export class Player {
     this.hp = this.maxHp;
   }
 
-  update(dt: number, moveX: number, moveZ: number, camYaw: number, jump: boolean, run: boolean): void {
+  update(dt: number, moveX: number, moveZ: number, camYaw: number, jump: boolean, run: boolean, descend = false): void {
     // desired horizontal velocity in camera space
     // overdrive also makes the boost sprint noticeably quicker
     const speed = run ? (this.abilities.thrust ? RUN * 1.45 : RUN) : WALK;
@@ -87,7 +87,12 @@ export class Player {
 
     // A deck counts as ground: you stand on it, and jumping lifts off it.
     const standing = this.grounded || this.onPlatform;
-    if (this.abilities.boots && jump && !standing) {
+    if (descend && !standing) {
+      // Deliberate fast descent for aerial strafing. It accelerates rather
+      // than teleporting altitude, so releasing X still gives a recoverable arc.
+      this.vel.y = Math.max(-32, this.vel.y - 120 * dt);
+      this.model.setThrusters(false);
+    } else if (this.abilities.boots && jump && !standing) {
       // overdrive thrusters climb harder and top out higher
       const climb = this.abilities.thrust ? 150 : 80;
       const top = this.abilities.thrust ? FLY_V * 1.9 : FLY_V;
@@ -173,9 +178,11 @@ export class Player {
 
   // Evasive burst: a decaying horizontal impulse layered on normal movement.
   dash(dir: THREE.Vector3): void {
-    this.dashVel.set(dir.x, 0, dir.z).normalize().multiplyScalar(52);
+    const airborne = !this.grounded && !this.onPlatform;
+    this.dashVel.set(dir.x, 0, dir.z).normalize().multiplyScalar(airborne ? 64 : 52);
     this.dashTime = this.impulseDuration = DASH_DURATION;
     if (this.grounded) this.vel.y = 6;
+    else if (airborne) this.vel.y = Math.max(this.vel.y, -3); // air-dodge recovery
     this.yaw = Math.atan2(dir.x, dir.z);
   }
 

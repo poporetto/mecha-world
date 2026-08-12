@@ -238,6 +238,91 @@ export abstract class Monster {
       vent.position.set(side * 2.2, localY - 3.2, 2.6);
       this.group.add(vent);
     }
+    this.addCreatureDetail(localY);
+  }
+
+  /**
+   * A lightweight second modelling pass shared by the whole roster.  The
+   * bosses remain deliberately block-built, but layered forms keep their
+   * torsos from reading as plain crates at gameplay distance.  Detail is
+   * selected by anatomy so a wyrm, a flier and a biped do not receive the
+   * same decorative kit.
+   */
+  private addCreatureDetail(localY: number): void {
+    const bone = new THREE.MeshLambertMaterial({ color: 0xd8d0b9 });
+    const hide = new THREE.MeshLambertMaterial({ color: 0x25242a });
+    const wound = new THREE.MeshLambertMaterial({
+      color: 0x721e22, emissive: 0x250306, emissiveIntensity: 0.35,
+    });
+    const add = (w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat.clone());
+      m.position.set(x, y, z);
+      this.group.add(m);
+      return m;
+    };
+
+    const serpentine = this.name === 'VOLT SERPENT' || this.name === 'DEEP MAW';
+    const airborne = this.name === 'MISSILE MAW' || this.name === 'SKY REAVER' || this.name === 'CINDER WYRM';
+    const brute = this.name === 'IRON COLOSSUS' || this.name === 'MAGMA GOLEM' || this.name === 'TIDE LEVIATHAN';
+
+    if (serpentine) {
+      // Overlapping throat scutes and crooked sensory spines make the long
+      // bodies feel articulated instead of being a stack of equal cubes.
+      for (let i = 0; i < 5; i++) {
+        const scute = add(2.5 - i * 0.22, 0.42, 0.42, bone, 0, localY - 4.2 + i * 1.0, 2.05);
+        scute.rotation.x = 0.12 - i * 0.025;
+        for (const side of [-1, 1]) {
+          const barb = add(0.28, 0.85 + i * 0.08, 0.28, hide, side * (1.55 - i * 0.08), localY - 3.9 + i, 0.15);
+          barb.rotation.z = side * -0.58;
+        }
+      }
+      // Four uneven inner fangs frame the mouth without obscuring the eyes.
+      for (const side of [-1, 1]) for (const row of [0, 1]) {
+        const fang = add(0.3, 1.05 - row * 0.18, 0.3, bone, side * (0.72 + row * 0.38), localY - 0.5, 3.05 - row * 0.25);
+        fang.rotation.x = 0.22;
+      }
+      return;
+    }
+
+    // Layered sternum and offset ribs break up the broad front plane. Their
+    // asymmetry is intentional: living/ancient enemies should not look CAD-perfect.
+    for (let i = 0; i < 4; i++) {
+      const sternum = add(1.85 - i * 0.16, 0.5, 0.48, i === 1 ? wound : bone,
+        (i % 2 ? 0.08 : -0.08), localY - 5.2 + i * 1.08, 2.65 + i * 0.05);
+      sternum.rotation.z = (i % 2 ? 1 : -1) * 0.045;
+      for (const side of [-1, 1]) {
+        const rib = add(1.65, 0.36, 0.42, hide, side * 1.72, localY - 5.0 + i * 1.08, 2.2);
+        rib.rotation.z = side * (0.22 + i * 0.025);
+      }
+    }
+
+    if (airborne) {
+      // Finger-bones beneath wings plus rear-facing ankle talons sell a
+      // predator capable of folding, banking and catching prey.
+      for (const side of [-1, 1]) {
+        for (let i = 0; i < 3; i++) {
+          const spar = add(3.4 - i * 0.65, 0.25, 0.28, bone, side * (3.8 + i * 1.45), localY - 1.8 - i * 0.18, -0.6 - i * 0.55);
+          spar.rotation.z = side * (0.12 + i * 0.08);
+        }
+        for (let c = 0; c < 3; c++) {
+          const talon = add(0.28, 1.15, 0.28, bone, side * (1.0 + c * 0.34), localY - 8.2, 1.2 + c * 0.35);
+          talon.rotation.x = -0.5;
+        }
+      }
+    } else {
+      // Bipedal monsters gain layered deltoids, kneecap plates and hooked toe
+      // claws. This introduces joint landmarks without changing hitboxes.
+      for (const side of [-1, 1]) {
+        const deltoid = add(2.15, 1.25, 1.85, brute ? bone : hide, side * 4.0, localY - 2.6, 0.45);
+        deltoid.rotation.z = side * -0.24;
+        const knee = add(1.55, 1.0, 1.25, hide, side * 1.85, localY - 8.1, 1.0);
+        knee.rotation.x = -0.16;
+        for (let c = 0; c < 3; c++) {
+          const claw = add(0.34, 0.42, 1.0 + c * 0.1, bone, side * 1.85 + (c - 1) * 0.5, localY - 11.0, 2.05);
+          claw.rotation.x = -0.12;
+        }
+      }
+    }
   }
 
   /** World position of the weak point, for hit tests and aiming. */
