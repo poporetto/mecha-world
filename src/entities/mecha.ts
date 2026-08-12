@@ -278,19 +278,19 @@ export class MechaModel {
 
     // Layered red butterfly chest motif from the front turnaround.
     for (const side of [-1, 1]) {
-      const pectoral = frustum(0.48, 0.61, 0.36, 0.138, 0.184, RED);
-      pectoral.position.set(side * 0.35, 1.27, 0.52);
+      const pectoral = frustum(0.38, 0.47, 0.30, 0.132, 0.176, RED);
+      pectoral.position.set(side * 0.40, 1.28, 0.52);
       pectoral.rotation.z = side * 0.22;
-      const lowerPec = frustum(0.33, 0.43, 0.21, 0.105, 0.135, RED);
-      lowerPec.position.set(side * 0.27, 0.98, 0.515);
+      const lowerPec = frustum(0.25, 0.33, 0.17, 0.10, 0.128, RED);
+      lowerPec.position.set(side * 0.33, 1.00, 0.515);
       lowerPec.rotation.z = side * -0.22;
       const whiteEdge = frustum(0.18, 0.28, 0.48, 0.08, 0.1, WHITE);
       whiteEdge.position.set(side * 0.72, 1.13, 0.46);
       whiteEdge.rotation.z = side * -0.12;
       this.torso.add(pectoral, lowerPec, whiteEdge);
     }
-    const sternum = frustum(0.19, 0.28, 0.64, 0.16, 0.2, WHITE);
-    sternum.position.set(0, 1.18, 0.49);
+    const sternum = frustum(0.26, 0.36, 0.70, 0.16, 0.2, WHITE);
+    sternum.position.set(0, 1.16, 0.50);
     const sternumRed = frustum(0.09, 0.16, 0.3, 0.058, 0.092, RED);
     sternumRed.position.set(0, 1.08, 0.596);
     this.torso.add(sternum, sternumRed);
@@ -652,7 +652,15 @@ export class MechaModel {
     thighRed.position.set(x < 0 ? -0.16 : 0.16, -0.73, 0.31);
     const kneePad = frustum(0.3, 0.38, 0.35, 0.12, 0.18, RED);
     kneePad.position.set(x < 0 ? -0.1 : 0.1, -1.18, 0.3);
-    leg.add(hipJoint, thighCore, thighFront, thighSideL, thighSideR, thighRed, kneePad);
+    // Rear armour. The white plating only covered the front and sides, so from
+    // behind the legs read as the bare charcoal frame — the reference keeps
+    // them white from every angle.
+    const thighRear = frustum(0.30, 0.38, 0.86, 0.24, 0.31, WHITE);
+    thighRear.position.set(0, -0.55, -0.16);
+    const thighRearVent = plate(0.16, 0.30, 0.04, DARK);
+    thighRearVent.position.set(0, -0.62, -0.32);
+    leg.add(hipJoint, thighCore, thighFront, thighSideL, thighSideR, thighRed, kneePad,
+            thighRear, thighRearVent);
 
     const lower = new THREE.Group();
     lower.position.y = -1.2;
@@ -681,7 +689,12 @@ export class MechaModel {
     sole.position.set(0, -1.63, 0.18);
     const toe = frustum(0.53, 0.43, 0.19, 0.34, 0.49, RED);
     toe.position.set(0, -1.48, 0.56);
-    lower.add(knee, calfCore, shin, shinInset, shinBlade, shinRed, calfRed, ankle, heel, foot, sole, toe);
+    const calfRear = frustum(0.36, 0.29, 0.94, 0.30, 0.23, WHITE);
+    calfRear.position.set(0, -0.63, -0.14);
+    const calfVent = plate(0.18, 0.34, 0.04, DARK);
+    calfVent.position.set(0, -0.52, -0.30);
+    lower.add(knee, calfCore, shin, shinInset, shinBlade, shinRed, calfRed, ankle, heel, foot, sole, toe,
+              calfRear, calfVent);
     leg.add(lower);
     (leg as THREE.Group & { lower: THREE.Group }).lower = lower;
     return leg;
@@ -692,12 +705,14 @@ export class MechaModel {
     arm.position.set(x, 1.3, 0);
     const shoulderJoint = sphere(0.29, JOINT);
     // Three layers create the red-edged rounded pauldron in the reference.
-    const pauldron = frustum(0.64, 0.82, 0.43, 0.55, 0.7, WHITE);
+    const pauldron = frustum(0.72, 0.93, 0.50, 0.58, 0.74, WHITE);
     pauldron.scale.set(1, 1, 1);
-    pauldron.position.set(x > 0 ? 0.04 : -0.04, 0.16, 0);
-    const outerCap = sphere(0.39, RED);
-    outerCap.scale.set(0.38, 0.82, 0.82);
-    outerCap.position.set(x > 0 ? 0.47 : -0.47, 0.16, 0);
+    pauldron.position.set(x > 0 ? 0.05 : -0.05, 0.17, 0);
+    // thinner red outer cheek: in the reference the pauldron reads white with
+    // a red edge, not a red block with white behind it
+    const outerCap = sphere(0.40, RED);
+    outerCap.scale.set(0.26, 0.80, 0.80);
+    outerCap.position.set(x > 0 ? 0.54 : -0.54, 0.17, 0);
     const topInset = frustum(0.42, 0.3, 0.14, 0.6, 0.5, WHITE);
     topInset.position.set(0, 0.4, 0);
     topInset.rotation.x = -0.1;
@@ -720,6 +735,8 @@ export class MechaModel {
     upperFront.position.set(0, -0.49, 0.08);
     const upperRed = frustum(0.1, 0.16, 0.27, 0.08, 0.1, RED);
     upperRed.position.set(x > 0 ? 0.21 : -0.21, -0.56, 0.22);
+    const upperRear = frustum(0.27, 0.34, 0.58, 0.24, 0.29, WHITE);
+    upperRear.position.set(0, -0.49, -0.10);
     const elbowJoint = cylinder(0.21, 0.38, DARK, 14);
     elbowJoint.position.y = -0.91;
     elbowJoint.rotation.z = Math.PI / 2;
@@ -741,7 +758,7 @@ export class MechaModel {
     arm.add(
       shoulderJoint, pauldron, outerCap, topInset, upperCore, upperFront,
       capBrow, shoulderInset, shoulderLower, rimFront, rimRear,
-      upperRed, elbowJoint, lower
+      upperRed, upperRear, elbowJoint, lower
     );
     if (rifle) {
       // Gameplay shots originate from a concealed palm emitter so no rifle
