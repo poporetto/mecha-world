@@ -585,12 +585,43 @@ export class RocketBeast extends Monster {
     const HULL = 0x5b4a9e;
     const DARK = 0x2c2a38;
 
+    // A walking missile battery: armoured hull with a segmented carapace, a
+    // hooded head sunk between shoulder blocks, and pods that read as
+    // ordnance — individual tubes, a hinge, and warning flashes — rather than
+    // as two grey boxes.
     const body = box(4.5, 3.5, 5.5, HULL);
     body.position.y = 8;
+    const spine = box(2.2, 0.8, 5.8, DARK);
+    spine.position.y = 9.9;
+    const collar = box(5.2, 1.0, 2.2, DARK);
+    collar.position.set(0, 9.8, 1.6);
+    const hood = box(3.4, 1.4, 2.4, HULL);
+    hood.position.set(0, 10.4, 2.8);
+    hood.rotation.x = -0.25;
     const head = box(2.6, 2, 2.8, DARK);
     head.position.set(0, 9.6, 3.4);
+    const brow = box(2.9, 0.6, 1.2, HULL);
+    brow.position.set(0, 10.5, 4.2);
     const eye = box(1.8, 0.5, 0.3, 0xff3355, 0xff3355);
     eye.position.set(0, 9.8, 4.9);
+    const maw = box(2.0, 0.7, 1.0, 0x1a1822);
+    maw.position.set(0, 8.7, 4.6);
+    // fangs in the maw the thing is named for
+    for (let i = 0; i < 4; i++) {
+      const f = box(0.22, 0.5, 0.22, 0xe8e2d0);
+      f.position.set(-0.75 + i * 0.5, 8.8, 5.0);
+      this.group.add(f);
+    }
+    // carapace ribs down the flanks
+    for (let i = 0; i < 4; i++) {
+      for (const side of [-1, 1]) {
+        const rib = box(0.5, 2.6 - i * 0.3, 0.6, DARK);
+        rib.position.set(side * 2.35, 8.2, 1.8 - i * 1.4);
+        this.group.add(rib);
+      }
+    }
+    this.group.add(spine, collar, hood, brow, maw);
+
     this.podL = box(1.6, 1.6, 3, DARK);
     this.podL.position.set(-3.2, 9.6, 0);
     this.podR = this.podL.clone();
@@ -599,10 +630,43 @@ export class RocketBeast extends Monster {
     tubesL.position.set(-3.2, 9.6, 1.6);
     const tubesR = tubesL.clone();
     tubesR.position.x = 3.2;
+    // pod detail: a 2x2 muzzle cluster, a mount arm, and a hazard stripe
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < 4; i++) {
+        const mx = side * 3.2 + (i % 2 ? 0.38 : -0.38);
+        const my = 9.6 + (i < 2 ? 0.38 : -0.38);
+        const tube = box(0.44, 0.44, 0.5, 0x14121c);
+        tube.position.set(mx, my, 1.75);
+        this.group.add(tube);
+      }
+      const arm = box(1.0, 0.7, 1.4, HULL);
+      arm.position.set(side * 2.5, 9.4, -0.2);
+      const stripe = box(1.7, 0.3, 0.5, 0xffc44f);
+      stripe.position.set(side * 3.2, 10.5, -0.8);
+      const vent = box(0.5, 1.0, 1.4, 0x14121c);
+      vent.position.set(side * 4.05, 9.6, -0.6);
+      this.group.add(arm, stripe, vent);
+    }
+
     const legL = box(1.2, 5, 1.6, HULL);
     legL.position.set(-1.6, 4, 0);
     const legR = legL.clone();
     legR.position.x = 1.6;
+    // knee joints and splayed feet so it stands rather than hovers on posts
+    for (const side of [-1, 1]) {
+      const knee = box(1.5, 1.1, 1.9, DARK);
+      knee.position.set(side * 1.6, 3.4, 0.1);
+      const shin = box(1.0, 2.2, 1.2, HULL);
+      shin.position.set(side * 1.6, 2.1, 0.2);
+      const foot = box(1.8, 0.7, 2.6, DARK);
+      foot.position.set(side * 1.7, 0.9, 0.5);
+      this.group.add(knee, shin, foot);
+      for (let c = 0; c < 3; c++) {
+        const toe = box(0.4, 0.4, 0.8, 0xe8e2d0);
+        toe.position.set(side * 1.7 - 0.5 + c * 0.5, 0.75, 1.9);
+        this.group.add(toe);
+      }
+    }
     const jetL = box(0.9, 0.6, 0.9, 0x39e6e0, 0x39e6e0);
     jetL.position.set(-1.6, 1.2, 0);
     const jetR = jetL.clone();
@@ -681,12 +745,47 @@ export class VoltSerpent extends Monster {
     const SCALE1 = 0x8a6fd8; // violet
     const SCALE2 = 0xf8dfa2; // pale gold
 
-    // head
+    // Head: a long armoured skull rather than a box. Brow ridges over the
+    // eyes, a frill of spines sweeping back off the crown, and a jaw that
+    // actually has teeth in it — at kaiju scale the silhouette is read from
+    // its outline, so the profile carries the character.
     const head = new THREE.Group();
     const skull = box(3.2, 2.6, 4, SCALE1);
     skull.position.y = 3;
+    const snout = box(2.4, 1.8, 2.2, SCALE1);
+    snout.position.set(0, 2.9, 2.6);
+    const snoutTip = box(1.8, 1.2, 1.1, SCALE2);
+    snoutTip.position.set(0, 2.8, 3.9);
+    for (const side of [-1, 1]) {
+      const brow = box(1.1, 0.7, 2.2, SCALE2);
+      brow.position.set(side * 1.1, 4.2, 1.4);
+      brow.rotation.z = side * -0.12;
+      const cheek = box(0.5, 1.4, 1.6, SCALE2);
+      cheek.position.set(side * 1.7, 2.6, 0.9);
+      // swept cheek fin
+      const fin = box(0.25, 1.9, 2.4, 0x39e6e0, 0x1c6f78);
+      fin.position.set(side * 1.9, 3.4, -1.1);
+      fin.rotation.z = side * -0.45;
+      head.add(brow, cheek, fin);
+      // a small secondary horn behind the main pair
+      const horn2 = box(0.35, 1.1, 0.35, 0xfff2b0, 0xfff2b0);
+      horn2.position.set(side * 1.9, 4.4, -1.9);
+      horn2.rotation.z = side * 0.5;
+      head.add(horn2);
+    }
     const jaw = box(2.6, 0.8, 3.2, SCALE2);
     jaw.position.set(0, 1.8, 0.6);
+    const chin = box(1.6, 0.7, 1.2, SCALE2);
+    chin.position.set(0, 1.7, 2.6);
+    // interlocking teeth along both jaws
+    for (let i = 0; i < 5; i++) {
+      const tx = -1.0 + i * 0.5;
+      const upper = box(0.22, 0.6, 0.22, 0xfffdf2);
+      upper.position.set(tx, 2.0, 3.1);
+      const lower = box(0.2, 0.5, 0.2, 0xfffdf2);
+      lower.position.set(tx, 2.4, 2.9);
+      head.add(upper, lower);
+    }
     const eyeL = box(0.5, 0.5, 0.5, 0x39e6ff, 0x39e6ff);
     eyeL.position.set(-1.2, 3.6, 1.8);
     const eyeR = eyeL.clone();
@@ -697,18 +796,47 @@ export class VoltSerpent extends Monster {
     const hornR = hornL.clone();
     hornR.position.x = 1.1;
     hornR.rotation.z = -0.3;
-    head.add(skull, jaw, eyeL, eyeR, hornL, hornR);
+    // crown frill: a fan of spines that reads even in silhouette
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 4 - 0.5) * 1.5;
+      const spine = box(0.3, 1.5 - Math.abs(a) * 0.5, 0.3, SCALE2);
+      spine.position.set(Math.sin(a) * 1.5, 4.6, -2.4 - Math.cos(a) * 0.4);
+      spine.rotation.z = -a * 0.7;
+      spine.rotation.x = -0.5;
+      head.add(spine);
+    }
+    // charge node behind the skull — the thing the lightning comes from
+    const node = box(1.2, 1.2, 1.2, 0x9fe8ff, 0x39e6ff);
+    node.position.set(0, 4.0, -2.9);
+    head.add(skull, snout, snoutTip, jaw, chin, eyeL, eyeR, hornL, hornR, node);
     this.group.add(head);
 
-    // body segments live directly in the scene-space group
+    // Body segments: each is a plated ring rather than a cube — belly scute
+    // underneath, swept fins either side, and an arc node on every other one
+    // so the charge visibly travels down the body.
     for (let i = 0; i < 8; i++) {
       const seg = new THREE.Group();
       const s = 2.6 - i * 0.22;
       const core = box(s, s, s + 0.8, i % 2 === 0 ? SCALE1 : SCALE2);
       core.position.y = s / 2 + 0.5;
+      const scute = box(s * 0.7, 0.35, s + 0.6, SCALE2);
+      scute.position.y = 0.5;
+      const ridge = box(s * 0.5, 0.3, s + 0.4, SCALE1);
+      ridge.position.y = s + 0.45;
       const spike = box(0.4, 1.2, 0.4, 0x39e6e0, 0x39e6e0);
       spike.position.y = s + 1;
-      seg.add(core, spike);
+      seg.add(core, scute, ridge, spike);
+      for (const side of [-1, 1]) {
+        const fin = box(0.22, 0.9, s * 0.8, 0x39e6e0, 0x1c6f78);
+        fin.position.set(side * (s * 0.5 + 0.1), s * 0.55, 0);
+        fin.rotation.z = side * -0.6;
+        seg.add(fin);
+      }
+      if (i % 2 === 0) {
+        const arc = box(0.5, 0.5, 0.5, 0xbff4ff, 0x39e6ff);
+        arc.position.set(0, s * 0.5 + 0.5, -(s * 0.5 + 0.3));
+        seg.add(arc);
+      }
       this.segments.push(seg);
     }
     this.group.scale.setScalar(MONSTER_SCALE);
@@ -841,6 +969,34 @@ export class IronColossus extends Monster {
     this.legR = this.legL.clone();
     this.legR.position.x = 2;
     this.group.add(torso, plate, core, head, eye, shoulderL, shoulderR, this.armL, this.armR, fistL, fistR, this.legL, this.legR);
+    // Riveted plate over the frame: shoulder pauldrons, chest bolts, hip
+    // armour and exposed hydraulics so the bulk reads as built, not poured.
+    for (const side of [-1, 1]) {
+      const pauldron = box(3.4, 1.6, 3.6, RUST);
+      pauldron.position.set(side * 5, 12.6, 0);
+      const rimPl = box(3.6, 0.5, 3.8, DARK);
+      rimPl.position.set(side * 5, 11.6, 0);
+      const hip = box(2.2, 1.8, 2.4, RUST);
+      hip.position.set(side * 2.2, 5.4, 0);
+      const piston = box(0.5, 3.2, 0.5, DARK);
+      piston.position.set(side * 3.4, 8.0, -0.9);
+      this.group.add(pauldron, rimPl, hip, piston);
+      for (let i = 0; i < 3; i++) {
+        const rivet = box(0.35, 0.35, 0.35, DARK);
+        rivet.position.set(side * 5, 13.5, -1.2 + i * 1.2);
+        this.group.add(rivet);
+      }
+    }
+    for (let i = 0; i < 4; i++) {
+      const bolt = box(0.4, 0.4, 0.4, DARK);
+      bolt.position.set(-1.5 + (i % 2) * 3, 10.6 - Math.floor(i / 2) * 2.4, 2.7);
+      this.group.add(bolt);
+    }
+    const jaw = box(1.8, 0.7, 1.4, DARK);
+    jaw.position.set(0, 12.1, 1.4);
+    const vent = box(2.6, 0.6, 0.6, DARK);
+    vent.position.set(0, 14.2, 0.4);
+    this.group.add(jaw, vent);
     this.group.scale.setScalar(MONSTER_SCALE);
     this.group.position.set(x, 0, z);
     this.addCore(13.0);
@@ -922,24 +1078,84 @@ export class SkyReaver extends Monster {
     const HULL = 0x4a8a96; // teal
     const BELLY = 0xbfd8d2;
 
+    // A raptor built for the dive: narrow keeled chest, a beaked head with a
+    // crest, and wings that are actually structured — leading-edge spar,
+    // membrane, and a row of primaries at the trailing edge. This is the boss
+    // most often seen in silhouette against the sky, so the outline does the
+    // work.
     const body = box(3.2, 1.6, 6.5, HULL);
     body.position.y = 8;
+    const keel = box(1.4, 1.3, 4.6, BELLY);
+    keel.position.set(0, 6.9, 0.6);
     const belly = box(2.6, 0.8, 5.5, BELLY);
     belly.position.y = 7.2;
+    const shoulders = box(4.0, 1.2, 2.6, HULL);
+    shoulders.position.set(0, 8.5, 1.0);
+    const neck = box(1.5, 1.2, 1.6, HULL);
+    neck.position.set(0, 8.4, 3.0);
     const head = box(1.8, 1.2, 2.2, HULL);
     head.position.set(0, 8.2, 4);
+    const beak = box(0.9, 0.7, 1.6, 0xf2e2b8);
+    beak.position.set(0, 8.05, 5.4);
+    const beakTip = box(0.5, 0.5, 0.6, 0xf2e2b8);
+    beakTip.position.set(0, 7.85, 6.3);
+    const crest = box(0.3, 1.5, 2.0, BELLY);
+    crest.position.set(0, 9.2, 3.4);
+    crest.rotation.x = 0.3;
     const eye = box(1.4, 0.35, 0.3, 0xffe14f, 0xffe14f);
     eye.position.set(0, 8.4, 5.1);
+    this.group.add(keel, shoulders, neck, beak, beakTip, crest);
+
     this.wingL = box(7, 0.4, 4, HULL);
     this.wingL.geometry.translate(-3.5, 0, 0);
     this.wingL.position.set(-1.4, 8.2, 0);
     this.wingR = box(7, 0.4, 4, HULL);
     this.wingR.geometry.translate(3.5, 0, 0);
     this.wingR.position.set(1.4, 8.2, 0);
+    // wing structure rides with each wing so it banks and folds with them
+    for (const [wing, side] of [[this.wingL, -1], [this.wingR, 1]] as [THREE.Mesh, number][]) {
+      const spar = box(7, 0.7, 0.9, BELLY);
+      spar.geometry.translate(side * 3.5, 0, 0);
+      spar.position.set(0, 0.15, 1.5);
+      const claw = box(0.5, 0.5, 1.4, 0xf2e2b8);
+      claw.position.set(side * 6.6, 0.15, 1.9);
+      wing.add(spar, claw);
+      // primaries fanning off the trailing edge
+      for (let i = 0; i < 4; i++) {
+        const f = 1.4 + i * 1.5;
+        const p1 = box(1.4, 0.3, 2.6 - i * 0.35, HULL);
+        p1.position.set(side * f, 0, -2.2 - i * 0.25);
+        p1.rotation.y = side * (0.10 + i * 0.05);
+        wing.add(p1);
+      }
+    }
+
     const tail = box(0.8, 0.5, 4, HULL);
     tail.position.set(0, 8, -5);
     const finT = box(0.4, 1.8, 1.6, BELLY);
     finT.position.set(0, 9, -5.5);
+    // tail fans out into three rudder feathers
+    for (const a of [-0.35, 0, 0.35]) {
+      const rud = box(0.9, 0.28, 2.6, HULL);
+      rud.position.set(Math.sin(a) * 1.5, 7.95, -6.6);
+      rud.rotation.y = a;
+      this.group.add(rud);
+    }
+    // folded talons under the chest, ready for the dive
+    for (const side of [-1, 1]) {
+      const leg = box(0.7, 1.6, 0.7, HULL);
+      leg.position.set(side * 1.0, 6.4, 0.4);
+      leg.rotation.x = 0.5;
+      const foot = box(0.6, 0.5, 1.3, BELLY);
+      foot.position.set(side * 1.0, 5.6, 1.1);
+      this.group.add(leg, foot);
+      for (let c = 0; c < 3; c++) {
+        const talon = box(0.18, 0.5, 0.18, 0xf2e2b8);
+        talon.position.set(side * 1.0 - 0.3 + c * 0.3, 5.2, 1.6);
+        talon.rotation.x = 0.6;
+        this.group.add(talon);
+      }
+    }
     this.group.add(body, belly, head, eye, this.wingL, this.wingR, tail, finT);
     this.group.scale.setScalar(MONSTER_SCALE);
     this.group.position.set(x, 26, z);
@@ -1073,6 +1289,30 @@ export class CrimsonMantis extends Monster {
       this.group.add(leg);
     }
     this.group.add(thorax, abdomen, neck, head, eyeL, eyeR, antL, antR, this.scytheL, this.scytheR);
+    // Insect structure: a segmented abdomen, compound eye facets, folded wing
+    // cases over the back and serrations along the inner edge of each scythe.
+    for (let i = 0; i < 4; i++) {
+      const band = box(1.9 - i * 0.22, 0.5, 0.8, PLATE);
+      band.position.set(0, 6.5 - i * 0.12, -2.4 - i * 0.95);
+      this.group.add(band);
+    }
+    for (const side of [-1, 1]) {
+      const wingCase = box(1.1, 0.35, 3.6, SHELL);
+      wingCase.position.set(side * 0.85, 8.0, -1.6);
+      wingCase.rotation.z = side * 0.18;
+      const facet = box(0.5, 0.5, 0.4, 0x2b1412);
+      facet.position.set(side * 0.72, 9.35, 4.15);
+      const palp = box(0.25, 0.7, 0.5, PLATE);
+      palp.position.set(side * 0.4, 8.5, 4.2);
+      palp.rotation.x = 0.4;
+      this.group.add(wingCase, facet, palp);
+      // serrations along the scythe's inner edge
+      for (let i = 0; i < 4; i++) {
+        const tooth = box(0.16, 0.42, 0.16, PLATE);
+        tooth.position.set(side * 1.4 - side * 0.28, 6.6 - i * 0.75, 2.7 + i * 0.28);
+        this.group.add(tooth);
+      }
+    }
     this.group.scale.setScalar(MONSTER_SCALE);
     this.group.position.set(x, 0, z);
     this.addCore(9.0);
@@ -1204,6 +1444,32 @@ export class MagmaGolem extends Monster {
     this.legR.position.x = 1.8;
     this.group.add(torso, crackL, crackR, this.core, head, eyeL, eyeR, shoulderL, shoulderR,
       this.armL, this.armR, fistL, fistR, this.legL, this.legR);
+    // Broken crust: slabs lifting off the shoulders and back with lava in the
+    // seams between them, so the body reads as cooling rock under tension.
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < 3; i++) {
+        const slab = box(1.6, 0.7, 2.0 - i * 0.35, CRUST);
+        slab.position.set(side * (3.0 + i * 0.35), 12.4 - i * 1.5, -0.6);
+        slab.rotation.z = side * (0.25 + i * 0.12);
+        this.group.add(slab);
+      }
+      const seam = box(0.3, 3.0, 0.3, LAVA, 0xff5a1f);
+      seam.position.set(side * 2.4, 9.4, -1.9);
+      const knuckle = box(1.4, 0.8, 1.4, CRUST);
+      knuckle.position.set(side * 4.4, 4.6, 0.6);
+      this.group.add(seam, knuckle);
+    }
+    for (let i = 0; i < 4; i++) {
+      const shard = box(0.6, 1.4 - i * 0.2, 0.6, ROCK);
+      shard.position.set(-1.2 + i * 0.8, 14.2, -1.0);
+      shard.rotation.z = (i - 1.5) * 0.25;
+      this.group.add(shard);
+    }
+    const jawG = box(1.6, 0.7, 1.2, ROCK);
+    jawG.position.set(0, 12.1, 1.2);
+    const throatGlow = box(1.0, 0.4, 0.5, LAVA, 0xff5a1f);
+    throatGlow.position.set(0, 12.3, 1.6);
+    this.group.add(jawG, throatGlow);
     this.group.scale.setScalar(MONSTER_SCALE);
     this.group.position.set(x, 0, z);
     this.addCore(12.0);
@@ -1316,6 +1582,31 @@ export class DeepMaw extends Monster {
       this.mouth.add(tooth);
     }
     this.group.add(this.mouth);
+    // Concentric rasping teeth and a gullet that reads as an actual throat,
+    // plus mandibles either side of the maw and segment plating down the body.
+    for (let ring = 0; ring < 3; ring++) {
+      const r = 2.2 - ring * 0.45, y = 16.2 - ring * 1.0;
+      for (let i = 0; i < 9; i++) {
+        const a = (i / 9) * Math.PI * 2 + ring * 0.3;
+        const t = box(0.35, 0.9 - ring * 0.15, 0.35, RING);
+        t.position.set(Math.sin(a) * r, y, Math.cos(a) * r);
+        t.rotation.x = Math.cos(a) * 0.4;
+        t.rotation.z = -Math.sin(a) * 0.4;
+        this.group.add(t);
+      }
+    }
+    for (const side of [-1, 1]) {
+      const mand = box(0.7, 3.0, 0.9, HIDE);
+      mand.position.set(side * 2.6, 15.2, 0.4);
+      mand.rotation.z = side * 0.35;
+      const mandTip = box(0.5, 1.2, 0.6, RING);
+      mandTip.position.set(side * 3.3, 16.8, 0.4);
+      mandTip.rotation.z = side * 0.7;
+      this.group.add(mand, mandTip);
+    }
+    const throat = box(2.0, 1.6, 2.0, MAW, 0x5a1c18);
+    throat.position.y = 14.6;
+    this.group.add(throat);
     this.group.scale.setScalar(MONSTER_SCALE);
     this.group.position.set(x, 0, z);
     this.addCore(7.0);
@@ -1423,6 +1714,33 @@ export class CinderWyrm extends Monster {
     const tailTip = box(1.6, 0.4, 1.6, UNDER, 0xff8a2f);
     tailTip.position.set(0, 7.8, -8);
     this.group.add(body, neck, head, this.maw, eyeL, eyeR, hornL, hornR, belly, this.wingL, this.wingR, tail, tailTip);
+    // Drake anatomy: a ridge of spines from skull to tail, wing fingers
+    // spanning the membrane, and heat bleeding through the throat and flanks.
+    for (let i = 0; i < 7; i++) {
+      const spine = box(0.3, 1.3 - i * 0.13, 0.4, HORN);
+      spine.position.set(0, 9.4 - i * 0.25, 3.0 - i * 1.5);
+      spine.rotation.x = 0.3;
+      this.group.add(spine);
+    }
+    for (const side of [-1, 1]) {
+      for (let f = 0; f < 3; f++) {
+        const finger = box(4.2 - f * 0.8, 0.22, 0.35, HORN);
+        finger.position.set(side * (2.4 + f * 0.5), 9.0, -0.8 - f * 1.1);
+        finger.rotation.y = side * (0.12 + f * 0.16);
+        this.group.add(finger);
+      }
+      const jawSpike = box(0.28, 0.9, 0.28, HORN);
+      jawSpike.position.set(side * 0.8, 8.4, 6.4);
+      jawSpike.rotation.z = side * 0.4;
+      const flank = box(0.35, 1.1, 2.4, UNDER, 0xc4661f);
+      flank.position.set(side * 1.55, 7.6, 0.6);
+      const claw = box(0.5, 1.1, 0.5, HORN);
+      claw.position.set(side * 1.3, 6.2, 2.2);
+      this.group.add(jawSpike, flank, claw);
+    }
+    const throatC = box(1.1, 0.7, 1.3, UNDER, 0xff7a2f);
+    throatC.position.set(0, 8.3, 6.2);
+    this.group.add(throatC);
     this.group.scale.setScalar(MONSTER_SCALE);
     this.group.position.set(x, 22, z);
     this.addCore(8.0);
@@ -1535,6 +1853,33 @@ export class TideLeviathan extends Monster {
     const legR = legL.clone();
     legR.position.x = 1.6;
     this.group.add(torso, belly, head, jaw, eyeL, eyeR, crest, this.finL, this.finR, arm, this.cannon, legL, legR);
+    // Gill slits, dorsal spines and webbing between the fins — the details
+    // that separate a sea titan from a blue humanoid.
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < 3; i++) {
+        const gill = box(0.25, 1.4 - i * 0.2, 0.8, 0x123a4a);
+        gill.position.set(side * 2.15, 11.6, 0.4 - i * 0.9);
+        this.group.add(gill);
+      }
+      const web = box(0.2, 1.8, 2.6, FIN);
+      web.position.set(side * 3.4, 9.5, -1.2);
+      web.rotation.z = side * -0.4;
+      const claw = box(0.6, 0.5, 1.2, BELLY);
+      claw.position.set(side * 2.0, 4.0, 1.8);
+      this.group.add(web, claw);
+    }
+    for (let i = 0; i < 5; i++) {
+      const spine = box(0.4, 1.6 - i * 0.2, 0.5, FIN);
+      spine.position.set(0, 12.4 - i * 1.1, -2.0 - i * 0.25);
+      spine.rotation.x = 0.35;
+      this.group.add(spine);
+    }
+    const barbel = box(0.3, 1.6, 0.3, BELLY);
+    barbel.position.set(-0.9, 11.2, 2.3);
+    barbel.rotation.x = 0.5;
+    const barbel2 = barbel.clone();
+    barbel2.position.x = 0.9;
+    this.group.add(barbel, barbel2);
     this.group.scale.setScalar(MONSTER_SCALE);
     this.group.position.set(x, 0, z);
     this.addCore(9.0);
