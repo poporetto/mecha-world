@@ -27,7 +27,7 @@ import { buildFallingChunk, FallingChunk, updateFallingChunk } from './fx/collap
 import { Explosions } from './fx/explosions';
 import { Sky } from './fx/sky';
 import { sfx } from './fx/sound';
-import { ACT2_START, AYA_HINATA, BARKS, CHAPTERS, ENDLESS_LINES, EPILOGUE, HINATA_CHAPTER, JOTETSU_BARKS, JOTETSU_CHAPTER, KOTETSU_BARKS, KOTETSU_CHAPTER, LATE_MEMORIES, MEMORIES, MONSTER_BARKS, PROLOGUE, REVENANT_BEATS, RIFT_EPILOGUE } from './core/story';
+import { ACT2_START, AYA_HINATA, BARKS, CHAPTERS, Line, ENDLESS_LINES, EPILOGUE, HINATA_CHAPTER, JOTETSU_BARKS, JOTETSU_CHAPTER, KOTETSU_BARKS, KOTETSU_CHAPTER, LATE_MEMORIES, MEMORIES, MONSTER_BARKS, PROLOGUE, REVENANT_BEATS, RIFT_EPILOGUE } from './core/story';
 import { GameSettings, Hud, RadarKind, WEAPONS, WeaponId } from './ui/hud';
 import { isTouchDevice, TouchControls } from './ui/touch';
 
@@ -1540,14 +1540,36 @@ export class Game {
     if (this.hud.busy && !urgent) return; // a scripted beat is mid-flight
     const pool = BARKS[key];
     if (!pool || pool.length === 0) return;
+    // Walk each pool in order rather than sampling, so a player never hears
+    // the same line twice in a row out of a pool this large — and step over
+    // anything said by a pilot who has not arrived yet. Hinata, Kotetsu and
+    // Jotetsu have lines scattered through the general pools, and without
+    // this Hinata cheerfully banters through Chapter 1, an hour before she
+    // is introduced.
+    let at = this.barkCursor.get(key) ?? Math.floor(Math.random() * pool.length);
+    let line: Line | null = null;
+    for (let i = 0; i < pool.length; i++) {
+      const cand = pool[(at + i) % pool.length];
+      if (this.hasJoined(cand.who)) { line = cand; at = (at + i + 1) % pool.length; break; }
+    }
+    if (!line) return; // nobody on this channel yet has anything to say
+    this.barkCursor.set(key, at);
     this.barkT = urgent ? 9 : 16;
     this.lastBark = key;
     this.idleChatterT = 34;
-    // walk each pool in order rather than sampling, so a player never hears
-    // the same line twice in a row out of a pool this large
-    const at = this.barkCursor.get(key) ?? Math.floor(Math.random() * pool.length);
-    this.barkCursor.set(key, (at + 1) % pool.length);
-    this.hud.say([pool[at]]);
+    this.hud.say([line]);
+  }
+
+  /**
+   * Whether a speaker is actually in the field yet. Support pilots are only
+   * on comms once their frame has physically deployed, so a line of theirs
+   * can never surface before their introduction.
+   */
+  private hasJoined(who: string): boolean {
+    if (who.includes('HINATA')) return this.ally.active;
+    if (who.includes('KOTETSU')) return this.tank.active;
+    if (who.includes('JOTETSU')) return this.digger.active;
+    return true; // Aya, Kurosawa, Kuroki and the archive are always available
   }
 
   /** One remark about the named kaiju, if we have any written for it. */
