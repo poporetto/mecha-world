@@ -250,16 +250,21 @@ export class MechaModel {
     g.add(this.torso);
 
     // Ribbed black abdomen and a tapered white thoracic shell.
-    const spine = capsule(0.31, 0.34, DARK);
+    const spine = capsule(0.27, 0.30, DARK);
     spine.position.y = 0.34;
-    spine.scale.z = 0.8;
+    spine.scale.z = 0.62;
     this.torso.add(spine);
     for (const y of [0.18, 0.34, 0.5]) {
-      const rib = cylinder(0.35, 0.075, STEEL, 12);
+      const rib = cylinder(0.30, 0.06, STEEL, 12);
       rib.position.y = y;
-      rib.scale.z = 0.78;
+      rib.scale.z = 0.60;
       this.torso.add(rib);
     }
+    // White shell over the back of the abdomen: the frame should be glimpsed
+    // at the joints, not run as a dark column the length of the spine.
+    const lumbarShell = frustum(0.44, 0.36, 0.46, 0.20, 0.16, WHITE);
+    lumbarShell.position.set(0, 0.36, -0.20);
+    this.torso.add(lumbarShell);
     const chestCore = frustum(1.1, 1.48, 0.92, 0.62, 0.7, WHITE);
     chestCore.position.y = 1.03;
     this.torso.add(chestCore);
@@ -278,11 +283,11 @@ export class MechaModel {
 
     // Layered red butterfly chest motif from the front turnaround.
     for (const side of [-1, 1]) {
-      const pectoral = frustum(0.24, 0.30, 0.21, 0.115, 0.15, RED);
-      pectoral.position.set(side * 0.46, 1.29, 0.52);
+      const pectoral = frustum(0.30, 0.37, 0.23, 0.075, 0.098, RED);
+      pectoral.position.set(side * 0.44, 1.30, 0.540);
       pectoral.rotation.z = side * 0.22;
-      const lowerPec = frustum(0.16, 0.21, 0.13, 0.088, 0.11, RED);
-      lowerPec.position.set(side * 0.40, 1.03, 0.515);
+      const lowerPec = frustum(0.16, 0.21, 0.115, 0.05, 0.064, RED);
+      lowerPec.position.set(side * 0.40, 0.92, 0.535);
       lowerPec.rotation.z = side * -0.22;
       const whiteEdge = frustum(0.18, 0.28, 0.48, 0.08, 0.1, WHITE);
       whiteEdge.position.set(side * 0.72, 1.13, 0.46);
@@ -722,14 +727,14 @@ export class MechaModel {
     // thinner red outer cheek: in the reference the pauldron reads white with
     // a red edge, not a red block with white behind it
     const outerCap = sphere(0.40, RED);
-    outerCap.scale.set(0.15, 0.74, 0.74);
+    outerCap.scale.set(0.15, 0.70, 0.42);
     outerCap.position.set(x > 0 ? 0.575 : -0.575, 0.15, 0);
     const topInset = frustum(0.42, 0.3, 0.14, 0.6, 0.5, WHITE);
     topInset.position.set(0, 0.4, 0);
     topInset.rotation.x = -0.1;
     // single red cap sitting across the whole top surface of the pauldron
-    const capBrow = frustum(0.62, 0.80, 0.17, 0.50, 0.64, RED);
-    capBrow.position.set(x > 0 ? 0.05 : -0.05, 0.40, 0);
+    const capBrow = frustum(0.62, 0.80, 0.15, 0.30, 0.38, RED);
+    capBrow.position.set(x > 0 ? 0.05 : -0.05, 0.41, 0.02);
     capBrow.rotation.z = x > 0 ? -0.06 : 0.06;
     // From the right side the pauldron is a red outer frame around a recessed
     // charcoal panel, with a white lower cheek rather than a solid red slab.
