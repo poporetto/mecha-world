@@ -937,9 +937,25 @@ export class IronColossus extends Monster {
   private throwT = 4;
   private stompT = 0;
   private heading = 0;
+  /**
+   * A war of attrition, not a burst check. Three things make it one:
+   *
+   *  - plate armour blunts everything that is not landed inside a punish
+   *    window, so raw damage-per-second cannot carry the fight;
+   *  - it welds itself back together when left alone, so chipping at it from
+   *    range and waiting is strictly losing ground;
+   *  - each phase sheds plating, so the mitigation falls away as the fight
+   *    wears on and persistence is what finally breaks it.
+   */
+  private plates: THREE.Mesh[] = [];
+  private sinceHit = 0;
+  /** Fraction of incoming damage that gets through the plate, by phase. */
+  private get armor(): number {
+    return this.phase === 3 ? 0.78 : this.phase === 2 ? 0.5 : 0.3;
+  }
 
   constructor(x: number, z: number) {
-    super(260);
+    super(430);
     const IRON = 0x8d939e;
     const RUST = 0xb87e5e;
     const DARK = 0x3c4048;
@@ -971,6 +987,7 @@ export class IronColossus extends Monster {
     this.legR = this.legL.clone();
     this.legR.position.x = 2;
     this.group.add(torso, plate, core, head, eye, shoulderL, shoulderR, this.armL, this.armR, fistL, fistR, this.legL, this.legR);
+    this.plates.push(plate, shoulderL, shoulderR);
     // Riveted plate over the frame: shoulder pauldrons, chest bolts, hip
     // armour and exposed hydraulics so the bulk reads as built, not poured.
     for (const side of [-1, 1]) {
@@ -983,6 +1000,7 @@ export class IronColossus extends Monster {
       const piston = box(0.5, 3.2, 0.5, DARK);
       piston.position.set(side * 3.4, 8.0, -0.9);
       this.group.add(pauldron, rimPl, hip, piston);
+      this.plates.push(pauldron, hip);
       for (let i = 0; i < 3; i++) {
         const rivet = box(0.35, 0.35, 0.35, DARK);
         rivet.position.set(side * 5, 13.5, -1.2 + i * 1.2);
@@ -1005,9 +1023,32 @@ export class IronColossus extends Monster {
     this.rememberEmissives();
   }
 
+  /** Plate turns most of a hit unless it is caught wide open. */
+  takeDamage(amount: number, src?: string): number {
+    if (this.dying) return 0;
+    this.sinceHit = 0;
+    return super.takeDamage(this.vulnerable ? amount : amount * this.armor, src);
+  }
+
+  /** Every gear change tears more plate off, so the armour thins as it goes. */
+  protected onPhase(p: Phase): void {
+    const shed = this.plates.splice(0, p === 3 ? this.plates.length : 2);
+    for (const m of shed) {
+      m.visible = false;
+    }
+  }
+
   update(dt: number, t: number, ctx: MonsterCtx): void {
     this.updateFlash(dt);
     if (this.updateDeath(dt)) return;
+
+    // Welds itself shut when nobody is hurting it. Slow enough that it can
+    // never out-heal real pressure, fast enough that backing off to plink at
+    // it from range gives the ground back.
+    this.sinceHit += dt;
+    if (this.sinceHit > 3.5 && this.hp < this.maxHp) {
+      this.hp = Math.min(this.maxHp, this.hp + dt * 11);
+    }
 
     const dx = ctx.playerPos.x - this.group.position.x;
     const dz = ctx.playerPos.z - this.group.position.z;
@@ -1051,8 +1092,10 @@ export class IronColossus extends Monster {
       const from = this.group.position.clone();
       from.y += 13 * MONSTER_SCALE / 2.2 * 2.2;
       ctx.throwBoulder(from, ctx.playerPos.clone());
-      // all that mass goes into the throw — it is wide open on the follow-through
-      this.openWindow(2.2);
+      // All that mass goes into the throw. The window is generous because it
+      // is the only place real damage gets through the plate — the fight is
+      // won by being there for every one of them.
+      this.openWindow(3.4);
     }
     this.armR.rotation.x *= 1 - Math.min(1, dt * 2);
   }

@@ -2498,7 +2498,7 @@ export class Game {
       { make: (x2, z2) => new Kaiju(x2, z2), toast: ['⚠ KAIJU SIGNAL ⚠', 'GORGOSAUR is tearing through the city. Defeat it to learn the BEAM.'] },
       { make: (x2, z2) => new RocketBeast(x2, z2), toast: ['⚠ AIRBORNE THREAT ⚠', 'MISSILE MAW inbound. Defeat it for OVERDRIVE THRUSTERS.'] },
       { make: (x2, z2) => new VoltSerpent(x2, z2), toast: ['⚠ SEISMIC WEAVE ⚠', 'VOLT SERPENT surfacing. Defeat it to learn the NOVA PULSE.'] },
-      { make: (x2, z2) => new IronColossus(x2, z2), toast: ['⚠ HEAVY FOOTFALLS ⚠', 'IRON COLOSSUS approaching. Defeat it to earn the AEGIS SHIELD.'] },
+      { make: (x2, z2) => new IronColossus(x2, z2), toast: ['⚠ HEAVY FOOTFALLS ⚠', 'IRON COLOSSUS approaching. Plated — hit it when it is open, and do not let up.'] },
       { make: (x2, z2) => new SkyReaver(x2, z2), toast: ['⚠ SHADOW OVERHEAD ⚠', 'SKY REAVER circling above. Defeat it to salvage its RAILGUN.'] },
       { make: (x2, z2) => new CrimsonMantis(x2, z2), toast: ['⚠ RAPID MOVEMENT ⚠', 'CRIMSON MANTIS closing fast. Defeat it to forge the CRIMSON EDGE.'] },
       { make: (x2, z2) => new MagmaGolem(x2, z2), toast: ['⚠ MOLTEN MASS ⚠', 'MAGMA GOLEM erupting. Defeat it to overcharge the NOVA PULSE.'] },
