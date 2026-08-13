@@ -758,20 +758,21 @@ export function zoneAt(cx: number, cz: number): Zone {
   if (r > 210 && flavor > 0.7 && sat < 0.3) return Zone.Industrial;
   // Downtown is a place, not a texture: the bar climbs as you leave the
   // middle, and drops again as you approach a satellite centre.
-  const coreCut = 0.62 + Math.max(0, (r - 240) / 640) - sat * 0.62;
+  const coreCut = 0.545 + Math.max(0, (r - 240) / 900) - sat * 0.62;
   if (district > coreCut) return Zone.Core;
 
-  // Anywhere outside the inner districts and clear of a satellite centre is
-  // house country. The suburbs used to only get whatever was left after the
-  // apartment and low-rise bands had taken their share, which kept them to a
-  // thin ring; now they claim most of the residential band out here too,
-  // because past the commercial belt people live in houses, not blocks.
-  const houseCountry = r > 95 && sat < 0.55;
+  // House country: detached homes, out past the commercial belt. This used to
+  // start at r>95 and swallow the whole low-district band, which put roughly
+  // three quarters of the map under kawara roofs — so every building form,
+  // landmark and shopfront lived in the quarter that was left. It now starts
+  // further out and yields the low-district band to shophouse blocks, which
+  // is what Tokyo actually looks like between the centres.
+  const houseCountry = r > 165 && sat < 0.40;
   if (district > 0.47 - sat * 0.2) {
-    if (flavor < 0.58) return houseCountry ? Zone.Suburb : Zone.Residential;
+    if (flavor < 0.46) return houseCountry ? Zone.Suburb : Zone.Residential;
     return Zone.Midrise;
   }
-  if (houseCountry && flavor > 0.05) return Zone.Suburb;
+  if (houseCountry && flavor > 0.44) return Zone.Suburb;
   return Zone.Lowrise;
 }
 

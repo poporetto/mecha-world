@@ -28,6 +28,7 @@ import { Explosions } from './fx/explosions';
 import { Sky } from './fx/sky';
 import { sfx } from './fx/sound';
 import { ACT2_START, AYA_HINATA, BARKS, CHAPTERS, Line, ENDLESS_LINES, EPILOGUE, HINATA_CHAPTER, JOTETSU_BARKS, JOTETSU_CHAPTER, KOTETSU_BARKS, KOTETSU_CHAPTER, LATE_MEMORIES, MEMORIES, MONSTER_BARKS, PROLOGUE, REVENANT_BEATS, RIFT_EPILOGUE } from './core/story';
+import { Tutorial } from './core/tutorial';
 import { GameSettings, Hud, RadarKind, WEAPONS, WeaponId } from './ui/hud';
 import { isTouchDevice, TouchControls } from './ui/touch';
 
@@ -150,6 +151,12 @@ export class Game {
   private idleChatterT = 30;
   private supportCallT = 8;
   private blocksWrecked = 0;
+  /** First-run onboarding; null on a resumed or already-taught run. */
+  private tutorial: Tutorial | null = null;
+  private tutWalked = 0;
+  private tutWrecked = 0;
+  private tutMarker: THREE.Mesh | null = null;
+  private tutLastPos = new THREE.Vector3();
   private monsterBarkT = 0;   // gap between remarks about the current kaiju
   private monsterBarkFor = ''; // which kaiju those remarks are about
   private memoryIdx = 0;       // next backstory fragment to surface
@@ -336,6 +343,7 @@ export class Game {
         if (!this.touch) this.renderer.domElement.requestPointerLock();
         this.hud.say(PROLOGUE);
         this.hud.setObjective('Hold Neo Tokyo');
+        this.beginTutorial();
       });
     }, this.touch !== null, this.resumeOffer());
 
@@ -1111,6 +1119,7 @@ export class Game {
       this.chunks.markDirty(res.dirty);
       this.repair.noteDamage(res.dirty, this.time);
       this.blocksWrecked += res.count;
+      if (credit) this.tutWrecked += res.count;
       // wrecking a block turns it into people who need somewhere to go
       if (res.count > 12) {
         this.evacuees.displace(
@@ -1938,6 +1947,7 @@ export class Game {
     this.hud.setWave(0);
     this.hud.setObjective('Explore Neo Tokyo — something big is coming');
     this.selectWeapon('saber');
+    this.beginTutorial();
     this.setPaused(false);
     this.hud.toast('REDEPLOYED', 'New run — the city is whole again', 3);
   }
@@ -2162,6 +2172,109 @@ export class Game {
     m.maxHp = m.hp = Math.round(m.maxHp * hpScale);
   }
 
+  // ---------------------------------------------------------------- tutorial
+
+  /**
+   * Chapter one teaches. The first kaiju is held until the pilot has walked,
+   * cut something and left the ground, so nobody meets a thirty-metre boss
+   * having never pressed jump. Skipped entirely on a resumed run — a returning
+   * pilot does not need to be told what the legs do.
+   */
+  private beginTutorial(): void {
+    this.tutorial = new Tutorial();
+    // an empty sky for the lesson; the swarm resumes with the boss timer
+    this.drones.target = 0;
+    this.tutWalked = 0;
+    this.tutWrecked = 0;
+    this.tutLastPos.copy(this.player.pos);
+    this.clearTutorialMarker();
+  }
+
+  private clearTutorialMarker(): void {
+    if (!this.tutMarker) return;
+    this.scene.remove(this.tutMarker);
+    this.tutMarker.geometry.dispose();
+    (this.tutMarker.material as THREE.Material).dispose();
+    this.tutMarker = null;
+  }
+
+  /**
+   * Stand a translucent column over the tallest thing near the pilot so the
+   * "cut something" step points at an actual building instead of asking them
+   * to guess which of a hundred is the condemned one.
+   */
+  private markCondemnedBuilding(): void {
+    let best: { x: number; z: number; h: number } | null = null;
+    for (let i = 0; i < 40; i++) {
+      const a2 = (i / 40) * Math.PI * 2;
+      for (const d of [26, 40, 56]) {
+        const x = Math.round(this.player.pos.x + Math.sin(a2) * d);
+        const z = Math.round(this.player.pos.z + Math.cos(a2) * d);
+        const h = this.world.groundHeight(x, z);
+        if (h >= 8 && (!best || h > best.h)) best = { x, z, h };
+      }
+    }
+    if (!best) return;
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(9, 46, 9),
+      new THREE.MeshBasicMaterial({
+        color: 0xffc44f, transparent: true, opacity: 0.16, depthWrite: false,
+      })
+    );
+    mesh.position.set(best.x + 0.5, best.h + 22, best.z + 0.5);
+    this.scene.add(mesh);
+    this.tutMarker = mesh;
+  }
+
+  private updateTutorial(dt: number): void {
+    const t = this.tutorial;
+    if (!t) return;
+
+    // ground distance only — hovering in place is not walking
+    if (this.player.grounded || this.player.onPlatform) {
+      this.tutWalked += Math.hypot(
+        this.player.pos.x - this.tutLastPos.x,
+        this.player.pos.z - this.tutLastPos.z,
+      );
+    }
+    this.tutLastPos.copy(this.player.pos);
+
+    const deck = this.world.groundHeight(this.player.pos.x, this.player.pos.z);
+    const wasStep = t.step?.id;
+    t.update(dt, {
+      walked: this.tutWalked,
+      altitude: this.player.pos.y - deck,
+      wrecked: this.tutWrecked,
+      flying: !this.player.grounded && !this.player.onPlatform,
+    });
+
+    if (t.justCleared) {
+      this.hud.toast(t.justCleared[0], t.justCleared[1], 3);
+      sfx.jingle();
+    }
+    if (t.pending && !this.hud.cardOpen) this.hud.say(t.pending);
+
+    const step = t.step;
+    if (step && step.id !== wasStep) {
+      this.hud.setObjective(step.objective);
+      this.clearTutorialMarker();
+      if (step.id === 'strike') this.markCondemnedBuilding();
+    }
+    if (this.tutMarker) {
+      // slow pulse so it reads as a marker and not as scenery
+      const m = this.tutMarker.material as THREE.MeshBasicMaterial;
+      m.opacity = 0.11 + Math.sin(this.time * 2.4) * 0.06;
+    }
+    if (t.complete) {
+      this.clearTutorialMarker();
+      this.tutorial = null;
+      this.hud.setObjective('Hold the line — first contact inbound');
+      this.drones.target = this.droneBase;
+      // enough of a beat for the sign-off to land before the kaiju does
+      this.bossTimer = Math.max(this.bossTimer, 8);
+    }
+  }
+
   // ------------------------------------------------------------ boss cycle
 
   /**
@@ -2259,6 +2372,9 @@ export class Game {
     // timer, which is how the dead air got there in the first place. Only the
     // spawn itself waits for comms to finish, so a kaiju never lands on top
     // of someone's sentence.
+    // Nothing spawns while the tutorial is running: a first contact landing
+    // mid-lesson is exactly the ambush this whole sequence exists to prevent.
+    if (this.tutorial) { this.bossTimer = Math.max(this.bossTimer, 6); return; }
     this.bossTimer -= dt;
     this.warnNextContact();
     if (this.bossTimer > 0 || this.hud.busy || this.hud.cardOpen) return;
@@ -2739,6 +2855,7 @@ export class Game {
     this.npcs.update(dt, this.player.pos, threats, this.time);
     this.cars.update(dt, this.player.pos);
 
+    this.updateTutorial(dt);
     this.updateBosses(dt);
     // Major attacks project a pulsing danger zone at Terra-Armor's current
     // position. This turns the existing animation tell into spatially useful
