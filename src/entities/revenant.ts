@@ -58,7 +58,6 @@ export class Revenant extends Monster {
   private orbitDir = Math.random() < 0.5 ? 1 : -1;
   private bob = 0;
   private plowT = 0;
-  private corruption = new THREE.Group();
 
   /** Damage absorbed per weapon, which becomes resistance to it. */
   private learned = new Map<string, number>();
@@ -79,8 +78,6 @@ export class Revenant extends Monster {
     // overwritten the emitter and beam with its own rift colour.
     this.model.setCrimsonEdge(true);
     this.inner.add(this.model.group);
-    this.buildCorruption();
-    this.model.group.add(this.corruption);
     this.group.add(this.inner);
 
     const map = new Map(RECOLOR);
@@ -110,54 +107,6 @@ export class Revenant extends Monster {
     this.addCore(4.8, -0.75);
     this.weakCore.scale.setScalar(0.42);
     this.rememberEmissives();
-  }
-
-  /**
-   * Corruption is an overlay on the shared Terra-Armor skeleton, never a
-   * replacement rig. That keeps every joint and authored pose identical while
-   * making the prototype read as older, predatory and partially crystallised.
-   */
-  private buildCorruption(): void {
-    const shardMat = new THREE.MeshStandardMaterial({
-      color: 0x3c174c,
-      emissive: 0x7b24a8,
-      emissiveIntensity: 1.15,
-      metalness: 0.48,
-      roughness: 0.3,
-      flatShading: true,
-    });
-    const darkMat = new THREE.MeshStandardMaterial({
-      color: 0x100c15,
-      metalness: 0.7,
-      roughness: 0.34,
-      flatShading: true,
-    });
-    const addShard = (
-      x: number, y: number, z: number,
-      sx: number, sy: number, sz: number,
-      rx = 0, rz = 0, dark = false,
-    ) => {
-      const shard = new THREE.Mesh(
-        new THREE.ConeGeometry(0.5, 1.8, 4),
-        dark ? darkMat : shardMat,
-      );
-      shard.position.set(x, y, z);
-      shard.scale.set(sx, sy, sz);
-      shard.rotation.set(rx, 0, rz);
-      shard.castShadow = true;
-      this.corruption.add(shard);
-    };
-
-    // Every shard now sits inside the frame's own silhouette. Four used to
-    // break it — two crown thorns above the helmet and two shoulder growths
-    // out past the pauldrons — which read as loose blocks floating beside the
-    // machine rather than as corruption growing through it.
-    // Back growths, tucked behind the shoulder line.
-    addShard(-0.72, 3.75, -0.72, 0.3, 0.62, 0.3, -0.75, -0.28, true);
-    addShard(0.58, 3.55, -0.78, 0.26, 0.5, 0.26, -0.68, 0.25);
-    // Smaller outer-leg spurs keep the corruption visible in chase/profile.
-    addShard(-0.67, 1.25, -0.05, 0.24, 0.42, 0.24, 0, -0.88);
-    addShard(0.65, 0.72, -0.12, 0.2, 0.36, 0.2, 0, 0.9, true);
   }
 
   /**
@@ -273,7 +222,6 @@ export class Revenant extends Monster {
     // branches as the player's Terra-Armor.
     this.model.animate(t, speed, !lit, dt);
     this.inner.position.y = Math.sin(this.bob * 3) * 0.06;
-    this.corruption.rotation.y = Math.sin(t * 1.7) * 0.012;
 
     // Now that towers no longer stop it, it has to go through them visibly
     // rather than clipping. A charge carves its own corridor.
