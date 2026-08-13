@@ -27,7 +27,7 @@ import { buildFallingChunk, FallingChunk, updateFallingChunk } from './fx/collap
 import { Explosions } from './fx/explosions';
 import { Sky } from './fx/sky';
 import { sfx } from './fx/sound';
-import { ACT2_START, AYA_HINATA, BARKS, CHAPTERS, Line, ENDLESS_LINES, EPILOGUE, HINATA_CHAPTER, JOTETSU_BARKS, JOTETSU_CHAPTER, KOTETSU_BARKS, KOTETSU_CHAPTER, LATE_MEMORIES, MEMORIES, MONSTER_BARKS, PROLOGUE, REVENANT_BEATS, RIFT_EPILOGUE } from './core/story';
+import { ACT2_START, AYA, AYA_HINATA, BARKS, CHAPTERS, Line, ENDLESS_LINES, EPILOGUE, HINATA_CHAPTER, JOTETSU_BARKS, JOTETSU_CHAPTER, KOTETSU_BARKS, KOTETSU_CHAPTER, LATE_MEMORIES, MEMORIES, MONSTER_BARKS, PROLOGUE, REVENANT_BEATS, RIFT_EPILOGUE } from './core/story';
 import { Tutorial } from './core/tutorial';
 import { GameSettings, Hud, RadarKind, WEAPONS, WeaponId, DIFFICULTY} from './ui/hud';
 import { isTouchDevice, TouchControls } from './ui/touch';
@@ -2233,6 +2233,67 @@ export class Game {
     }
   }
 
+  // ------------------------------------------------------------ rift breach
+
+  /**
+   * Every so often during a lull the seam opens over the city and throws a
+   * squad through it. It gives the rift a presence in the moment-to-moment
+   * game rather than only on the horizon and in the story, and it means a
+   * quiet stretch can be interrupted by something other than the next boss.
+   */
+  private breachTimer = 70 + Math.random() * 50;
+  private breachMouth: THREE.Vector3 | null = null;
+  private breachSpawns = 0;
+  private breachDrip = 0;
+
+  private updateBreach(dt: number): void {
+    // never during a boss, the tutorial, a story card or after the campaign
+    if (this.tutorial || this.campaignOver || this.gameOver || this.paused) return;
+
+    if (this.breachMouth) {
+      this.breachDrip -= dt;
+      if (this.breachDrip <= 0 && this.breachSpawns > 0 && this.sky.tearOpen > 0.45) {
+        this.breachDrip = 0.42;
+        this.breachSpawns--;
+        // they fall out of the mouth, scattered a little so it reads as a
+        // swarm being expelled rather than a queue
+        this.drones.spawnAt(
+          this.breachMouth.x + (Math.random() - 0.5) * 14,
+          this.breachMouth.y + (Math.random() - 0.5) * 10,
+          this.breachMouth.z + (Math.random() - 0.5) * 14,
+        );
+        this.explosions.boom(this.breachMouth.clone(), 5);
+        sfx.zap(0.5);
+      }
+      if (!this.sky.tearActive) this.breachMouth = null;
+      return;
+    }
+
+    if (this.monster) return; // the boss owns the moment
+    this.breachTimer -= dt;
+    if (this.breachTimer > 0) return;
+    this.breachTimer = 95 + Math.random() * 70;
+
+    // open it a little way off, high, in front of where the player is looking
+    const a = this.camYaw + Math.PI + (Math.random() - 0.5) * 1.4;
+    const d = 70 + Math.random() * 50;
+    const x = this.player.pos.x + Math.sin(a) * d;
+    const z = this.player.pos.z + Math.cos(a) * d;
+    const gy = this.world.groundHeight(x, z, 60);
+    this.breachMouth = this.sky.openTear(x, z, gy);
+    this.breachSpawns = 3 + Math.floor(Math.random() * 3);
+    this.breachDrip = 1.1;
+    this.shake = Math.max(this.shake, 0.5);
+    sfx.explode(0.6, 0.8);
+    this.hud.toast('SEAM BREACH', 'The tear opened over the ward — contacts coming through', 4);
+    if (!this.hud.busy) {
+      this.hud.say([{
+        who: AYA,
+        text: 'Kuroki, the seam just opened over you. Whatever comes out of that, it did not walk here.',
+      }]);
+    }
+  }
+
   // ------------------------------------------------------------ boss cycle
 
   /**
@@ -2821,6 +2882,7 @@ export class Game {
     this.cars.update(dt, this.player.pos);
 
     this.updateTutorial(dt);
+    this.updateBreach(dt);
     this.updateBosses(dt);
     // Major attacks project a pulsing danger zone at Terra-Armor's current
     // position. This turns the existing animation tell into spatially useful

@@ -153,6 +153,23 @@ export class Sky {
   private sun: THREE.Group;
   private fuji: THREE.Group;
   private rift: THREE.Group;
+  /**
+   * A second, smaller tear that opens over the city during a breach. The main
+   * rift is hundreds of units out at the seam — anything born there would
+   * spend a minute in transit — so a breach opens locally in the same visual
+   * language, and the distant tear flares in sympathy.
+   */
+  private tear!: THREE.Group;
+  private tearT = 0;
+  private tearLife = 0;
+  /** 0..1, how far open the local tear is. Read by game.ts to time spawns. */
+  get tearOpen(): number {
+    if (this.tearLife <= 0) return 0;
+    const t = 1 - this.tearT / this.tearLife;
+    return Math.min(1, Math.sin(Math.min(1, t) * Math.PI) * 1.6);
+  }
+  /** Extra brightness on the distant rift while a breach is running. */
+  private riftFlare = 0;
   private moon: THREE.Mesh;
   private clouds: Cloud[] = [];
   private birds: Bird[] = [];
@@ -251,9 +268,8 @@ export class Sky {
    * clear the skyline, so it is on the horizon from the first chapter and
    * grows the whole way in.
    */
-  private buildRift(): THREE.Group {
+  private buildRift(H = 430): THREE.Group {
     const g = new THREE.Group();
-    const H = 430;
     // a ragged vertical slash: stacked slabs of decreasing width, jittered
     // sideways so the edge reads as torn rather than cut
     for (let i = 0; i < 26; i++) {
@@ -303,6 +319,9 @@ export class Sky {
     this.rift = this.buildRift();
     this.rift.position.set(RIFT_SITE.x, 0, RIFT_SITE.z);
     this.group.add(this.rift);
+    this.tear = this.buildRift(120);
+    this.tear.visible = false;
+    this.group.add(this.tear);
     this.sun = new THREE.Group();
     const core = new THREE.Mesh(
       new THREE.CircleGeometry(22, 24),
@@ -489,6 +508,18 @@ export class Sky {
   }
 
   // time in seconds; starts mid-morning
+  /** Open a tear over a spot in the city. Returns where its mouth sits. */
+  openTear(x: number, z: number, groundY: number, seconds = 11): THREE.Vector3 {
+    this.tear.position.set(x, groundY + 24, z);
+    this.tear.visible = true;
+    this.tearLife = seconds;
+    this.tearT = seconds;
+    this.riftFlare = 1;
+    return new THREE.Vector3(x, groundY + 70, z);
+  }
+
+  get tearActive(): boolean { return this.tearLife > 0; }
+
   update(dt: number, time: number, center: THREE.Vector3, camera: THREE.Camera, corruption = 0): SkyState {
     const phase = ((time / CYCLE) + 0.22) % 1; // 0..1, sunrise near 0
     const theta = phase * Math.PI * 2;
@@ -548,7 +579,7 @@ export class Sky {
     // The tear pulses, slowly and out of time with anything else, and burns
     // brighter the closer you get.
     const beat = 0.86 + Math.sin(time * 0.7) * 0.07 + Math.sin(time * 2.3) * 0.03;
-    this.rift.scale.set(1 + corruption * 0.35, beat, 1);
+    this.rift.scale.set(1 + corruption * 0.35 + this.riftFlare * 0.22, beat, 1);
     // Billboard it. The tear is built from flat slabs, so without this it
     // thins to nothing when approached from the side — and a hole in the
     // world should look the same from every angle anyway.
@@ -561,9 +592,30 @@ export class Sky {
       if (m.isMesh) {
         const mat = m.material as THREE.MeshBasicMaterial;
         const base = mat.userData.baseOpacity ?? (mat.userData.baseOpacity = mat.opacity);
-        mat.opacity = Math.min(1, base * (0.75 + corruption * 0.6) * beat);
+        mat.opacity = Math.min(1, base * (0.75 + corruption * 0.6 + this.riftFlare * 0.5) * beat);
       }
     });
+
+    // The local tear: tears open, hangs, then seals. Scaled on Y so it
+    // unzips vertically the way the main rift reads, and billboarded the same.
+    if (this.tearLife > 0) {
+      this.tearT = Math.max(0, this.tearT - dt);
+      const open = this.tearOpen;
+      this.tear.scale.set(0.35 + open * 0.85, Math.max(0.02, open), 1);
+      this.tear.rotation.y = Math.atan2(
+        camera.position.x - this.tear.position.x,
+        camera.position.z - this.tear.position.z,
+      );
+      this.tear.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh) return;
+        const mat = m.material as THREE.MeshBasicMaterial;
+        const base = mat.userData.baseOpacity ?? (mat.userData.baseOpacity = mat.opacity);
+        mat.opacity = Math.min(1, base * open * 1.2);
+      });
+      if (this.tearT <= 0) { this.tearLife = 0; this.tear.visible = false; }
+    }
+    this.riftFlare = Math.max(0, this.riftFlare - dt * 0.16);
 
     // clouds take the sky's own colour rather than darkening to grey, so at
     // night they read as pale cloud lit by the sky, not black slabs

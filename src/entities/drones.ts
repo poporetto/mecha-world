@@ -130,6 +130,18 @@ export class DroneManager {
     };
   }
 
+  /**
+   * Birth a drone at an exact point rather than the usual ring around the
+   * player — used when something disgorges them, so they visibly come OUT of
+   * the thing that made them instead of fading in off to one side.
+   */
+  spawnAt(x: number, y: number, z: number): void {
+    const d = this.build();
+    d.group.position.set(x, y, z);
+    this.group.add(d.group);
+    this.drones.push(d);
+  }
+
   private spawn(ctx: DroneCtx): void {
     const d = this.build();
     // arrive from off to one side, at altitude
