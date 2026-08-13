@@ -328,10 +328,13 @@ export class Game {
     // real players keep the defeat-a-boss-to-unlock progression
     const params = new URLSearchParams(location.search);
     const debug = params.has('debug') || params.has('all');
-    // The chapter jump is a development tool. It was being wired up for
-    // everybody, which put a DEBUG button on the HUD of a shipped build that
-    // skips to any chapter with everything unlocked.
-    if (debug) this.hud.bindChapterDebug(CHAPTERS, (chapter) => this.jumpToChapter(chapter));
+    // The chapter jump is always available — it is the only practical way to
+    // reach a late chapter for testing without playing the whole campaign.
+    // NOTE: this means the DEBUG button is on the HUD of a shipped build. To
+    // hide it before release, put `debug &&` back in front of this line.
+    this.hud.bindChapterDebug(CHAPTERS, (chapter) => this.jumpToChapter(chapter));
+    // Unlocking the whole kit is a separate concern from jumping chapters:
+    // jumping to chapter 4 should give you chapter 4's loadout, not everything.
     if (debug) {
       this.unlockEverything();
     } else {
@@ -1817,7 +1820,16 @@ export class Game {
     sfx.ensure();
     sfx.startMusic('explore');
     this.restart();
-    this.unlockEverything();
+    // Give the loadout that chapter would actually have — the rewards of every
+    // boss before it — rather than the whole kit. Jumping to chapter 4 to test
+    // chapter 4 is useless if it hands you tools you would not have yet.
+    const ORDER: Reward[] = [
+      'beam', 'thrust', 'nova', 'shield', 'railgun',
+      'blades', 'quake', 'vulcan', 'flamer', 'aqua',
+    ];
+    this.hud.suppressToasts = true;
+    for (let i = 0; i < Math.min(index, ORDER.length); i++) this.grantReward(ORDER[i]);
+    this.hud.suppressToasts = false;
     this.bossIndex = index;
     this.latestFinishedChapter = index - 1;
     this.wave = index;

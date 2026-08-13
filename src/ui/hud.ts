@@ -1199,7 +1199,11 @@ export class Hud {
     this.bossWrap.style.display = 'none';
   }
 
+  /** Set while a debug chapter jump replays ten unlocks in one frame. */
+  suppressToasts = false;
+
   toast(title: string, sub: string, seconds = 3.5): void {
+    if (this.suppressToasts) return;
     (document.getElementById('toast-h')!).textContent = title;
     (document.getElementById('toast-p')!).textContent = sub;
     this.toastEl.style.opacity = '1';
