@@ -1097,11 +1097,16 @@ export class Game {
     this.hud.setScore(this.score, this.combo);
   }
 
-  private destroyAt(p: THREE.Vector3, r: number, shake: number): void {
+  private destroyAt(p: THREE.Vector3, r: number, shake: number, credit = true): void {
     const res = this.world.destroySphere(p.x, p.y, p.z, r);
     if (res.count > 0) {
-      this.score += res.count; // raw points for rubble, no combo bump
-      this.hud.setScore(this.score, this.combo);
+      // Collateral the boss causes is not the player's work, so it pays
+      // nothing — otherwise standing still while a kaiju flattens a ward
+      // would be a scoring strategy.
+      if (credit) {
+        this.score += res.count; // raw points for rubble, no combo bump
+        this.hud.setScore(this.score, this.combo);
+      }
       if (shake > 0.25) this.shake = Math.max(this.shake, Math.min(1.4, shake));
       this.chunks.markDirty(res.dirty);
       this.repair.noteDamage(res.dirty, this.time);
@@ -2159,6 +2164,34 @@ export class Game {
 
   // ------------------------------------------------------------ boss cycle
 
+  /**
+   * A thirty-metre kaiju should not be walking through office blocks as if
+   * they were fog. Every few metres of travel it shoulders a hole through
+   * whatever its body occupies — so the fight leaves a visible trail across
+   * the ward and the player can read where the thing has been.
+   */
+  private plowBoss(m: Monster): void {
+    if (m.dying || m.dead) return;
+    const p = m.group.position;
+    const from = this.bossPlowFrom;
+    if (from.x === 0 && from.z === 0 && from.y === 0) { from.copy(p); return; }
+    const moved = Math.hypot(p.x - from.x, p.z - from.z);
+    if (moved < 3) return;
+    from.copy(p);
+    // Carve at chest height with a body-sized radius. Flyers cruising above
+    // the skyline simply find nothing to hit and cost a single empty query.
+    const r = Math.max(4, m.hitRadius * 0.5);
+    this.plowPoint.set(p.x, p.y + m.centerY * 0.45, p.z);
+    this.destroyAt(this.plowPoint, r, 0.18, false);
+    // and a second, lower bite so it clears its own legs rather than
+    // wading with its feet buried in masonry
+    this.plowPoint.set(p.x, p.y + m.centerY * 0.12, p.z);
+    this.destroyAt(this.plowPoint, r * 0.8, 0, false);
+  }
+
+  private bossPlowFrom = new THREE.Vector3();
+  private plowPoint = new THREE.Vector3();
+
   private updateBosses(dt: number): void {
     if (this.monster) {
       const ctx: MonsterCtx = {
@@ -2176,6 +2209,7 @@ export class Game {
         },
       };
       this.monster.update(dt, this.time, ctx);
+      this.plowBoss(this.monster);
       this.hud.setBossHP(this.monster.hp / this.monster.maxHp, this.monster.phase, this.monster.vulnerable);
       if (this.monster.phaseAnnounce) this.announcePhase(this.monster.phaseAnnounce);
       if (this.monster instanceof Revenant) this.updateRevenant(this.monster);
@@ -2292,6 +2326,7 @@ export class Game {
         sz = at.z + Math.cos(ra) * rd;
       }
       this.monster = entry.make(sx, sz);
+      this.bossPlowFrom.set(0, 0, 0); // first frame just seeds the plow origin
       this.tuneCampaignBoss(this.monster, chapterNo);
       this.chapterStartScore = this.score;
       this.chapterStartDeaths = this.deaths;
@@ -2333,6 +2368,7 @@ export class Game {
       m.maxHp = m.hp = Math.round(m.maxHp * (1.45 + this.powerLevel * 0.22 + (this.wave - campaign.length) * 0.17));
       m.reward = 'repair';
       this.monster = m;
+      this.bossPlowFrom.set(0, 0, 0);
       this.hud.toast('⚠ WAVE ' + this.wave + ' ⚠', m.name + ' detected.', 3);
       this.beginBossIntro(m.name, 'Escalating hostile signature · endless deployment');
       this.hud.say([ENDLESS_LINES[this.wave % ENDLESS_LINES.length]]);

@@ -40,6 +40,28 @@ function box(w: number, h: number, d: number, color: number, emissive = 0): THRE
   );
 }
 
+/**
+ * An octagonal prism built out of four overlapping slabs — a square, a second
+ * square rolled 45 degrees, and the two together read as a chamfered tube.
+ * Everything else on this aircraft is box-built, so a smooth 16-segment
+ * cylinder for the nacelles stuck out as the one non-voxel part of the model.
+ */
+function voxelTube(r: number, len: number, color: number, hollow = false): THREE.Group {
+  const g = new THREE.Group();
+  const w = r * 2, thin = r * 0.83;
+  for (const [sw, sh, roll] of [[w, thin, 0], [thin, w, 0], [w * 0.78, w * 0.78, Math.PI / 4]] as const) {
+    const m = box(sw, sh, len, color);
+    m.rotation.z = roll;
+    g.add(m);
+  }
+  if (hollow) {
+    // a darker inner bore so the intake reads as an opening, not a plug
+    const bore = box(r * 1.05, r * 1.05, len * 0.9, 0x1b2028);
+    g.add(bore);
+  }
+  return g;
+}
+
 // A detailed block-built wide-body airliner, nose pointing +Z. The collision
 // deck remains intentionally forgiving, but the visible model follows real
 // aircraft anatomy: pressure tube, tapered nose and tail, swept lifting
@@ -152,21 +174,13 @@ function buildPlane(): { group: THREE.Group; deckY: number; halfLen: number; hal
     // Four high-bypass turbofans. Round nacelles and visible fan hubs make the
     // propulsion immediately recognizable even from below.
     for (const [x, z, scale] of [[12.5, 2.1, 1], [21.5, -3.0, 0.88]] as const) {
-      const nacelleMat = new THREE.MeshLambertMaterial({ color: GREY });
-      const nacelle = new THREE.Mesh(new THREE.CylinderGeometry(2.55 * scale, 2.25 * scale, 9.5, 16), nacelleMat);
-      nacelle.rotation.x = Math.PI / 2;
+      // Octagonal voxel nacelle: a cowling, a stepped-out intake lip and a
+      // fan hub, all built from slabs like the rest of the airframe.
+      const nacelle = voxelTube(2.5 * scale, 9.5, GREY);
       nacelle.position.set(side * x, -4.2, z);
-      const intake = new THREE.Mesh(
-        new THREE.CylinderGeometry(2.45 * scale, 2.45 * scale, 0.65, 16),
-        new THREE.MeshLambertMaterial({ color: DARK })
-      );
-      intake.rotation.x = Math.PI / 2;
+      const intake = voxelTube(2.62 * scale, 0.85, DARK, true);
       intake.position.set(side * x, -4.2, z + 4.95);
-      const fan = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.72 * scale, 0.72 * scale, 0.75, 12),
-        new THREE.MeshLambertMaterial({ color: STEEL })
-      );
-      fan.rotation.x = Math.PI / 2;
+      const fan = voxelTube(0.78 * scale, 0.8, STEEL);
       fan.position.set(side * x, -4.2, z + 5.33);
       const exhaust = box(2.7 * scale, 2.7 * scale, 0.7, DARK);
       exhaust.position.set(side * x, -4.2, z - 4.9);

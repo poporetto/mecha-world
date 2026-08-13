@@ -32,6 +32,8 @@ function voxelCloud(
   lobes: { x: number; y: number; z: number; rx: number; ry: number; rz: number }[],
   mat: THREE.Material,
   seed = 1,
+  /** Per-cube alpha from local height, baked into vertex colours. */
+  fade?: (y: number) => number,
 ): THREE.Mesh {
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
   for (const l of lobes) {
@@ -67,6 +69,14 @@ function voxelCloud(
          && solid(x, y, z + cell) && solid(x, y, z - cell)) continue;
         const g = unit.clone();
         g.translate(x, y, z);
+        if (fade) {
+          const a = fade((y - minY) / Math.max(1e-3, maxY - minY));
+          if (a <= 0.02) { g.dispose(); continue; }
+          const n = g.getAttribute('position').count;
+          const col = new Float32Array(n * 4);
+          for (let i = 0; i < n; i++) { col[i * 4] = 1; col[i * 4 + 1] = 1; col[i * 4 + 2] = 1; col[i * 4 + 3] = a; }
+          g.setAttribute('color', new THREE.BufferAttribute(col, 4));
+        }
         geos.push(g);
       }
     }
@@ -86,8 +96,10 @@ function mergeGeometries(geos: THREE.BufferGeometry[]): THREE.BufferGeometry {
     vTotal += g.getAttribute('position').count;
     iTotal += g.getIndex()!.count;
   }
+  const hasColor = !!geos[0].getAttribute('color');
   const pos = new Float32Array(vTotal * 3);
   const nor = new Float32Array(vTotal * 3);
+  const col = hasColor ? new Float32Array(vTotal * 4) : null;
   const idx = new Uint32Array(iTotal);
   let vo = 0, io = 0;
   for (const g of geos) {
@@ -96,11 +108,13 @@ function mergeGeometries(geos: THREE.BufferGeometry[]): THREE.BufferGeometry {
     const gi = g.getIndex()!;
     pos.set(gp.array as Float32Array, vo * 3);
     nor.set(gn.array as Float32Array, vo * 3);
+    if (col) col.set(g.getAttribute('color').array as Float32Array, vo * 4);
     for (let i = 0; i < gi.count; i++) idx[io + i] = gi.getX(i) + vo;
     vo += gp.count; io += gi.count;
   }
   out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   out.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  if (col) out.setAttribute('color', new THREE.BufferAttribute(col, 4));
   out.setIndex(new THREE.BufferAttribute(idx, 1));
   out.computeBoundingSphere();
   return out;
@@ -192,7 +206,11 @@ export class Sky {
     // water. Cloud hides the join the way haze does in every photograph of it.
     const cloudMat = () => new THREE.MeshBasicMaterial({
       color: 0xf2f6fb, fog: false, transparent: true, opacity: 0.85, depthWrite: false,
+      vertexColors: true,
     });
+    // The bank should thin out downwards rather than stop at a flat underside:
+    // cloud sitting on a mountain's skirt dissolves into the haze below it.
+    const underFade = (t: number) => Math.min(1, Math.pow(Math.max(0, t), 1.35) * 1.25 + 0.04);
     const CELL = R * 0.045;
     const bank = (i: number, count: number, phase: number, y: number, rad: number, span: number, seed: number) => {
       const a2 = (i / count) * Math.PI * 2 + phase;
@@ -206,7 +224,7 @@ export class Sky {
           rx: span * 0.55, ry: span * (0.16 + mid * 0.12), rz: span * 0.30,
         });
       }
-      const m = voxelCloud(CELL, lobes, cloudMat(), seed + i);
+      const m = voxelCloud(CELL, lobes, cloudMat(), seed + i, underFade);
       m.position.set(Math.sin(a2) * rr, y, Math.cos(a2) * rr);
       m.rotation.y = -a2;
       g.add(m);
