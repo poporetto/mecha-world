@@ -298,7 +298,6 @@ export class Game {
         onAttackUp: () => this.attackUp(),
         onNova: () => this.novaPulse(),
         onDash: () => this.dash(),
-        onWheel: () => this.hud.toggleWheel(),
         onLook: (dx, dy) => {
           this.camYaw -= dx * 0.006 * this.settings.sensitivity;
           this.camPitch = Math.max(-0.5, Math.min(1.2, this.camPitch + dy * 0.005 * this.settings.sensitivity));
@@ -313,7 +312,6 @@ export class Game {
 
     (window as any).__game = this; // debug handle
 
-    this.hud.bindWeaponWheel((w) => this.selectWeapon(w));
     this.hud.bindDash(() => this.dash());
     this.hud.bindPause(() => this.setPaused(false), () => this.restart());
     this.hud.bindSettings(this.settings, (settings) => {
@@ -446,7 +444,7 @@ export class Game {
       this.touch?.unlockWeapon(w);
     }
     if (this.powerLevel > 1) this.hud.setPowerLevel(this.powerLevel);
-    if (this.player.abilities.beam) this.hud.unlock('beam', '<b>E (hold)</b> PLASMA BEAM');
+    if (this.player.abilities.beam) this.hud.unlock('beam', '<b>E (hold)</b> PLASMA BEAM'); this.hud.setRangedSlot('PLASMA BEAM');
     if (this.player.abilities.thrust) this.hud.unlock('boots', '<b>SPACE</b> OVERDRIVE THRUSTERS');
     if (this.player.abilities.dash) { this.hud.unlockDash(); this.touch?.unlockDash(); }
     if (this.player.abilities.nova) this.hud.unlock('nova', this.novaLabel());
@@ -492,11 +490,17 @@ export class Game {
       if (e.code === 'Escape' && this.started) this.setPaused(!this.paused);
       if (e.code === 'F3' && !e.repeat) { e.preventDefault(); this.hud.togglePerf(); }
       // R: begin charging (release fires); e.repeat guards the auto-repeat
-      if (e.code === 'KeyR' && !e.repeat && this.started) { this.charging = true; this.chargeT = 0; }
+      // E is the ranged slot. It holds the charged rifle until the Gorgosaur
+      // falls, then the same key holds the plasma beam — one button that gets
+      // better, rather than a second one appearing next to the first.
+      if (e.code === 'KeyE' && !e.repeat && this.started && !this.player.abilities.beam) {
+        this.charging = true;
+        this.chargeT = 0;
+      }
     });
     window.addEventListener('keyup', (e) => {
       this.keys.delete(e.code);
-      if (e.code === 'KeyR' && this.charging) this.releaseCharge();
+      if (e.code === 'KeyE' && this.charging) this.releaseCharge();
       if (e.code === 'KeyA') this.attackUp();
     });
     document.addEventListener('pointerlockchange', () => {
@@ -947,6 +951,13 @@ export class Game {
   }
 
   private updateBeam(dt: number): void {
+    // Before the beam is earned the same input charges the rifle, on the pad
+    // as well as the keyboard.
+    if (!this.player.abilities.beam && this.started) {
+      const held = this.touch?.beam === true;
+      if (held && !this.charging) { this.charging = true; this.chargeT = 0; }
+      else if (!held && this.charging && this.touch) this.releaseCharge();
+    }
     const active = this.player.abilities.beam && (this.keys.has('KeyE') || this.touch?.beam === true) && this.started;
     this.player.model.aiming = active;
     this.beamMesh.visible = active;
@@ -981,8 +992,8 @@ export class Game {
   // means all weapons damage drones without touching each weapon.
   /**
    * `src` names what dealt the damage. The Revenant learns whatever you lean
-   * on, so it has to be able to tell a saber from a railgun. Wheel weapons
-   * default to the current selection; abilities pass their own tag.
+   * on, so it has to be able to tell a saber from a railgun. Equipped
+   * weapons default to the current selection; abilities pass their own tag.
    */
   private hitMonster(
     p: THREE.Vector3, radius: number, dmg: number,
@@ -1758,7 +1769,7 @@ export class Game {
 
     // Restore the checkpoint loadout in both the model and the HUD without
     // replaying reward toasts.
-    if (abilities.beam) this.hud.unlock('beam', '<b>E (hold)</b> PLASMA BEAM');
+    if (abilities.beam) this.hud.unlock('beam', '<b>E (hold)</b> PLASMA BEAM'); this.hud.setRangedSlot('PLASMA BEAM');
     if (abilities.thrust) this.hud.unlock('boots', '<b>SPACE</b> OVERDRIVE THRUSTERS');
     if (abilities.dash) { this.hud.unlockDash(); this.touch?.unlockDash(); }
     if (abilities.nova) this.hud.unlock('nova', this.novaLabel());
@@ -1920,6 +1931,7 @@ export class Game {
     this.hud.clearComms();
     this.campaignOver = false;
     this.hud.resetUnlocks();
+    this.hud.setRangedSlot('RIFLE');
     this.hud.setScore(0, 1);
     this.hud.setWave(0);
     this.hud.setObjective('Explore Neo Tokyo — something big is coming');
@@ -2552,7 +2564,7 @@ export class Game {
     this.player.model.setAegisArmor(true);
     this.hud.unlockDash();
     this.touch?.unlockDash();
-    this.hud.unlock('beam', '<b>E (hold)</b> PLASMA BEAM');
+    this.hud.unlock('beam', '<b>E (hold)</b> PLASMA BEAM'); this.hud.setRangedSlot('PLASMA BEAM');
     this.hud.unlock('boots', '<b>SPACE</b> OVERDRIVE THRUSTERS');
     this.hud.unlock('nova', '<b>Q</b> NOVA PULSE');
     this.hud.unlock('nova', this.novaLabel());
@@ -2566,7 +2578,7 @@ export class Game {
     this.selectWeapon('saber');
   }
 
-  // Unlock a wheel weapon and immediately equip it so the reward is obvious.
+  // Unlock a weapon and immediately equip it so the reward is obvious.
   private grantWeapon(w: WeaponId, title: string, sub: string): void {
     this.unlockedWeapons.add(w);
     this.hud.unlockWeapon(w);
@@ -2587,6 +2599,7 @@ export class Game {
         this.player.abilities.beam = true;
         this.touch?.unlock('beam');
         this.hud.unlock('beam', '<b>E (hold)</b> PLASMA BEAM');
+        this.hud.setRangedSlot('PLASMA BEAM');
         this.hud.toast('BEAM UNLOCKED', 'Hold E to fire the plasma beam', 5);
         break;
       case 'thrust':

@@ -67,7 +67,6 @@ export class Hud {
   private vignette!: HTMLElement;
   private chips: Record<string, HTMLElement> = {};
   private toastTimer = 0;
-  private wheel!: HTMLElement;
   private onSelectWeapon: (w: WeaponId) => void = () => {};
 
   constructor() {
@@ -238,7 +237,6 @@ export class Hud {
         .tc-on .comms-next { right:12px; bottom:6px; font-size:8.5px; letter-spacing:2px; }
         /* touch already has its own WEAPON button on the pad — the desktop
            dial would only collide with the radar */
-        .tc-on .wbtn { display:none !important; }
         /* The phone top band has to hold five things in the space the desktop
            gives to two, so it is laid out as explicit rows rather than left
            to overlap: integrity and score share row one, the boss bar takes
@@ -417,11 +415,6 @@ export class Hud {
                   font-size:30px; font-weight:800; text-shadow:0 0 10px #ff8a2f,0 2px 4px #000; opacity:0;
                   pointer-events:none; }
         @keyframes dmgpop { 0%{opacity:1;transform:translate(-50%,0) scale(1.1)} 100%{opacity:0;transform:translate(-50%,-40px) scale(.8)} }
-        .wbtn { position:absolute; right:24px; top:60px; width:74px; height:74px; border-radius:50%;
-                background:#0a1626cc; border:2px solid #7fdcff88; color:#eaf6ff; font-size:11px; letter-spacing:1px;
-                display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
-                pointer-events:auto; cursor:pointer; text-shadow:0 1px 2px #000; }
-        .wbtn b { color:#7fdcff; font-size:12px; }
         /* development tool: only revealed when bindChapterDebug is called,
            which now happens solely under ?debug */
         .debug-btn { display:none; position:absolute; right:24px; top:142px; pointer-events:auto; cursor:pointer; z-index:35;
@@ -444,19 +437,6 @@ export class Hud {
         .debug-ch { cursor:pointer; color:#eaf6ff; background:#111d2c; border:1px solid #3a5a7a;
                     border-radius:3px; padding:7px 5px; font-size:9px; letter-spacing:1px; }
         .debug-ch:hover { border-color:#ffd86a; color:#ffd86a; }
-        .wheel { position:absolute; inset:0; display:none; align-items:center; justify-content:center;
-                 background:#04060cbb; pointer-events:auto; z-index:20; }
-        .wheel.open { display:flex; }
-        .wheel-ring { position:relative; width:320px; height:320px; }
-        .wseg { position:absolute; width:96px; height:96px; margin:-48px; left:50%; top:50%; border-radius:50%;
-                background:#0e1c30ee; border:2px solid #3a5a7a; color:#eaf6ff; cursor:pointer;
-                display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
-                font-size:11px; letter-spacing:1px; transition:border-color .1s, box-shadow .1s; }
-        .wseg:hover, .wseg.sel { border-color:#39e6e0; box-shadow:0 0 22px #39e6e055; }
-        /* weapons stay dimmed until their boss is defeated */
-        .wseg.locked { opacity:.28; filter:grayscale(1); pointer-events:none; }
-        .wseg .ico { font-size:26px; }
-        .wheel-title { position:absolute; left:50%; top:calc(50% + 180px); transform:translateX(-50%);
                        color:#bfe9ff; font-size:13px; letter-spacing:4px; text-shadow:0 1px 3px #000; }
       </style>
       <div class="hud-bar">
@@ -479,7 +459,7 @@ export class Hud {
         <div class="boss-state" id="boss-state"></div>
       </div>
       <div class="chips">
-        <div class="chip" id="chip-weapon"><b>A</b> ATTACK · <b>1-6</b> or WHEEL to switch</div>
+        <div class="chip" id="chip-weapon"><b>A</b> SABER · <b>E</b> RIFLE · <b>1-6</b> to switch</div>
         <div class="chip" id="chip-boots"><b>SPACE (hold)</b> ROCKET BOOTS</div>
         <div class="chip locked" id="chip-beam"><b>E</b> BEAM — ???</div>
         <div class="chip locked" id="chip-nova"><b>Q</b> NOVA — ???</div>
@@ -499,21 +479,11 @@ export class Hud {
         <div class="subtitle" id="boss-intro-sub"></div>
       </div>
       <div class="cross"></div>
-      <div class="wbtn" id="wbtn"><b id="wbtn-ico">⚔</b><span id="wbtn-name">SABER</span></div>
       <button class="debug-btn" id="debug-btn" type="button">DEBUG</button>
       <button class="dash-action" id="dash-action" type="button"><b>C</b> DASH</button>
       <div class="debug-panel" id="debug-panel">
         <div class="debug-title">JUMP TO CHAPTER</div>
         <div class="debug-grid" id="debug-grid"></div>
-      </div>
-      <div class="wheel" id="wheel">
-        <div class="wheel-ring">${WEAPONS.map((w, i) => {
-          const a = (i / WEAPONS.length) * Math.PI * 2 - Math.PI / 2;
-          const x = Math.round(Math.cos(a) * 118), y = Math.round(Math.sin(a) * 118);
-          return `<div class="wseg locked" id="w-${w.id}" style="transform:translate(${x}px,${y}px)">
-                    <span class="ico">${w.icon}</span>${w.label}</div>`;
-        }).join('')}</div>
-        <div class="wheel-title">SELECT WEAPON</div>
       </div>
       <div class="minimap" id="minimap">
         <div class="mm-ring" style="width:56px;height:56px"></div>
@@ -573,7 +543,7 @@ export class Hud {
         </div>
         <div class="pkeys">
           <b>ARROWS / WASD</b> move &nbsp; <b>SHIFT</b> boost &nbsp; <b>SPACE</b> jump / fly &nbsp; <b>C</b> dash<br/>
-          <b>A</b> or <b>click</b> attack &nbsp; <b>1-6</b> switch weapon &nbsp; <b>E</b> beam &nbsp; <b>Q</b> nova pulse<br/>
+          <b>A</b> or <b>click</b> saber &nbsp; <b>E (hold)</b> ranged &nbsp; <b>1-6</b> switch &nbsp; <b>Q</b> nova pulse<br/>
           <b>L</b> or <b>middle-click</b> lock on &nbsp; <b>ESC</b> pause
         </div>
       </div>
@@ -591,25 +561,7 @@ export class Hud {
       nova: document.getElementById('chip-nova')!,
       blades: document.getElementById('chip-blades')!,
     };
-    this.wheel = document.getElementById('wheel')!;
 
-    // wheel button toggles the radial; each segment picks a weapon + closes
-    document.getElementById('wbtn')!.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.wheel.classList.toggle('open');
-    });
-    for (const w of WEAPONS) {
-      document.getElementById('w-' + w.id)!.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.onSelectWeapon(w.id);
-        this.wheel.classList.remove('open');
-      });
-    }
-    this.wheel.addEventListener('click', () => this.wheel.classList.remove('open'));
-  }
-
-  bindWeaponWheel(cb: (w: WeaponId) => void): void {
-    this.onSelectWeapon = cb;
   }
 
   bindDash(cb: () => void): void {
@@ -623,14 +575,15 @@ export class Hud {
     document.getElementById('dash-action')!.classList.add('ready');
   }
 
-  // reveal a weapon in the wheel once its boss has been beaten
-  unlockWeapon(w: WeaponId): void {
-    document.getElementById('w-' + w)!.classList.remove('locked');
+  /** The E slot shows what it currently holds: RIFLE until the beam lands. */
+  setRangedSlot(label: string): void {
+    this.rangedLabel = label;
+    this.paintWeaponChip();
   }
 
-  toggleWheel(): void {
-    this.wheel.classList.toggle('open');
-  }
+  // The wheel is gone; weapons are earned and equipped directly, so there is
+  // nothing to reveal. Kept so game.ts can call it uniformly for every reward.
+  unlockWeapon(_w: WeaponId): void {}
 
   setScore(score: number, combo: number): void {
     document.getElementById('score-val')!.textContent = score.toLocaleString();
@@ -661,11 +614,6 @@ export class Hud {
       boots.classList.remove('locked');
       boots.innerHTML = '<b>SPACE (hold)</b> ROCKET BOOTS';
       boots.style.borderColor = '';
-    }
-    for (const w of WEAPONS) {
-      const seg = document.getElementById('w-' + w.id)!;
-      const starter = w.id === 'saber' || w.id === 'rifle';
-      seg.classList.toggle('locked', !starter);
     }
     const pwr = document.getElementById('chip-power')!;
     pwr.style.display = 'none';
@@ -1103,13 +1051,24 @@ export class Hud {
     el.classList.add('show');
   }
 
+  private rangedLabel = 'RIFLE';
+  private meleeLabel = 'SABER';
+
+  /**
+   * The chip is the only weapon readout now that the radial and its floating
+   * button are gone: what A swings, what E holds, and how to change the first.
+   */
+  private paintWeaponChip(): void {
+    const chip = document.getElementById('chip-weapon');
+    if (chip) {
+      chip.innerHTML = `<b>A</b> ${this.meleeLabel} · <b>E</b> ${this.rangedLabel} · <b>1-6</b> to switch`;
+    }
+  }
+
   setWeapon(w: WeaponId, upgradedLabel?: string): void {
     const meta = WEAPONS.find((x) => x.id === w)!;
-    document.getElementById('wbtn-ico')!.textContent = meta.icon;
-    document.getElementById('wbtn-name')!.textContent = upgradedLabel ?? meta.label;
-    for (const x of WEAPONS) {
-      document.getElementById('w-' + x.id)!.classList.toggle('sel', x.id === w);
-    }
+    this.meleeLabel = upgradedLabel ?? meta.label;
+    this.paintWeaponChip();
   }
 
   /**
