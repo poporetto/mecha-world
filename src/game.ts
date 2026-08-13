@@ -429,6 +429,7 @@ export class Game {
     this.started = true;
     this.bossIndex = d.chapter;
     this.latestFinishedChapter = d.chapter - 1;
+    this.endTutorial(); // a resumed pilot is never taught
     this.wave = d.chapter;
     this.score = d.score;
     this.deaths = d.deaths;
@@ -1809,6 +1810,7 @@ export class Game {
   // ------------------------------------------------------------ pause / run
 
   private jumpToChapter(chapter: number): void {
+    this.endTutorial();
     const index = Math.max(0, Math.min(CHAPTERS.length - 1, Math.floor(chapter)));
     this.hud.dismissStart();
     this.started = true;
@@ -2192,11 +2194,27 @@ export class Game {
    * pilot does not need to be told what the legs do.
    */
   private beginTutorial(): void {
+    // Chapter one only, and only at the top of it. A pilot resuming from a
+    // checkpoint — or jumping chapters in a debug build — already knows what
+    // the saber and the jets do, and being told again mid-campaign gates
+    // their next boss behind a lesson they finished hours ago.
+    if (this.bossIndex > 0 || this.wave > 0 || this.latestFinishedChapter >= 0) {
+      this.endTutorial();
+      return;
+    }
     this.tutorial = new Tutorial();
     // an empty sky for the lesson; the swarm resumes with the boss timer
     this.drones.target = 0;
     this.tutWrecked = 0;
     this.clearTutorialMarker();
+  }
+
+  /** Stop teaching and hand the world back — safe to call when none is running. */
+  private endTutorial(): void {
+    if (!this.tutorial) return;
+    this.tutorial = null;
+    this.clearTutorialMarker();
+    this.drones.target = this.droneBase;
   }
 
   private clearTutorialMarker(): void {
@@ -2264,10 +2282,8 @@ export class Game {
       m.opacity = 0.11 + Math.sin(this.time * 2.4) * 0.06;
     }
     if (t.complete) {
-      this.clearTutorialMarker();
-      this.tutorial = null;
+      this.endTutorial();
       this.hud.setObjective('Hold the line — first contact inbound');
-      this.drones.target = this.droneBase;
       // enough of a beat for the sign-off to land before the kaiju does
       this.bossTimer = Math.max(this.bossTimer, 8);
     }
