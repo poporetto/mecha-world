@@ -178,6 +178,10 @@ export class Sky {
   private starMat!: THREE.PointsMaterial;
   private cloudMat: THREE.MeshBasicMaterial;
   private cirrusMat: THREE.MeshBasicMaterial;
+  private footCloud: THREE.Group | null = null;
+  private footMat = new THREE.MeshBasicMaterial({
+    color: 0xeef4fc, fog: false, transparent: true, opacity: 0.8, depthWrite: false,
+  });
   private ash: THREE.Points;
   /** Low cloud ring at the streaming edge, so the world does not just stop. */
   private haze!: THREE.Group;
@@ -602,6 +606,45 @@ export class Sky {
   }
 
   // time in seconds; starts mid-morning
+  /**
+   * A low collar of cloud around a boss's feet. Bosses can land past the
+   * streaming edge, where the ground under them has not been meshed yet and
+   * they read as standing on nothing. Cloud around the ankles reads as
+   * distance and weather instead of as missing world — and it deliberately
+   * stops below the knee, so the silhouette the player has to fight stays
+   * completely clear.
+   */
+  showFootCloud(x: number, y: number, z: number, radius: number): void {
+    if (!this.footCloud) {
+      const g = new THREE.Group();
+      // a ring of squat lobes, built once and scaled per boss
+      for (let i = 0; i < 7; i++) {
+        const a2 = (i / 7) * Math.PI * 2;
+        const lobes = [];
+        for (let l = 0; l < 3; l++) {
+          lobes.push({
+            x: (l - 1) * 3.6, y: (Math.random() - 0.5) * 1.2, z: (Math.random() - 0.5) * 2.4,
+            rx: 3.4 + Math.random() * 1.6, ry: 1.5 + Math.random() * 0.7, rz: 2.6 + Math.random() * 1.2,
+          });
+        }
+        const puff = voxelCloud(0.85, lobes, this.footMat, 300 + i);
+        puff.position.set(Math.sin(a2) * 7, Math.sin(i * 2.1) * 0.9, Math.cos(a2) * 7);
+        puff.rotation.y = -a2;
+        g.add(puff);
+      }
+      this.footCloud = g;
+      this.group.add(g);
+    }
+    const s = Math.max(0.6, radius / 7);
+    this.footCloud.visible = true;
+    this.footCloud.position.set(x, y, z);
+    this.footCloud.scale.set(s, Math.min(1.2, s * 0.7), s);
+  }
+
+  hideFootCloud(): void {
+    if (this.footCloud) this.footCloud.visible = false;
+  }
+
   /** Open a tear over a spot in the city. Returns where its mouth sits. */
   openTear(x: number, z: number, groundY: number, seconds = 11): THREE.Vector3 {
     this.tear.position.set(x, groundY + 24, z);
@@ -724,6 +767,7 @@ export class Sky {
     // night they read as pale cloud lit by the sky, not black slabs
     this.cloudMat.color.copy(_fog).lerp(_WHITE, 0.45 + day * 0.35);
     this.cirrusMat.color.copy(_fog).lerp(_WHITE, 0.55 + day * 0.3);
+    this.footMat.color.copy(_fog).lerp(_WHITE, 0.5 + day * 0.3);
 
     const ashMat = this.ash.material as THREE.PointsMaterial;
     ashMat.opacity = Math.max(0, (corruption - 0.08) * 0.8);

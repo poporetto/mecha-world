@@ -2380,7 +2380,25 @@ export class Game {
   private bossPlowFrom = new THREE.Vector3();
   private plowPoint = new THREE.Vector3();
 
+  /**
+   * A boss that lands past the streaming edge stands on ground that has not
+   * been meshed yet, so it reads as floating over open sky. Collar its ankles
+   * in cloud until the terrain catches up. Deliberately ankle-height: the
+   * body and head — the parts the player has to read to fight it — stay clear.
+   */
+  private veilBossFeet(m: Monster): void {
+    const p = m.group.position;
+    if (m.dying || m.dead || this.chunks.isMeshed(p.x, p.z)) {
+      this.sky.hideFootCloud();
+      return;
+    }
+    // knee height at the very most, and never above a third of the body
+    const ankle = p.y + Math.min(6, m.centerY * 0.22);
+    this.sky.showFootCloud(p.x, ankle, p.z, m.hitRadius * 0.9);
+  }
+
   private updateBosses(dt: number): void {
+    if (!this.monster) this.sky.hideFootCloud();
     if (this.monster) {
       const ctx: MonsterCtx = {
         world: this.world,
@@ -2401,6 +2419,7 @@ export class Game {
       // proportional to the attacks they precede.
       this.monster.update(dt * this.diff.tempo, this.time, ctx);
       this.plowBoss(this.monster);
+      this.veilBossFeet(this.monster);
       this.hud.setBossHP(this.monster.hp / this.monster.maxHp, this.monster.phase, this.monster.vulnerable);
       if (this.monster.phaseAnnounce) this.announcePhase(this.monster.phaseAnnounce);
       if (this.monster instanceof Revenant) this.updateRevenant(this.monster);

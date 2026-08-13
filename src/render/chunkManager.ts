@@ -133,6 +133,15 @@ export class ChunkManager {
     }
   }
 
+  /**
+   * Has the chunk under this world position actually been meshed? A boss can
+   * land past the streaming edge, where the ground it is standing on has not
+   * been built yet and it appears to float over open sky.
+   */
+  isMeshed(x: number, z: number): boolean {
+    return !!this.meshes.get(this.world.key(Math.floor(x / CS), Math.floor(z / CS)));
+  }
+
   markDirty(keys: Iterable<string>): void {
     for (const k of keys) this.dirty.add(k);
   }
