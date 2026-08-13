@@ -243,14 +243,12 @@ class Sfx {
   }
 
   /**
-   * A continuous energy beam, not an idling engine. The old one was a single
-   * 70Hz sawtooth with a 13Hz vibrato — which is, acoustically, a chainsaw.
-   *
-   * A beam reads as three layers at once: a sub for weight, a bright detuned
-   * core swept by a resonant filter so it shimmers rather than sits, and
-   * band-passed noise for the roar of the air it is going through. Plus an
-   * ignition sweep, because energy weapons should sound like they strike
-   * before they sustain.
+   * A laser, not a flamethrower. The previous pass built a roaring energy
+   * stream — heavy noise bed, low sub, slow filter sweep — which is the wrong
+   * family of sound: that reads as fire or plasma exhaust. A laser is thin,
+   * bright and electronic. Almost no noise, a high steady tone with a fast
+   * shimmer on it, a ringing harmonic above, and an ignition that snaps up in
+   * pitch rather than swelling.
    */
   beamOn(): void {
     if (!this.ctx || this.beamNodes.length) return;
@@ -258,69 +256,72 @@ class Sfx {
 
     this.beamGain = ctx.createGain();
     this.beamGain.gain.setValueAtTime(0.0001, t);
-    this.beamGain.gain.exponentialRampToValueAtTime(0.34, t + 0.06);
+    this.beamGain.gain.exponentialRampToValueAtTime(0.26, t + 0.03); // snaps on
     this.beamGain.connect(this.master);
 
-    // resonant sweep — the filter is what makes it sing instead of buzz
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.Q.value = 9;
-    filter.frequency.setValueAtTime(320, t);
-    filter.frequency.exponentialRampToValueAtTime(2100, t + 0.14); // ignition
-    filter.connect(this.beamGain);
+    // a narrow resonant peak is what gives a laser its "singing" quality
+    const tone = ctx.createBiquadFilter();
+    tone.type = 'bandpass';
+    tone.frequency.value = 1500;
+    tone.Q.value = 3.2;
+    tone.connect(this.beamGain);
+
+    // the core: a bright square, pitched high, snapping up as it fires
+    const core = ctx.createOscillator();
+    core.type = 'square';
+    core.frequency.setValueAtTime(420, t);
+    core.frequency.exponentialRampToValueAtTime(880, t + 0.05);
+    const coreGain = ctx.createGain();
+    coreGain.gain.value = 0.3;
+    core.connect(coreGain).connect(tone);
+    core.start(t);
+    this.beamNodes.push(core);
+
+    // a ringing harmonic a fifth above, detuned just enough to beat against it
+    const ring = ctx.createOscillator();
+    ring.type = 'sawtooth';
+    ring.frequency.setValueAtTime(630, t);
+    ring.frequency.exponentialRampToValueAtTime(1320, t + 0.05);
+    ring.detune.value = 11;
+    const ringGain = ctx.createGain();
+    ringGain.gain.value = 0.16;
+    ring.connect(ringGain).connect(tone);
+    ring.start(t);
+    this.beamNodes.push(ring);
+
+    // fast shimmer on the pitch — the electronic warble that says "energy"
+    const shimmer = ctx.createOscillator();
+    shimmer.frequency.value = 24;
+    const shimmerAmt = ctx.createGain();
+    shimmerAmt.gain.value = 26;
+    shimmer.connect(shimmerAmt);
+    shimmerAmt.connect(core.frequency);
+    shimmerAmt.connect(ring.frequency);
+    shimmer.start(t);
+    this.beamNodes.push(shimmer);
+
+    // and a slow sweep of the resonant peak so it is not a dead sine
     const sweep = ctx.createOscillator();
-    sweep.frequency.value = 5.5;
+    sweep.frequency.value = 3.1;
     const sweepAmt = ctx.createGain();
-    sweepAmt.gain.value = 520;
-    sweep.connect(sweepAmt).connect(filter.frequency);
+    sweepAmt.gain.value = 420;
+    sweep.connect(sweepAmt).connect(tone.frequency);
     sweep.start(t);
     this.beamNodes.push(sweep);
 
-    // bright core, two detuned saws so it has width
-    for (const cents of [-9, 9]) {
-      const o = ctx.createOscillator();
-      o.type = 'sawtooth';
-      o.frequency.value = 165;
-      o.detune.value = cents;
-      const g = ctx.createGain();
-      g.gain.value = 0.5;
-      o.connect(g).connect(filter);
-      o.start(t);
-      this.beamNodes.push(o);
-    }
-
-    // sub for weight, straight through so the filter sweep cannot swallow it
-    const sub = ctx.createOscillator();
-    sub.type = 'sine';
-    sub.frequency.value = 55;
-    const subGain = ctx.createGain();
-    subGain.gain.value = 0.5;
-    sub.connect(subGain).connect(this.beamGain);
-    sub.start(t);
-    this.beamNodes.push(sub);
-
-    // the roar: looping noise through a narrow band that rides with the sweep
+    // a whisper of high noise for the crackle at the beam's edge — a tenth of
+    // what the energy-stream version used, so it stays a laser
     const noise = ctx.createBufferSource();
     noise.buffer = this.noiseBuffer(2);
     noise.loop = true;
-    const band = ctx.createBiquadFilter();
-    band.type = 'bandpass';
-    band.frequency.value = 2400;
-    band.Q.value = 1.4;
-    const noiseGain = ctx.createGain();
-    noiseGain.gain.value = 0.22;
-    noise.connect(band).connect(noiseGain).connect(this.beamGain);
+    const hiss = ctx.createBiquadFilter();
+    hiss.type = 'highpass';
+    hiss.frequency.value = 4200;
+    const hissGain = ctx.createGain();
+    hissGain.gain.value = 0.035;
+    noise.connect(hiss).connect(hissGain).connect(this.beamGain);
     noise.start(t);
     this.beamNodes.push(noise);
-
-    // a fast flutter on the noise only — the crackle at the edge of the beam
-    const flutter = ctx.createOscillator();
-    flutter.frequency.value = 37;
-    const flutterAmt = ctx.createGain();
-    flutterAmt.gain.value = 0.09;
-    flutter.connect(flutterAmt).connect(noiseGain.gain);
-    flutter.start(t);
-    this.beamNodes.push(flutter);
   }
 
   // ------------------------------------------------------------- music
