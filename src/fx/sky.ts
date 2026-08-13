@@ -158,6 +158,7 @@ export class Sky {
   private birds: Bird[] = [];
   private birdMat = new THREE.MeshLambertMaterial({ color: 0x2c3038 });
   private cloudMat: THREE.MeshBasicMaterial;
+  private cirrusMat: THREE.MeshBasicMaterial;
   private ash: THREE.Points;
   /** Low cloud ring at the streaming edge, so the world does not just stop. */
   private haze!: THREE.Group;
@@ -326,6 +327,11 @@ export class Sky {
     this.cloudMat = new THREE.MeshBasicMaterial({
       color: 0xf2f6fb, fog: false, transparent: true, opacity: 0.85, depthWrite: false,
     });
+    // High cirrus is barely there — at full opacity it reads as a second deck
+    // of cumulus sitting impossibly high.
+    this.cirrusMat = new THREE.MeshBasicMaterial({
+      color: 0xf6f9ff, fog: false, transparent: true, opacity: 0.4, depthWrite: false,
+    });
     // Fine ash becomes visible as the line approaches the seam. Keeping it as
     // one Points draw call adds atmosphere without multiplying scene objects.
     this.ashPos = new Float32Array(240 * 3);
@@ -341,26 +347,93 @@ export class Sky {
       depthWrite: false, blending: THREE.NormalBlending,
     }));
     this.group.add(this.ash);
-    for (let i = 0; i < 16; i++) {
+    // A real sky is not one kind of cloud scattered evenly at one height. It
+    // is layered — flat sheets low down, heaped cumulus in the middle, torn
+    // wisps up high — and it is clumped, with wide clear gaps between groups.
+    // The old field was sixteen identical cumulus at uniformly random points
+    // in one 45-unit altitude band, which is why it read as decoration rather
+    // than weather.
+    //
+    // Clumping comes from picking a handful of weather centres and scattering
+    // around them, so the gaps between groups are as much of the composition
+    // as the clouds are.
+    const centres = Array.from({ length: 4 }, () => ({
+      x: (Math.random() - 0.5) * 620,
+      z: (Math.random() - 0.5) * 620,
+    }));
+    type Kind = 'stratus' | 'cumulus' | 'cirrus';
+    const plan: Kind[] = [
+      'stratus', 'stratus', 'stratus', 'stratus', 'stratus',
+      'cumulus', 'cumulus', 'cumulus', 'cumulus', 'cumulus', 'cumulus', 'cumulus',
+      'cirrus', 'cirrus', 'cirrus', 'cirrus', 'cirrus', 'cirrus',
+    ];
+    for (let i = 0; i < plan.length; i++) {
+      const kind = plan[i];
       const g = new THREE.Group();
-      // three or four overlapping lobes along the drift axis, the tallest in
-      // the middle — a cumulus, not a row of slabs
-      const n = 3 + Math.floor(Math.random() * 2);
-      const lobes = [];
+      const lobes: { x: number; y: number; z: number; rx: number; ry: number; rz: number }[] = [];
       let cx = 0;
-      for (let l = 0; l < n; l++) {
-        const mid = 1 - Math.abs(l - (n - 1) / 2) / n;
-        const rx = 7 + Math.random() * 6;
-        lobes.push({
-          x: cx, y: (Math.random() - 0.5) * 2 + mid * 2.5, z: (Math.random() - 0.5) * 5,
-          rx, ry: 4.5 + mid * 6 + Math.random() * 2, rz: 6 + Math.random() * 4,
-        });
-        cx += rx * 1.15;
+      let cell = 2.4;
+      let y = 0;
+
+      if (kind === 'stratus') {
+        // wide, flat, low: a sheet with a soft ragged edge
+        cell = 3.2;
+        y = 74 + Math.random() * 16;
+        const n = 4 + Math.floor(Math.random() * 3);
+        for (let l = 0; l < n; l++) {
+          const rx = 13 + Math.random() * 10;
+          lobes.push({
+            x: cx, y: (Math.random() - 0.5) * 3, z: (Math.random() - 0.5) * 14,
+            rx, ry: 2.6 + Math.random() * 1.8, rz: 10 + Math.random() * 8,
+          });
+          cx += rx * 1.05;
+        }
+      } else if (kind === 'cumulus') {
+        // heaped and tall, flat-bottomed: lobes rise towards the middle
+        cell = 2.4;
+        y = 106 + Math.random() * 40;
+        const n = 3 + Math.floor(Math.random() * 3);
+        for (let l = 0; l < n; l++) {
+          const mid = 1 - Math.abs(l - (n - 1) / 2) / n;
+          const rx = 7 + Math.random() * 6;
+          lobes.push({
+            // the base stays level and the mass piles upward, which is what
+            // makes a cumulus read as a cumulus
+            x: cx, y: mid * 5 + Math.random() * 1.5, z: (Math.random() - 0.5) * 5,
+            rx, ry: 4 + mid * 7 + Math.random() * 2, rz: 6 + Math.random() * 4,
+          });
+          cx += rx * 1.15;
+        }
+      } else {
+        // high, thin, stretched: torn streaks well above the cumulus deck
+        cell = 2.8;
+        y = 168 + Math.random() * 55;
+        const n = 3 + Math.floor(Math.random() * 3);
+        for (let l = 0; l < n; l++) {
+          const rx = 16 + Math.random() * 14;
+          lobes.push({
+            x: cx, y: (Math.random() - 0.5) * 4, z: (Math.random() - 0.5) * 6,
+            rx, ry: 1.7 + Math.random() * 1.2, rz: 3.5 + Math.random() * 3,
+          });
+          cx += rx * (0.85 + Math.random() * 0.4);
+        }
       }
-      g.add(voxelCloud(2.4, lobes, this.cloudMat, i + 1));
-      g.position.set((Math.random() - 0.5) * 600, 105 + Math.random() * 45, (Math.random() - 0.5) * 600);
+
+      const mat = kind === 'cirrus' ? this.cirrusMat : this.cloudMat;
+      g.add(voxelCloud(cell, lobes, mat, i + 1));
+      const c = centres[i % centres.length];
+      // scatter tightly around a weather centre, not across the whole sky
+      g.position.set(
+        c.x + (Math.random() - 0.5) * 260,
+        y,
+        c.z + (Math.random() - 0.5) * 260,
+      );
+      g.rotation.y = Math.random() * Math.PI * 2;
       this.group.add(g);
-      this.clouds.push({ group: g, speed: 1.2 + Math.random() * 1.8 });
+      // One wind, and the higher layers ride it faster — that shear is most of
+      // what makes a sky look alive rather than a slideshow.
+      const shear = kind === 'cirrus' ? 2.4 : kind === 'cumulus' ? 1 : 0.55;
+      this.clouds.push({ group: g, speed: (1.1 + Math.random() * 0.7) * shear });
     }
 
     // A ring of low cloud out at the streaming boundary. Terrain simply stops
@@ -495,6 +568,7 @@ export class Sky {
     // clouds take the sky's own colour rather than darkening to grey, so at
     // night they read as pale cloud lit by the sky, not black slabs
     this.cloudMat.color.copy(_fog).lerp(_WHITE, 0.45 + day * 0.35);
+    this.cirrusMat.color.copy(_fog).lerp(_WHITE, 0.55 + day * 0.3);
 
     const ashMat = this.ash.material as THREE.PointsMaterial;
     ashMat.opacity = Math.max(0, (corruption - 0.08) * 0.8);
@@ -520,8 +594,12 @@ export class Sky {
       mat.color.copy(_fog).lerp(_sky, 0.35);
     });
 
+    // A single prevailing wind, slightly off-axis so the drift is not a
+    // perfectly straight line across the screen.
+    const WIND_X = 0.94, WIND_Z = 0.34;
     for (const c of this.clouds) {
-      c.group.position.x += c.speed * dt;
+      c.group.position.x += c.speed * WIND_X * dt;
+      c.group.position.z += c.speed * WIND_Z * dt;
       if (c.group.position.x - center.x > 330) c.group.position.x -= 660;
       if (c.group.position.x - center.x < -330) c.group.position.x += 660;
       if (c.group.position.z - center.z > 330) c.group.position.z -= 660;

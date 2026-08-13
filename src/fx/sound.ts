@@ -10,7 +10,13 @@ class Sfx {
 
   // ------- background music (procedural, scheduled ahead in small windows)
   private musicGain: GainNode | null = null;
+  /** Pads and melody go through this: gentle lowpass, then reverb + dry. */
+  private musicVoice: AudioNode | null = null;
+  private musicWet: GainNode | null = null;
   private musicTimer: number | null = null;
+  /** Panners reused per voice role so the mix has width without churn. */
+  private panL: StereoPannerNode | null = null;
+  private panR: StereoPannerNode | null = null;
   private nextBarTime = 0;
   private barIndex = 0;
   private musicMode: MusicMode = 'intro';
@@ -29,6 +35,26 @@ class Sfx {
     this.master = this.ctx.createGain();
     this.master.gain.value = this.sfxVolume;
     this.master.connect(this.ctx.destination);
+  }
+
+  /**
+   * A synthetic room. Exponentially decaying noise, slightly different per
+   * channel so the tail is stereo — cheaper and smaller than shipping an
+   * impulse response file, and this score only needs space, not a real hall.
+   */
+  private reverbImpulse(seconds: number, decay: number): AudioBuffer {
+    const ctx = this.ctx!;
+    const n = Math.floor(ctx.sampleRate * seconds);
+    const buf = ctx.createBuffer(2, n, ctx.sampleRate);
+    for (let c = 0; c < 2; c++) {
+      const d = buf.getChannelData(c);
+      for (let i = 0; i < n; i++) {
+        // a touch of early smear on the front so it does not sound like a gate
+        const t = i / n;
+        d[i] = (Math.random() * 2 - 1) * Math.pow(1 - t, decay) * (t < 0.02 ? t / 0.02 : 1);
+      }
+    }
+    return buf;
   }
 
   private noiseBuffer(dur: number): AudioBuffer {
@@ -250,6 +276,32 @@ class Sfx {
     this.musicGain = this.ctx.createGain();
     this.musicGain.gain.value = this.musicVolume;
     this.musicGain.connect(this.ctx.destination);
+
+    // Every note used to run bare into the output, which is why the score read
+    // as a chiptune: raw oscillators with no room around them. Pads and melody
+    // now go through a soft lowpass into a parallel reverb, so chords bloom and
+    // decay instead of stopping dead at the end of the bar.
+    const ctx = this.ctx;
+    const tone = ctx.createBiquadFilter();
+    tone.type = 'lowpass';
+    tone.frequency.value = 3200;
+    tone.Q.value = 0.4;
+    const dry = ctx.createGain();
+    dry.gain.value = 0.78;
+    const wet = ctx.createGain();
+    wet.gain.value = 0.42;
+    const verb = ctx.createConvolver();
+    verb.buffer = this.reverbImpulse(2.6, 2.4);
+    tone.connect(dry).connect(this.musicGain);
+    tone.connect(verb).connect(wet).connect(this.musicGain);
+    this.musicVoice = tone; // entry point for every musical (non-drum) voice
+    this.musicWet = wet;
+    this.panL = ctx.createStereoPanner();
+    this.panL.pan.value = -0.35;
+    this.panL.connect(tone);
+    this.panR = ctx.createStereoPanner();
+    this.panR.pan.value = 0.35;
+    this.panR.connect(tone);
     this.nextBarTime = this.ctx.currentTime + 0.1;
     this.barIndex = 0;
     // lookahead scheduler: top up whenever less than 2 bars are queued
@@ -357,18 +409,32 @@ class Sfx {
     return 2.05;
   }
 
-  private note(freq: number, t: number, dur: number, type: OscillatorType, peak: number, out: GainNode): void {
+  /**
+   * `attack` is what separates a pad from a pluck. Everything used to reach
+   * full level in 40ms regardless of role, so sustained chords started with
+   * the same click as a lead note and the whole score read as one instrument.
+   * `detune` in cents thickens a voice against its own unison.
+   */
+  private note(
+    freq: number, t: number, dur: number, type: OscillatorType, peak: number, out: AudioNode,
+    attack = 0.04, detune = 0,
+  ): void {
     const ctx = this.ctx!;
     const o = ctx.createOscillator();
     o.type = type;
     o.frequency.value = freq;
+    if (detune) o.detune.value = detune;
     const g = ctx.createGain();
+    const a = Math.min(attack, dur * 0.5);
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(peak, t + 0.04);
+    g.gain.exponentialRampToValueAtTime(peak, t + a);
+    // hold briefly at level, then a long tail — an instant decay from the peak
+    // is why sustained notes sounded like they were being switched off
+    g.gain.setValueAtTime(peak, t + Math.min(dur * 0.55, a + dur * 0.3));
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     o.connect(g).connect(out);
     o.start(t);
-    o.stop(t + dur + 0.05);
+    o.stop(t + dur + 0.08);
   }
 
   private drum(t: number, peak: number, bright: boolean, out: GainNode): void {
@@ -402,35 +468,74 @@ class Sfx {
     const combat = mode === 'boss';
     const dark = mode === 'revenant';
     const intro = mode === 'intro';
+    // Musical voices go through the tone/reverb bus; drums stay dry and
+    // forward so the rhythm keeps its edge in a wash of reverb.
+    const voice: AudioNode = this.musicVoice ?? out;
+    const wide = this.barIndex % 2 === 0 ? (this.panL ?? voice) : (this.panR ?? voice);
+    // Eight bars, not four: the second half re-voices the same progression an
+    // octave apart and drops a beat, so the loop stops announcing itself every
+    // four bars the way it did when the only cycle was the chord table.
+    const phrase = Math.floor(this.barIndex / 4) % 2 === 1;
 
     // The Revenant loses the warm upper octave and gains detuned saw voices;
     // bosses get brass-like saw reinforcement; intro stays broad and clean.
     for (const f of chord) {
-      this.note(f, t, barLen * 1.05, dark ? 'sawtooth' : 'triangle', dark ? 0.025 : 0.045, out);
-      if (!dark) this.note(f * 2.003, t, barLen * 1.05, 'sine', intro ? 0.04 : 0.025, out);
-      if (combat) this.note(f * 0.997, t, barLen * 0.72, 'sawtooth', 0.025, out);
+      // pads swell over a third of the bar and ring past its end
+      this.note(f, t, barLen * 1.6, dark ? 'sawtooth' : 'triangle',
+        dark ? 0.025 : 0.042, voice, barLen * 0.3);
+      this.note(f, t, barLen * 1.6, dark ? 'sawtooth' : 'triangle',
+        dark ? 0.018 : 0.03, wide, barLen * 0.34, dark ? 9 : 5);
+      if (!dark) {
+        this.note(f * 2.003, t, barLen * 1.35, 'sine',
+          (intro ? 0.04 : 0.025) * (phrase ? 1.25 : 1), voice, barLen * 0.4);
+      }
+      if (combat) this.note(f * 0.997, t, barLen * 0.72, 'sawtooth', 0.025, voice, 0.02);
     }
-    // Bass rhythm is the main intensity carrier.
+    // Bass rhythm is the main intensity carrier. Kept dry — reverb on a low
+    // sine is just mud.
     const root = chord[0] / 2;
-    this.note(root, t, barLen * (dark ? 1.15 : 0.8), dark ? 'triangle' : 'sine', dark ? 0.14 : 0.11, out);
+    this.note(root, t, barLen * (dark ? 1.15 : 0.9), dark ? 'triangle' : 'sine',
+      dark ? 0.14 : 0.11, out, 0.03);
     if (combat) {
-      for (const beat of [0, 0.25, 0.5, 0.75]) {
-        this.note(root, t + barLen * beat, barLen * 0.18, 'sawtooth', 0.055, out);
+      // the eighth bar of the phrase drops the third beat: a breath, and the
+      // downbeat that follows it lands much harder for costing nothing
+      const beats = phrase && this.barIndex % 4 === 3 ? [0, 0.25, 0.75] : [0, 0.25, 0.5, 0.75];
+      for (const beat of beats) {
+        this.note(root, t + barLen * beat, barLen * 0.18, 'sawtooth', 0.055, out, 0.012);
         this.drum(t + barLen * beat, beat === 0 ? 0.12 : 0.07, false, out);
       }
       this.drum(t + barLen * 0.5, 0.07, true, out);
+      if (phrase) this.drum(t + barLen * 0.875, 0.05, true, out);
     } else if (dark) {
       this.drum(t, 0.11, false, out);
       this.drum(t + barLen * 0.75, 0.045, true, out);
+    } else {
+      // a soft pulse on the downbeat so exploration has a floor to sit on
+      this.drum(t, 0.05, false, out);
     }
     // Melodic motion: spacious intro, light exploration, frantic boss ostinato,
     // and an intentionally incomplete Revenant pulse that never resolves.
-    const steps = combat ? 8 : dark ? 3 : intro ? 4 : 5;
-    for (let i = 0; i < steps; i++) {
-      const degree = dark ? [0, 2, 1][i % 3] : i % 3;
-      const f = chord[degree] * (combat ? 2 : intro && i === steps - 1 ? 4 : 2);
-      this.note(f, t + (i / steps) * barLen, dark ? 0.38 : 0.2,
-        dark ? 'sine' : 'triangle', combat ? 0.065 : dark ? 0.035 : 0.043, out);
+    // Melody: real motifs with rests in them. The old line was degree i % 3
+    // across every step of every bar — no phrasing, no silence, and after two
+    // loops the ear had nothing left to find.
+    const MOTIFS: Record<MusicMode, (number | null)[][]> = {
+      intro:    [[0, null, 1, 2], [2, 1, null, 0]],
+      explore:  [[0, null, 2, 1, null], [2, 1, null, 0, null]],
+      boss:     [[0, 2, 1, 2, 0, null, 1, 2], [0, 1, 2, null, 2, 1, 0, null]],
+      revenant: [[0, null, 2], [2, null, 1]],
+    };
+    const motif = MOTIFS[mode][phrase ? 1 : 0];
+    for (let i = 0; i < motif.length; i++) {
+      const degree = motif[i];
+      if (degree === null) continue; // the rest is the point
+      const octave = combat ? 2 : intro && i === motif.length - 1 ? 4 : phrase ? 4 : 2;
+      const f = chord[degree] * octave;
+      const accent = i === 0 ? 1.25 : 1;
+      this.note(f, t + (i / motif.length) * barLen, dark ? 0.62 : combat ? 0.26 : 0.44,
+        dark ? 'sine' : 'triangle',
+        (combat ? 0.062 : dark ? 0.035 : 0.04) * accent,
+        i % 2 === 0 ? (this.panR ?? voice) : (this.panL ?? voice),
+        combat ? 0.015 : 0.06);
     }
   }
 

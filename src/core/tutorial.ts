@@ -46,7 +46,10 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     objective: 'Get moving — walk clear of the launch deck',
     say: [
       { who: AYA, text: 'Kuroki, the frame is live. Walk it. I need to see the legs answer before you go anywhere near the water.' },
-      { who: KUROSAWA, text: 'Left stick, or the arrow keys — it does not care which. Hold the boost to run.' },
+      // Deliberately not the word "boost": chapter two's reward is named
+      // OVERDRIVE THRUSTERS, and a pilot told to "hold boost" in chapter one
+      // reasonably reads that as an upgrade they have not been given yet.
+      { who: KUROSAWA, text: 'Left stick, or the arrow keys — it does not care which. Hold SHIFT and it will run.' },
     ],
     cleared: ['LOCOMOTION NOMINAL', 'The legs answer. Kurosawa is delighted.'],
     done: (from, now) => now.walked - from.walked >= 60,
@@ -65,12 +68,12 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   },
   {
     id: 'fly',
-    objective: 'Get airborne — hold jump to burn the rocket boots',
+    objective: 'Get airborne — hold jump to climb on the lift jets',
     say: [
-      { who: KUROSAWA, text: 'Last thing. The boots. Hold the jump — do not tap it, hold it — and the frame will climb.' },
+      { who: KUROSAWA, text: 'Last thing. The lift jets — the small ones, you have those already. Hold the jump, do not tap it, and the frame will climb.' },
       { who: AYA, text: 'You will need the height. The things coming through the bay do not stay on the ground.' },
     ],
-    cleared: ['BOOTS NOMINAL', 'Altitude is the whole fight. Use it.'],
+    cleared: ['LIFT JETS NOMINAL', 'Altitude is the whole fight. Use it.'],
     done: (_from, now) => now.altitude >= 34,
     nudge: { who: KUROSAWA, text: 'Hold the jump down, Kuroki. It is a throttle, not a button.' },
   },
