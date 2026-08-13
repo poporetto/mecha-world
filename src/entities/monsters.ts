@@ -69,7 +69,9 @@ export abstract class Monster {
     return this.vulnT > 0;
   }
   /** Damage multiplier applied to hits landed inside a punish window. */
-  static readonly PUNISH = 1.65;
+  // Open cores still reward a clean dodge, but no longer let late-game burst
+  // weapons erase an entire phase during one vulnerability window.
+  static readonly PUNISH = 1.4;
 
   protected deathT = 0;
   protected flashT = 0;

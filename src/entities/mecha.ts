@@ -157,6 +157,9 @@ export class MechaModel {
   swingT = -1; // 0..1 while swinging
   /** 0 horizontal, 1 reverse horizontal, 2 overhead finisher */
   private swingStyle = 0;
+  /** A chained strike starts from the previous follow-through instead of
+   * visibly returning all the way to the neutral standing guard. */
+  private chainedSwing = false;
   aiming = false;
   // knee pivots, so the walk cycle can bend rather than swing rigidly
   private kneeL!: THREE.Group;
@@ -283,11 +286,11 @@ export class MechaModel {
 
     // Layered red butterfly chest motif from the front turnaround.
     for (const side of [-1, 1]) {
-      const pectoral = frustum(0.30, 0.37, 0.23, 0.075, 0.098, RED);
-      pectoral.position.set(side * 0.44, 1.30, 0.540);
+      const pectoral = frustum(0.44, 0.54, 0.33, 0.09, 0.12, RED);
+      pectoral.position.set(side * 0.34, 1.27, 0.540);
       pectoral.rotation.z = side * 0.22;
-      const lowerPec = frustum(0.16, 0.21, 0.115, 0.05, 0.064, RED);
-      lowerPec.position.set(side * 0.40, 0.92, 0.535);
+      const lowerPec = frustum(0.23, 0.30, 0.17, 0.06, 0.08, RED);
+      lowerPec.position.set(side * 0.31, 0.99, 0.535);
       lowerPec.rotation.z = side * -0.22;
       const whiteEdge = frustum(0.18, 0.28, 0.48, 0.08, 0.1, WHITE);
       whiteEdge.position.set(side * 0.72, 1.13, 0.46);
@@ -480,25 +483,25 @@ export class MechaModel {
     // misplaced red spike seen in the previous render.
     for (const side of [-1, 1]) {
       const horn = new THREE.Group();
-      // Eight segments with real backward rake: the reference antennae are
-      // long and sweep up AND back into a clear V, not short vertical spikes.
-      for (let i = 0; i < 8; i++) {
-        const t = i / 7;
-        const segment = plate(0.1 - t * 0.03, 0.12, 0.1 - t * 0.03, RED);
-        segment.position.set(side * i * 0.028, i * 0.115, -i * 0.075);
+      // Compact five-course antennae: tall enough to frame the crown, with a
+      // restrained outward V and almost no rear rake, matching the turnaround.
+      for (let i = 0; i < 5; i++) {
+        const t = i / 4;
+        const segment = plate(0.095 - t * 0.015, 0.11, 0.095 - t * 0.015, RED);
+        segment.position.set(side * i * 0.018, i * 0.105, -i * 0.014);
         horn.add(segment);
       }
       // Identical mount depth and mirrored lateral placement keep the red
       // antennae perfectly symmetrical from the front and rear.
       horn.position.set(side * 0.23, 0.35, -0.245);
-      horn.rotation.z = side * -0.42;
-      horn.rotation.x = 0.16;
+      horn.rotation.z = side * -0.12;
+      horn.rotation.x = 0.03;
       this.head.add(horn);
     }
     this.torso.add(this.head);
 
-    this.armL = this.makeArm(-0.97, true);
-    this.armR = this.makeArm(0.97, false);
+    this.armL = this.makeArm(-0.9, true);
+    this.armR = this.makeArm(0.9, false);
     this.elbowL = (this.armL as THREE.Group & { lower: THREE.Group }).lower;
     this.elbowR = (this.armR as THREE.Group & { lower: THREE.Group }).lower;
     this.torso.add(this.armL, this.armR);
@@ -721,19 +724,20 @@ export class MechaModel {
     arm.position.set(x, 1.3, 0);
     const shoulderJoint = sphere(0.29, JOINT);
     // Three layers create the red-edged rounded pauldron in the reference.
-    const pauldron = frustum(0.72, 0.93, 0.50, 0.58, 0.74, WHITE);
+    const pauldron = frustum(0.60, 0.77, 0.46, 0.52, 0.65, WHITE);
     pauldron.scale.set(1, 1, 1);
-    pauldron.position.set(x > 0 ? 0.05 : -0.05, 0.17, 0);
+    pauldron.position.set(x > 0 ? 0.05 : -0.05, 0.19, 0);
+    pauldron.rotation.z = x > 0 ? -0.08 : 0.08;
     // thinner red outer cheek: in the reference the pauldron reads white with
     // a red edge, not a red block with white behind it
-    const outerCap = sphere(0.40, RED);
+    const outerCap = sphere(0.37, RED);
     outerCap.scale.set(0.15, 0.70, 0.42);
-    outerCap.position.set(x > 0 ? 0.575 : -0.575, 0.15, 0);
+    outerCap.position.set(x > 0 ? 0.525 : -0.525, 0.17, 0);
     const topInset = frustum(0.42, 0.3, 0.14, 0.6, 0.5, WHITE);
     topInset.position.set(0, 0.4, 0);
     topInset.rotation.x = -0.1;
     // single red cap sitting across the whole top surface of the pauldron
-    const capBrow = frustum(0.62, 0.80, 0.15, 0.30, 0.38, RED);
+    const capBrow = frustum(0.51, 0.66, 0.14, 0.27, 0.34, RED);
     capBrow.position.set(x > 0 ? 0.05 : -0.05, 0.41, 0.02);
     capBrow.rotation.z = x > 0 ? -0.06 : 0.06;
     // From the right side the pauldron is a red outer frame around a recessed
@@ -983,10 +987,14 @@ export class MechaModel {
     // blade extends as it ignites and retracts on the way out, and the hips
     // and shoulders drive the motion rather than the arm alone.
     if (this.swingT >= 0) {
-      this.swingT += dt / 0.52;
+      // Slightly longer than the old snap-cut: the eye can read preparation,
+      // contact and recovery as three distinct beats.
+      this.swingT += dt / 0.62;
       const s = this.swingT;
       const style = this.swingStyle;
       const overhead = style === 2;
+      const diagonal = style === 0;
+      const horizontal = style === 1;
       const dir = style === 1 ? -1 : 1; // style 1 comes back the other way
 
       this.saberBlade.visible = true;
@@ -1006,48 +1014,63 @@ export class MechaModel {
         trail.position.y = this.saberBlade.position.y;
         trail.scale.set(bladeWidth, Math.max(0.05, ignite), bladeWidth);
         const trailDir = style === 1 ? -1 : 1;
-        trail.rotation.z = trailDir * (0.055 + i * 0.065) * trailLife;
+        trail.rotation.z = horizontal
+          ? trailDir * (0.015 + i * 0.025) * trailLife
+          : trailDir * (0.055 + i * 0.065) * trailLife;
         trail.rotation.y = -trailDir * i * 0.035 * trailLife;
       }
 
-      if (s < 0.3) {
+      if (s < 0.34) {
         // WIND UP — ease out, so it snaps back then hangs for anticipation
-        const k = 1 - (1 - s / 0.3) * (1 - s / 0.3);
+        const k = 1 - (1 - s / 0.34) * (1 - s / 0.34);
         if (overhead) {
           this.armR.rotation.x = THREE.MathUtils.lerp(0.035, -2.2, k);
           this.armR.rotation.z = THREE.MathUtils.lerp(0.08, 0.14, k);
-          this.armL.rotation.x = THREE.MathUtils.lerp(0.055, -2.02, k);
-          this.armL.rotation.z = THREE.MathUtils.lerp(-0.08, -0.16, k);
+          // The free hand braces the chest instead of pretending to grip a
+          // two-handed weapon that is physically attached to the right wrist.
+          this.armL.rotation.x = THREE.MathUtils.lerp(0.055, -0.78, k);
+          this.armL.rotation.z = THREE.MathUtils.lerp(-0.08, 0.24, k);
           this.elbowR.rotation.x = THREE.MathUtils.lerp(-0.28, -1.02, k);
-          this.elbowL.rotation.x = THREE.MathUtils.lerp(-0.24, -1.12, k);
+          this.elbowL.rotation.x = THREE.MathUtils.lerp(-0.24, -0.92, k);
           this.armR.rotation.y = -0.12 * k;
-          this.armL.rotation.y = 0.16 * k;
+          this.armL.rotation.y = 0.22 * k;
           this.elbowR.rotation.y = 0.18 * k;
-          this.elbowL.rotation.y = -0.12 * k;
+          this.elbowL.rotation.y = -0.18 * k;
           this.elbowR.rotation.z = -0.1 * k;
-          this.elbowL.rotation.z = 0.08 * k;
+          this.elbowL.rotation.z = 0.05 * k;
           this.torso.rotation.y = 0.22 * k;
           this.torso.rotation.x = this.lean - 0.15 * k;
         } else {
-          this.armR.rotation.x = THREE.MathUtils.lerp(0.035, -1.22, k);
-          this.armR.rotation.z = THREE.MathUtils.lerp(0.08, -0.48 * dir, k);
+          this.armR.rotation.x = THREE.MathUtils.lerp(
+            this.chainedSwing ? -0.72 : 0.035,
+            diagonal ? -1.48 : -0.18,
+            k,
+          );
+          // The reverse cut chambers with the saber almost level at shoulder
+          // height. A large Z rotation is required because the blade extends
+          // down the forearm's local Y axis.
+          this.armR.rotation.z = THREE.MathUtils.lerp(
+            0.08,
+            horizontal ? 1.34 : -0.48 * dir,
+            k,
+          );
           // The support arm closes into a compact guard without crossing
           // unrealistically through the chest.
-          this.armL.rotation.x = THREE.MathUtils.lerp(0.055, -0.92, k);
-          this.armL.rotation.z = THREE.MathUtils.lerp(-0.08, 0.26 * dir, k);
-          this.elbowR.rotation.x = THREE.MathUtils.lerp(-0.28, -1.02, k);
-          this.elbowL.rotation.x = THREE.MathUtils.lerp(-0.24, -0.88, k);
+          this.armL.rotation.x = THREE.MathUtils.lerp(0.055, -0.62, k);
+          this.armL.rotation.z = THREE.MathUtils.lerp(-0.08, 0.18 * dir, k);
+          this.elbowR.rotation.x = THREE.MathUtils.lerp(-0.28, horizontal ? -0.42 : -1.02, k);
+          this.elbowL.rotation.x = THREE.MathUtils.lerp(-0.24, -0.78, k);
           // Draw the weapon behind the shoulder and across the body. Shoulder
           // yaw creates the broad arc; forearm roll keeps the blade edge
           // aligned instead of letting it paddle flat through the target.
           this.armR.rotation.y = -0.54 * dir * k;
-          this.armL.rotation.y = 0.3 * dir * k;
-          this.elbowR.rotation.y = 0.38 * dir * k;
+          this.armL.rotation.y = 0.18 * dir * k;
+          this.elbowR.rotation.y = (horizontal ? -0.08 : 0.38 * dir) * k;
           this.elbowL.rotation.y = -0.2 * dir * k;
-          this.elbowR.rotation.z = -0.13 * dir * k;
+          this.elbowR.rotation.z = (horizontal ? 0.04 : -0.13 * dir) * k;
           this.elbowL.rotation.z = 0.08 * dir * k;
           this.torso.rotation.y = 0.58 * k * dir;
-          this.torso.rotation.x = this.lean - 0.08 * k;
+          this.torso.rotation.x = this.lean - (diagonal ? 0.16 : 0.06) * k;
         }
         this.torso.rotation.z = -0.12 * k * dir;
         this.head.rotation.y = -0.2 * k * dir;
@@ -1058,20 +1081,20 @@ export class MechaModel {
         this.legR.rotation.z = THREE.MathUtils.lerp(0.055, 0.11, k);
         this.kneeL.rotation.x = THREE.MathUtils.lerp(0.17, dir > 0 ? 0.36 : 0.58, k);
         this.kneeR.rotation.x = THREE.MathUtils.lerp(0.2, dir > 0 ? 0.58 : 0.36, k);
-      } else if (s < 0.58) {
+      } else if (s < 0.64) {
         // STRIKE — front-loaded curve: explosive, then decelerating
-        const t = (s - 0.3) / 0.28;
+        const t = (s - 0.34) / 0.30;
         const k = 1 - Math.pow(1 - t, 3);
         if (overhead) {
           this.armR.rotation.x = -2.2 + 2.78 * k;
           this.armR.rotation.z = 0.14 - 0.3 * k;
-          this.armL.rotation.x = -2.02 + 2.45 * k;
-          this.armL.rotation.z = -0.16 + 0.25 * k;
+          this.armL.rotation.x = THREE.MathUtils.lerp(-0.78, -0.5, k);
+          this.armL.rotation.z = THREE.MathUtils.lerp(0.24, 0.12, k);
           // The elbows extend through impact, then retain a safe amount of bend.
           this.elbowR.rotation.x = -(1.02 - 0.74 * k);
-          this.elbowL.rotation.x = -(1.12 - 0.7 * k);
+          this.elbowL.rotation.x = THREE.MathUtils.lerp(-0.92, -0.62, k);
           this.armR.rotation.y = THREE.MathUtils.lerp(-0.12, 0.18, k);
-          this.armL.rotation.y = THREE.MathUtils.lerp(0.16, -0.12, k);
+          this.armL.rotation.y = THREE.MathUtils.lerp(0.22, -0.08, k);
           this.elbowR.rotation.y = THREE.MathUtils.lerp(0.18, -0.1, k);
           this.elbowL.rotation.y = THREE.MathUtils.lerp(-0.12, 0.08, k);
           this.elbowR.rotation.z = THREE.MathUtils.lerp(-0.1, 0.08, k);
@@ -1079,20 +1102,35 @@ export class MechaModel {
           this.torso.rotation.y = 0.22 - 0.38 * k;
           this.torso.rotation.x = this.lean - 0.15 + 0.49 * k;
         } else {
-          this.armR.rotation.x = -1.22 - 0.38 * k;
-          this.armR.rotation.z = (-0.48 + 1.26 * k) * dir;
-          this.armL.rotation.x = -0.92 - 0.22 * k;
-          this.armL.rotation.z = (0.26 + 0.32 * k) * dir;
-          this.elbowR.rotation.x = -(1.02 - 0.68 * k);
-          this.elbowL.rotation.x = -(0.88 - 0.32 * k);
+          // Link one descends shoulder-to-hip; link two travels level back
+          // across the body. Their distinct blade planes make the combination
+          // readable even from the chase camera.
+          this.armR.rotation.x = diagonal
+            ? THREE.MathUtils.lerp(-1.48, -0.88, k)
+            : THREE.MathUtils.lerp(-0.18, 0.12, k);
+          this.armR.rotation.z = horizontal
+            ? THREE.MathUtils.lerp(1.34, -1.34, k)
+            : (-0.48 + 1.26 * k) * dir;
+          this.armL.rotation.x = -0.62 - 0.08 * k;
+          this.armL.rotation.z = (0.18 + 0.10 * k) * dir;
+          this.elbowR.rotation.x = horizontal
+            ? THREE.MathUtils.lerp(-0.42, -0.18, k)
+            : -(1.02 - 0.68 * k);
+          this.elbowL.rotation.x = -(0.78 - 0.18 * k);
           this.armR.rotation.y = THREE.MathUtils.lerp(-0.54, 0.82, k) * dir;
-          this.armL.rotation.y = THREE.MathUtils.lerp(0.3, -0.42, k) * dir;
-          this.elbowR.rotation.y = THREE.MathUtils.lerp(0.38, -0.28, k) * dir;
+          this.armL.rotation.y = THREE.MathUtils.lerp(0.18, -0.16, k) * dir;
+          this.elbowR.rotation.y = horizontal
+            ? THREE.MathUtils.lerp(-0.08, 0.08, k)
+            : THREE.MathUtils.lerp(0.38, -0.28, k) * dir;
           this.elbowL.rotation.y = THREE.MathUtils.lerp(-0.2, 0.16, k) * dir;
-          this.elbowR.rotation.z = THREE.MathUtils.lerp(-0.13, 0.12, k) * dir;
+          this.elbowR.rotation.z = horizontal
+            ? THREE.MathUtils.lerp(0.04, -0.04, k)
+            : THREE.MathUtils.lerp(-0.13, 0.12, k) * dir;
           this.elbowL.rotation.z = THREE.MathUtils.lerp(0.08, -0.07, k) * dir;
           this.torso.rotation.y = (0.58 - 1.25 * k) * dir;
-          this.torso.rotation.x = this.lean - 0.08 + 0.28 * k;
+          this.torso.rotation.x = diagonal
+            ? this.lean - 0.16 + 0.42 * k
+            : this.lean - 0.06 + 0.18 * k;
         }
         this.torso.rotation.z = (-0.12 + 0.28 * k) * dir;
         this.head.rotation.y = (-0.2 + 0.34 * k) * dir;
@@ -1109,14 +1147,14 @@ export class MechaModel {
         this.kneeR.rotation.x = THREE.MathUtils.lerp(kneeRStart, kneeREnd, k);
       } else if (s < 1) {
         // FOLLOW THROUGH — drift a little further, then ease back to guard
-        const t = (s - 0.58) / 0.42;
+        const t = (s - 0.64) / 0.36;
         const k = t * t * (3 - 2 * t); // smoothstep settle
         const over = Math.sin(t * Math.PI) * 0.12; // slight overswing
         if (overhead) {
           this.armR.rotation.x = THREE.MathUtils.lerp(0.58 + over, 0.035, k);
           this.armR.rotation.z = THREE.MathUtils.lerp(-0.16, 0.08, k);
-          this.armL.rotation.x = THREE.MathUtils.lerp(0.43 + over * 0.7, 0.055, k);
-          this.armL.rotation.z = THREE.MathUtils.lerp(0.09, -0.08, k);
+          this.armL.rotation.x = THREE.MathUtils.lerp(-0.5, 0.055, k);
+          this.armL.rotation.z = THREE.MathUtils.lerp(0.12, -0.08, k);
           this.elbowR.rotation.x = THREE.MathUtils.lerp(-0.28, -0.28, k);
           this.elbowL.rotation.x = THREE.MathUtils.lerp(-0.42, -0.24, k);
           this.armR.rotation.y = THREE.MathUtils.lerp(0.18, 0, k);
@@ -1127,10 +1165,16 @@ export class MechaModel {
           this.elbowL.rotation.z = THREE.MathUtils.lerp(-0.05, 0, k);
           this.torso.rotation.x = this.lean + 0.34 * (1 - k);
         } else {
-          this.armR.rotation.x = THREE.MathUtils.lerp(-1.6 - over, 0.035, k);
-          this.armR.rotation.z = THREE.MathUtils.lerp(0.78 * dir, 0.08, k);
-          this.armL.rotation.x = THREE.MathUtils.lerp(-1.14 - over * 0.5, 0.055, k);
-          this.armL.rotation.z = THREE.MathUtils.lerp(0.58 * dir, -0.08, k);
+          const followX = diagonal ? -0.88 : 0.12;
+          const recoverX = this.chainedSwing ? -0.72 : 0.035;
+          this.armR.rotation.x = THREE.MathUtils.lerp(followX - over, recoverX, k);
+          this.armR.rotation.z = THREE.MathUtils.lerp(
+            horizontal ? -1.34 : 0.78 * dir,
+            0.08,
+            k,
+          );
+          this.armL.rotation.x = THREE.MathUtils.lerp(-0.7, 0.055, k);
+          this.armL.rotation.z = THREE.MathUtils.lerp(0.28 * dir, -0.08, k);
           this.elbowR.rotation.x = THREE.MathUtils.lerp(-0.34, -0.28, k);
           this.elbowL.rotation.x = THREE.MathUtils.lerp(-0.56, -0.24, k);
           this.armR.rotation.y = THREE.MathUtils.lerp(0.82 * dir, 0, k);
@@ -1152,6 +1196,7 @@ export class MechaModel {
         this.head.rotation.y = (overhead ? 0.06 : 0.14 * dir) * (1 - k);
       } else {
         this.swingT = -1;
+        this.chainedSwing = false;
         this.saberBlade.visible = false;
         const bladeWidth = this.crimsonEdge ? 1.28 : 1;
         this.saberBlade.scale.set(bladeWidth, 1, bladeWidth);
@@ -1196,8 +1241,9 @@ export class MechaModel {
     this.muzzle.getWorldPosition(out);
   }
 
-  startSwing(style = 0): boolean {
+  startSwing(style = 0, chained = false): boolean {
     if (this.swingT >= 0 && this.swingT < 0.7) return false;
+    this.chainedSwing = chained;
     this.swingT = 0;
     this.swingStyle = style % 3;
     return true;

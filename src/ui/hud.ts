@@ -65,6 +65,10 @@ export class Hud {
         .hud-fill { height:100%; background:linear-gradient(90deg,#26e0a8,#7fdcff); transition:width .15s; }
         .boss { position:absolute; top:26px; left:50%; transform:translateX(-50%); width:min(560px,60vw); display:none; text-align:center; }
         .boss-name { color:#ffd0d0; font-size:14px; letter-spacing:6px; margin-bottom:5px; text-shadow:0 1px 4px #000; }
+        .boss-state { min-height:14px; margin-top:5px; color:#ffb4c0; font-size:9px;
+                      letter-spacing:3px; text-shadow:0 1px 3px #000; }
+        .boss.open .boss-state { color:#7ff0ff; }
+        .boss.enraged .boss-state { color:#ff786f; animation:openPulse .45s ease-in-out infinite alternate; }
         .boss-track { position:relative; height:12px; background:#0009; border:1px solid #ff5a5a66; border-radius:6px; overflow:hidden; }
         .boss-fill { height:100%; background:linear-gradient(90deg,#ff3b3b,#ff9a3b); transition:width .15s, background .25s; }
         /* the track itself reacts, so the fight state is readable even when
@@ -438,6 +442,7 @@ export class Hud {
           <div class="boss-fill" id="bossfill" style="width:100%"></div>
           <div class="boss-open">OPENING · STRIKE THE CORE</div>
         </div>
+        <div class="boss-state" id="boss-state"></div>
       </div>
       <div class="chips">
         <div class="chip" id="chip-weapon"><b>A</b> ATTACK · <b>1-7</b> or WHEEL to switch</div>
@@ -1152,6 +1157,11 @@ export class Hud {
       : 'linear-gradient(90deg,#ff4d6a,#ff9bb0)';
     this.bossWrap.classList.toggle('open', open);
     this.bossWrap.classList.toggle('enraged', !open && phase === 3);
+    document.getElementById('boss-state')!.textContent = open
+      ? 'CORE EXPOSED · COUNTERATTACK'
+      : phase === 3 ? 'PHASE III · ENRAGED'
+      : phase === 2 ? 'PHASE II · ESCALATING'
+      : 'PHASE I · ENGAGED';
   }
 
   hideBoss(): void {

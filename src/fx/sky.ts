@@ -56,6 +56,8 @@ export class Sky {
   private birdMat = new THREE.MeshLambertMaterial({ color: 0x2c3038 });
   private cloudMat: THREE.MeshLambertMaterial;
   private ash: THREE.Points;
+  /** Low cloud ring at the streaming edge, so the world does not just stop. */
+  private haze!: THREE.Group;
   private ashPos: Float32Array;
   private state: SkyState = {
     sunDir: new THREE.Vector3(0.6, 1, 0.35).normalize(),
@@ -94,6 +96,37 @@ export class Sky {
     );
     crater.position.y = H + 2;
     g.add(crater);
+
+    // A bank of cloud around the base. Fuji is pinned at y=-168 so its cone
+    // reads correctly from the ground, but once the player is flying they can
+    // see where it meets the sea and it looks like it is standing in the
+    // water. Cloud hides the join the way haze does in every photograph of it.
+    const cloudMat = () => new THREE.MeshBasicMaterial({
+      color: 0xf2f6fb, fog: false, transparent: true, opacity: 0.85, depthWrite: false,
+    });
+    for (let i = 0; i < 26; i++) {
+      const a2 = (i / 26) * Math.PI * 2 + Math.sin(i * 3.1) * 0.18;
+      const rr = R * (0.80 + Math.sin(i * 2.3) * 0.16);
+      const puff = new THREE.Mesh(
+        new THREE.BoxGeometry(R * (0.34 + Math.sin(i * 1.7) * 0.10), 26 + Math.sin(i) * 10, R * 0.22),
+        cloudMat()
+      );
+      puff.position.set(Math.sin(a2) * rr, 118 + Math.sin(i * 1.3) * 16, Math.cos(a2) * rr);
+      puff.rotation.y = -a2;
+      g.add(puff);
+    }
+    // a second, lower and wider band so the skirt is fully occluded
+    for (let i = 0; i < 18; i++) {
+      const a2 = (i / 18) * Math.PI * 2 + 0.4;
+      const rr = R * (1.02 + Math.sin(i * 1.9) * 0.12);
+      const puff = new THREE.Mesh(
+        new THREE.BoxGeometry(R * 0.42, 34, R * 0.26),
+        cloudMat()
+      );
+      puff.position.set(Math.sin(a2) * rr, 86 + Math.sin(i * 2.1) * 12, Math.cos(a2) * rr);
+      puff.rotation.y = -a2;
+      g.add(puff);
+    }
     g.renderOrder = -1;
     return g;
   }
@@ -208,6 +241,33 @@ export class Sky {
       this.group.add(g);
       this.clouds.push({ group: g, speed: 1.2 + Math.random() * 1.8 });
     }
+
+    // A ring of low cloud out at the streaming boundary. Terrain simply stops
+    // being generated past the view distance, and from the air that edge is
+    // visible as a hard rim of nothing — this gives the horizon something to
+    // dissolve into, the same job the fog does at ground level.
+    this.haze = new THREE.Group();
+    for (let i = 0; i < 44; i++) {
+      const a2 = (i / 44) * Math.PI * 2;
+      const rr = 430 + Math.sin(i * 2.7) * 40;
+      const bank = new THREE.Group();
+      for (let p = 0; p < 3; p++) {
+        const puff = new THREE.Mesh(
+          new THREE.BoxGeometry(90 + Math.sin(i + p) * 34, 16 + Math.sin(i * 1.7 + p) * 9, 46),
+          new THREE.MeshBasicMaterial({
+            color: 0xdceaf6, fog: false, transparent: true,
+            opacity: 0.30 + Math.sin(i * 1.3 + p) * 0.10, depthWrite: false,
+          })
+        );
+        puff.position.set((p - 1) * 46, Math.sin(i * 2.1 + p) * 10, Math.sin(i + p * 2) * 16);
+        bank.add(puff);
+      }
+      bank.position.set(Math.sin(a2) * rr, 16 + Math.sin(i * 1.9) * 14, Math.cos(a2) * rr);
+      bank.rotation.y = -a2;
+      this.haze.add(bank);
+    }
+    this.haze.renderOrder = -1;
+    this.group.add(this.haze);
 
     // small flocks of birds circling over the city
     for (let f = 0; f < 3; f++) {
@@ -327,6 +387,16 @@ export class Sky {
       }
       (this.ash.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
     }
+
+    // the boundary haze rides with the player and takes the sky's colour, so
+    // it reads as distance rather than as a wall of white at dusk or night
+    this.haze.position.set(center.x, 0, center.z);
+    this.haze.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      const mat = m.material as THREE.MeshBasicMaterial;
+      mat.color.copy(_fog).lerp(_sky, 0.35);
+    });
 
     for (const c of this.clouds) {
       c.group.position.x += c.speed * dt;

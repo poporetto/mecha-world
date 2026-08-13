@@ -52,7 +52,14 @@ interface SaveData {
 }
 
 const _v = new THREE.Vector3();
-const PLAYER_BOSS_DAMAGE = 0.72;
+/** Global outgoing balance modifiers, kept at the collision boundary so new
+ * weapons and support shots inherit the intended campaign difficulty. */
+const PLAYER_ATTACK_DAMAGE = 0.7;
+const ALLY_ATTACK_DAMAGE = 0.5;
+// Bosses are endurance encounters rather than oversized regular enemies.
+// This is deliberately separate from drone/building damage so crowd-control
+// weapons remain satisfying while single-target boss burst stays controlled.
+const PLAYER_BOSS_DAMAGE = 0.62;
 /** What a kaiju's palette drains toward after a long stay in the seam. */
 const _riftTint = new THREE.Color(0x4a3060);
 
@@ -178,6 +185,9 @@ export class Game {
   private slowmo = 0; // seconds of slow-motion remaining
   private hitStop = 0;
   private impactZoom = 0;
+  /** Rate-limit impact smoke independently from sparks; automatic weapons can
+   * hit many times per second but should create one readable damage plume. */
+  private monsterSmokeT = 0;
   private dashCameraT = 0;
   private bossIntroT = 0;
   private readonly bossIntroDuration = 3;
@@ -402,7 +412,10 @@ export class Game {
     this.score = d.score;
     this.deaths = d.deaths;
     this.powerLevel = d.powerLevel ?? 1;
-    this.bossTimer = 4;
+    // A resumed pilot needs a moment to read the HUD and reacquire controls;
+    // do not drop the next contact on top of the deployment transition.
+    this.bossTimer = 7;
+    this.player.invulnT = 5;
     this.unlockedWeapons = new Set(d.weapons);
     this.player.abilities = { ...this.player.abilities, ...d.abilities };
     this.player.model.setCrimsonEdge(this.player.abilities.blades);
@@ -419,11 +432,11 @@ export class Game {
     if (this.player.abilities.thrust) this.hud.unlock('boots', '<b>SPACE</b> OVERDRIVE THRUSTERS');
     if (this.player.abilities.dash) { this.hud.unlockDash(); this.touch?.unlockDash(); }
     if (this.player.abilities.nova) this.hud.unlock('nova', '<b>Q</b> NOVA PULSE');
-    if (this.player.abilities.shield) this.hud.unlock('shield', 'AEGIS ARMOR · DAMAGE -50%');
+    if (this.player.abilities.shield) this.hud.unlock('shield', 'AEGIS ARMOR · DAMAGE -35%');
     if (this.player.abilities.blades) this.hud.unlock('blades', 'CRIMSON EDGE');
     if (this.player.abilities.quake) this.hud.unlock('quake', '<b>G</b> QUAKE SLAM');
     this.selectWeapon('saber');
-    this.droneBase = Math.min(10, 3 + Math.floor(d.chapter * 0.7));
+    this.droneBase = Math.min(14, 4 + Math.floor(d.chapter * 0.75));
     this.drones.target = this.droneBase;
     this.deploySupportFromEarlierChapters(d.chapter);
     this.hud.setWave(d.chapter);
@@ -431,7 +444,7 @@ export class Game {
     if (!this.touch) this.renderer.domElement.requestPointerLock();
     const ch = CHAPTERS[d.chapter];
     this.hud.toast('RESUMING', `Chapter ${ch.no} · ${ch.title}`, 3.5);
-    this.hud.setObjective('Hold Neo Tokyo');
+    this.hud.setObjective('Reacquire systems — next contact inbound');
   }
 
   // ------------------------------------------------------------------ input
@@ -577,9 +590,11 @@ export class Game {
 
   private swingSaber(): void {
     // Work out which link of the combo this is BEFORE starting the swing, so
-    // the model can play the matching arc: horizontal, reverse, then overhead.
-    const step = this.comboWindow > 0 ? (this.comboStep + 1) % 3 : 0;
-    if (!this.player.model.startSwing(step)) return;
+    // the model can play the matching arc: descending diagonal, reverse
+    // horizontal, then the committed vertical finisher.
+    const chained = this.comboWindow > 0;
+    const step = chained ? (this.comboStep + 1) % 3 : 0;
+    if (!this.player.model.startSwing(step, chained)) return;
     this.comboStep = step;
     // twin sabers keep the combo window open longer, so chains are easier
     this.comboWindow = this.player.abilities.blades ? 1.0 : 0.7;
@@ -847,7 +862,7 @@ export class Game {
     }
     if (this.monster && !this.monster.dying) {
       const d = this.monster.group.position.distanceTo(this.player.pos);
-      if (d < 40) this.monster.takeDamage(60 * this.power * PLAYER_BOSS_DAMAGE, 'quake');
+      if (d < 40) this.monster.takeDamage(60 * this.power * PLAYER_ATTACK_DAMAGE * PLAYER_BOSS_DAMAGE, 'quake');
     }
   }
 
@@ -906,7 +921,7 @@ export class Game {
     }
     if (this.monster && !this.monster.dying) {
       const d = this.monster.group.position.distanceTo(this.player.pos);
-      if (d < 34) this.monster.takeDamage(45 * this.power * PLAYER_BOSS_DAMAGE, 'nova');
+      if (d < 34) this.monster.takeDamage(45 * this.power * PLAYER_ATTACK_DAMAGE * PLAYER_BOSS_DAMAGE, 'nova');
     }
   }
 
@@ -983,10 +998,15 @@ export class Game {
    * on, so it has to be able to tell a saber from a railgun. Wheel weapons
    * default to the current selection; abilities pass their own tag.
    */
-  private hitMonster(p: THREE.Vector3, radius: number, dmg: number, impactScale = 0.7, src?: string): boolean {
+  private hitMonster(
+    p: THREE.Vector3, radius: number, dmg: number,
+    impactScale = 0.7, src?: string, damageScale = PLAYER_ATTACK_DAMAGE,
+  ): boolean {
     let hit = false;
-    this.killDrones(this.drones.damageSphere(p, radius, dmg));
-    this.notePlanesDowned(this.planes.damageSphere(p, radius, dmg));
+    const scaledDamage = dmg * damageScale;
+    const playerOwned = damageScale === PLAYER_ATTACK_DAMAGE;
+    this.killDrones(this.drones.damageSphere(p, radius, scaledDamage));
+    this.notePlanesDowned(this.planes.damageSphere(p, radius, scaledDamage));
     const m = this.monster;
     if (m && !m.dying) {
       _v.copy(m.group.position);
@@ -997,20 +1017,30 @@ export class Game {
         // catching it mid-recovery is the big payoff, so the feedback for it
         // has to be louder than an ordinary weak-point hit
         const open = m.vulnerable;
-        const dealt = m.takeDamage(dmg * bonus * PLAYER_BOSS_DAMAGE, src ?? this.selectedWeapon);
+        const dealt = m.takeDamage(scaledDamage * bonus * PLAYER_BOSS_DAMAGE, src ?? this.selectedWeapon);
         const big = bonus > 1 || open;
+        const sparkAway = p.clone().sub(_v);
+        this.debris.sparks(p, sparkAway, big ? 18 : 9, big || dealt >= 14);
+        if (this.monsterSmokeT <= 0 && (big || dealt >= 10)) {
+          this.monsterSmokeT = big ? 0.22 : 0.42;
+          this.explosions.smokePuff(p.clone().addScaledVector(sparkAway.normalize(), 0.8), big ? 2.6 : 1.7, big ? 3 : 2, true);
+        }
         const strength = Math.min(1.9, Math.max(0.25, dealt / 28) * impactScale);
-        this.hitStop = Math.max(this.hitStop, 0.012 + strength * 0.03 + (big ? 0.018 : 0) + (open ? 0.022 : 0));
-        this.shake = Math.max(this.shake, 0.18 + strength * 0.34);
-        this.impactZoom = Math.max(this.impactZoom, strength + (big ? 0.35 : 0));
-        this.hud.impactFeedback(big, strength);
-        // shove the camera along the line of the blow, into the target
-        this.addKick(p.clone().sub(this.player.pos), strength * (open ? 2.6 : 1.7));
-        sfx.impact(strength, big);
-        this.debris.burst(p, [15], open ? 12 : 6);
-        this.rumble(big ? 135 : 80, Math.min(1, 0.22 + strength * 0.25), Math.min(1, 0.35 + strength * 0.38));
-        this.addScore(Math.round(dealt * 2), true);
-        this.hud.popDamage(dealt, open);
+        if (playerOwned) {
+          this.hitStop = Math.max(this.hitStop, 0.012 + strength * 0.03 + (big ? 0.018 : 0) + (open ? 0.022 : 0));
+          this.shake = Math.max(this.shake, 0.18 + strength * 0.34);
+          this.impactZoom = Math.max(this.impactZoom, strength + (big ? 0.35 : 0));
+          this.hud.impactFeedback(big, strength);
+          // shove the camera along the line of the blow, into the target
+          this.addKick(p.clone().sub(this.player.pos), strength * (open ? 2.6 : 1.7));
+          sfx.impact(strength, big);
+          this.rumble(big ? 135 : 80, Math.min(1, 0.22 + strength * 0.25), Math.min(1, 0.35 + strength * 0.38));
+          this.addScore(Math.round(dealt * 2), true);
+          this.hud.popDamage(dealt, open);
+        }
+        // Support impacts remain visible in-world without stealing the
+        // player's camera, controller rumble, damage numbers or combo credit.
+        this.debris.burst(p, [15], playerOwned ? (open ? 12 : 6) : 3);
         hit = true;
       }
     }
@@ -1030,8 +1060,9 @@ export class Game {
   }
 
   private hitMonsterRay(from: THREE.Vector3, dir: THREE.Vector3, maxDist: number, dmg: number, src?: string): void {
-    this.killDrones(this.drones.damageRay(from, dir, maxDist, dmg));
-    this.notePlanesDowned(this.planes.damageRay(from, dir, maxDist, dmg));
+    const scaledDamage = dmg * PLAYER_ATTACK_DAMAGE;
+    this.killDrones(this.drones.damageRay(from, dir, maxDist, scaledDamage));
+    this.notePlanesDowned(this.planes.damageRay(from, dir, maxDist, scaledDamage));
     const m = this.monster;
     if (!m || m.dying) return;
     _v.copy(m.group.position);
@@ -1042,7 +1073,13 @@ export class Game {
     const perp = toM.sub(dir.clone().multiplyScalar(along)).length();
     if (perp < m.hitRadius) {
       const open = m.vulnerable;
-      const dealt = m.takeDamage(dmg * PLAYER_BOSS_DAMAGE, src ?? this.selectedWeapon);
+      const dealt = m.takeDamage(scaledDamage * PLAYER_BOSS_DAMAGE, src ?? this.selectedWeapon);
+      const hitAt = from.clone().addScaledVector(dir, along);
+      this.debris.sparks(hitAt, dir.clone().negate(), open ? 14 : 6, open || dealt >= 10);
+      if (this.monsterSmokeT <= 0 && (open || dealt >= 10)) {
+        this.monsterSmokeT = open ? 0.22 : 0.5;
+        this.explosions.smokePuff(hitAt, open ? 2.4 : 1.5, open ? 3 : 1, true);
+      }
       this.addScore(Math.round(dealt * 2), true);
       this.hud.popDamage(dealt, open);
     }
@@ -1762,7 +1799,7 @@ export class Game {
     this.latestFinishedChapter = index - 1;
     this.wave = index;
     this.bossTimer = 0.2;
-    this.droneBase = Math.min(10, 3 + Math.floor(index * 0.7));
+    this.droneBase = Math.min(14, 4 + Math.floor(index * 0.75));
     this.drones.target = this.droneBase;
     this.deploySupportFromEarlierChapters(index);
     this.hud.setWave(index);
@@ -1831,8 +1868,8 @@ export class Game {
     this.bossTimer = 14;
     this.powerLevel = 1;
     this.power = 1;
-    this.droneBase = 3;
-    this.drones.target = 3;
+    this.droneBase = 4;
+    this.drones.target = this.droneBase;
     this.warnedContact = false;
     this.lastSpawnFar = false;
     this.frontLine = null;
@@ -2105,6 +2142,21 @@ export class Game {
     });
   }
 
+  /** Campaign-wide endurance curve. Player weapon options and support units
+   * grow every few chapters, so boss durability must grow with that toolkit.
+   * The shallow early ramp preserves the tutorial; Act II becomes the test. */
+  private tuneCampaignBoss(m: Monster, chapter: number): void {
+    // Act-II enemies receive an additional corruption multiplier below, so
+    // use a restrained second-act curve instead of accidentally stacking two
+    // full ramps. Revenant is the exception and earns final-boss endurance.
+    const hpScale = m instanceof Revenant
+      ? 1.68
+      : chapter >= ACT2_START
+        ? 1.18 + (chapter - ACT2_START) * 0.025
+        : 1.14 + chapter * 0.035;
+    m.maxHp = m.hp = Math.round(m.maxHp * hpScale);
+  }
+
   // ------------------------------------------------------------ boss cycle
 
   private updateBosses(dt: number): void {
@@ -2223,7 +2275,7 @@ export class Game {
     this.warnedContact = false;
     // the swarm thickens as the campaign progresses; the lull scales this up
     // and down around the countdown
-    this.droneBase = Math.min(10, 3 + Math.floor(this.wave * 0.7));
+    this.droneBase = Math.min(14, 4 + Math.floor(this.wave * 0.75));
     this.drones.target = this.droneBase;
     if (this.bossIndex < campaign.length) {
       const chapterNo = this.bossIndex;
@@ -2240,6 +2292,7 @@ export class Game {
         sz = at.z + Math.cos(ra) * rd;
       }
       this.monster = entry.make(sx, sz);
+      this.tuneCampaignBoss(this.monster, chapterNo);
       this.chapterStartScore = this.score;
       this.chapterStartDeaths = this.deaths;
       this.chapterStartDamage = this.blocksWrecked;
@@ -2277,7 +2330,7 @@ export class Game {
       const pool = [Kaiju, RocketBeast, VoltSerpent, IronColossus, SkyReaver, CrimsonMantis, MagmaGolem, DeepMaw, CinderWyrm, TideLeviathan];
       const M = pool[Math.floor(Math.random() * pool.length)];
       const m = new M(x, z);
-      m.maxHp = m.hp = Math.round(m.maxHp * (1.3 + this.powerLevel * 0.2 + (this.wave - campaign.length) * 0.15));
+      m.maxHp = m.hp = Math.round(m.maxHp * (1.45 + this.powerLevel * 0.22 + (this.wave - campaign.length) * 0.17));
       m.reward = 'repair';
       this.monster = m;
       this.hud.toast('⚠ WAVE ' + this.wave + ' ⚠', m.name + ' detected.', 3);
@@ -2372,8 +2425,8 @@ export class Game {
       case 'shield':
         this.player.abilities.shield = true;
         this.player.model.setAegisArmor(true);
-        this.hud.unlock('shield', 'AEGIS ARMOR · DAMAGE -50%');
-        this.hud.toast('AEGIS ARMOR ONLINE', 'Reinforced plating deployed · all damage is halved', 5);
+        this.hud.unlock('shield', 'AEGIS ARMOR · DAMAGE -35%');
+        this.hud.toast('AEGIS ARMOR ONLINE', 'Reinforced plating deployed · incoming damage reduced by 35%', 5);
         break;
       case 'blades':
         this.player.abilities.blades = true;
@@ -2425,8 +2478,14 @@ export class Game {
       }
       return;
     }
+    // Threat rises with the player's expanded toolkit. This applies to bosses,
+    // drones and hazards uniformly, preventing support-heavy late chapters
+    // from becoming safer than the opening act.
+    const campaignThreat = 1 + Math.min(0.42, Math.max(0, this.bossIndex - 1) * 0.028);
+    amount *= campaignThreat;
     if (this.player.abilities.shield) {
-      amount *= 0.5;
+      // Aegis is meaningful mitigation, not permanent half-damage immunity.
+      amount *= 0.65;
       this.player.model.pulseAegis();
       // shield shimmer
       const flash = this.player.pos.clone();
@@ -2497,6 +2556,7 @@ export class Game {
     if (this.hitStop > 0) this.hitStop = Math.max(0, this.hitStop - rawDt);
     if (this.bossIntroT > 0) this.bossIntroT = Math.max(0, this.bossIntroT - rawDt);
     this.impactZoom = Math.max(0, this.impactZoom - rawDt * 4.2);
+    this.monsterSmokeT = Math.max(0, this.monsterSmokeT - rawDt);
     this.dashCameraT = Math.max(0, this.dashCameraT - rawDt);
     this.player.invulnT = Math.max(0, this.player.invulnT - rawDt);
     const dt = this.hitStop > 0 ? 0
@@ -2611,7 +2671,7 @@ export class Game {
     for (const hit of wingEvents.hits) {
       const monster = this.monster;
       if (!monster || monster.dying) break;
-      monster.takeDamage(hit.damage, 'defense-wing');
+      monster.takeDamage(hit.damage * ALLY_ATTACK_DAMAGE, 'defense-wing');
       this.debris.burst(hit.at, [15], 2);
     }
     for (const at of wingEvents.crashes) {
@@ -2806,7 +2866,14 @@ export class Game {
         // Kotetsu's shells are artillery: the blast is the attack, not a
         // precision impact, so nearby bosses and drone packs take damage too.
         const hitR = p.kind === 'shell' ? 12 : p.kind === 'charge' ? 4 : 2;
-        if (this.hitMonster(p.pos, hitR, (p.dmg ?? 7) * (p.kind === 'laser' ? this.power : 1))) boom = true;
+        const allied = p.kind === 'ally' || p.kind === 'shell';
+        const source = p.kind === 'ally' ? 'hinata-support'
+          : p.kind === 'shell' ? 'kotetsu-support' : undefined;
+        if (this.hitMonster(
+          p.pos, hitR,
+          (p.dmg ?? 7) * (p.kind === 'laser' ? this.power : 1),
+          0.7, source, allied ? ALLY_ATTACK_DAMAGE : PLAYER_ATTACK_DAMAGE,
+        )) boom = true;
       } else if (p.pos.distanceTo(this.player.pos) < (p.kind === 'boulder' ? 8 : 7)) {
         // only enemy ordnance hurts the player
         boom = true;

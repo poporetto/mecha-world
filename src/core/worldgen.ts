@@ -509,6 +509,113 @@ export function buildShelter(dx: number, dz: number, set: (y: number, id: number
   }
 }
 
+// Twin-tower city hall (Tokyo Metropolitan Government): one podium splitting
+// into two square towers joined by a sky bridge, faced in a chequer grid.
+function buildCityHall(dx: number, dz: number, set: (y: number, id: number) => void) {
+  const ax = Math.abs(dx), az = Math.abs(dz);
+  // podium
+  if (ax <= 13 && az <= 9) {
+    const face = ax === 13 || az === 9;
+    for (let y = 1; y <= 12; y++) set(y, face ? (y % 3 === 0 ? B.Stone : B.Window) : B.WallGray);
+    set(13, B.Roof);
+  }
+  // the two towers rise from either end of the podium
+  for (const cx of [-8, 8]) {
+    const lx = Math.abs(dx - cx);
+    if (lx <= 5 && az <= 5) {
+      for (let y = 13; y <= 54; y++) {
+        const face = lx === 5 || az === 5;
+        // chequered stone-and-glass grid, the building's signature
+        const cell = (Math.floor(y / 3) + Math.floor((dx + dz) / 3)) % 2 === 0;
+        set(y, face ? (cell ? B.Stone : B.Window) : B.WallGray);
+      }
+      set(55, B.Roof);
+      if (lx <= 1 && az <= 1) { set(56, B.Pole); set(57, B.Pole); set(58, B.LightRed); }
+    }
+  }
+  // sky bridge linking them
+  if (ax <= 8 && az <= 2) for (let y = 40; y <= 42; y++) set(y, y === 41 ? B.Glass : B.White);
+}
+
+// Odaiba ferris wheel — a standing ring of cabins on an A-frame.
+function buildFerrisWheel(dx: number, dz: number, set: (y: number, id: number) => void) {
+  const HUB = 26, R = 20;
+  if (Math.abs(dz) > 2) return; // the wheel stands in the x/y plane
+  const r = Math.hypot(dx, 0);
+  // rim and spokes
+  for (let y = 1; y <= HUB + R; y++) {
+    const ry = y - HUB;
+    const rad = Math.hypot(dx, ry);
+    if (Math.abs(rad - R) < 0.7) {
+      // cabins every so often around the rim, lit
+      const ang = Math.atan2(ry, dx) + Math.PI;
+      const step = Math.PI / 8;
+      const off = ang - Math.round(ang / step) * step;
+      const cabin = Math.abs(off) < 0.09;
+      set(y, dz === 0 && cabin ? B.NeonPink : B.White);
+    } else if (rad < R && dz === 0 && Math.abs(Math.abs(dx) - Math.abs(ry)) < 0.6) {
+      set(y, B.Steel); // diagonal spokes
+    } else if (rad < 2 && dz === 0) {
+      set(y, B.Steel); // hub
+    }
+  }
+  // A-frame legs down to the ground
+  if (dz === 0) {
+    for (let y = 1; y < HUB; y++) {
+      const spread = Math.round((HUB - y) * 0.45);
+      if (Math.abs(Math.abs(dx) - spread) < 0.6) set(y, B.Steel);
+    }
+  }
+  if (r <= 10 && Math.abs(dz) <= 2) set(0, B.Plaza);
+}
+
+// National stadium: an elliptical bowl with a latticed timber roof ring.
+function buildStadium(dx: number, dz: number, set: (y: number, id: number) => void) {
+  const e = Math.hypot(dx / 20, dz / 16);
+  if (e > 1.08) return;
+  if (e < 0.72) { set(0, B.Grass); return; } // pitch
+  if (e < 0.78) { set(0, B.Tarmac); return; } // running track
+  // terraces stepping up towards the outside
+  const t = (e - 0.78) / 0.3;
+  const h = 2 + Math.round(t * 14);
+  for (let y = 1; y <= h; y++) set(y, y % 3 === 0 ? B.Stone : B.WallGray);
+  // slatted timber roof ring over the top tier
+  if (e > 0.9) {
+    const slat = mod(dx + dz, 3) !== 0;
+    set(h + 3, slat ? B.Wood : B.Air);
+    if (e > 1.0) set(h + 4, B.Wood);
+  }
+}
+
+// Waterfront observation dome on a slim pedestal.
+function buildDome(dx: number, dz: number, set: (y: number, id: number) => void) {
+  const ax = Math.abs(dx), az = Math.abs(dz);
+  const r = Math.hypot(dx, dz);
+  // pedestal
+  if (ax <= 3 && az <= 3) for (let y = 1; y <= 24; y++) set(y, (ax === 3 || az === 3) ? B.Steel : B.WallGray);
+  // sphere
+  const CY = 32, RAD = 9;
+  for (let y = CY - RAD; y <= CY + RAD; y++) {
+    const d = Math.sqrt(Math.max(0, RAD * RAD - (y - CY) * (y - CY)));
+    if (Math.abs(r - d) < 0.75) set(y, y === CY || y === CY + 4 || y === CY - 4 ? B.Steel : B.Glass);
+  }
+  if (r <= 12) set(0, B.Plaza);
+}
+
+// A crossing-gate rail viaduct carrying a train over the plaza.
+function buildViaduct(dx: number, dz: number, set: (y: number, id: number) => void) {
+  if (Math.abs(dz) > 4) return;
+  const az = Math.abs(dz);
+  // piers every eight blocks
+  if (mod(dx, 8) === 0 && az <= 3) for (let y = 1; y <= 10; y++) set(y, B.Stone);
+  // deck and parapets
+  if (az <= 4) set(11, B.Stone);
+  if (az === 4) { set(12, B.Steel); set(13, B.Steel); }
+  // rails and the catenary posts
+  if (az === 1 || az === 2) set(12, B.Steel);
+  if (az === 3 && mod(dx, 6) === 0) { set(13, B.Pole); set(14, B.Pole); set(15, B.LightAmber); }
+}
+
 export const LANDMARKS: Landmark[] = [
   { x: 55, z: -45, r: 17, build: buildTower },
   { x: -70, z: -100, r: 15, build: buildSpire },
@@ -525,6 +632,15 @@ export const LANDMARKS: Landmark[] = [
   { x: 132, z: 118, r: 22, build: buildAsakusa, ground: () => B.Plaza },
   { x: -14, z: -118, r: 23, build: buildStation },
   { x: -190, z: 196, r: 26, build: buildBayBridge, ground: () => B.Water },
+  // more of the skyline: civic, sporting and waterfront icons
+  { x: -226, z: -78, r: 20, build: buildCityHall },
+  { x: 214, z: 148, r: 26, build: buildFerrisWheel, ground: () => B.Plaza },
+  { x: 62, z: 214, r: 24, build: buildStadium, ground: () => B.Plaza },
+  { x: 188, z: -108, r: 16, build: buildDome, ground: () => B.Plaza },
+  { x: -108, z: 132, r: 24, build: buildViaduct },
+  { x: 244, z: -30, r: 17, build: buildTower },
+  { x: -272, z: 118, r: 15, build: buildCastle },
+  { x: 168, z: 210, r: 16, build: buildSpire },
   // home base — the suit launches and redeploys from here
   { x: 0, z: 0, r: 30, build: buildBase },
   // civilian shelters, spread across the districts
@@ -659,6 +775,14 @@ export function zoneAt(cx: number, cz: number): Zone {
   return Zone.Lowrise;
 }
 
+/**
+ * Silhouette archetype. Tokyo blocks are not one extruded box repeated — a
+ * street mixes slab-sided offices, stepped towers, narrow pencil buildings
+ * squeezed onto tiny plots, and shop buildings smothered in signage. Picking
+ * one per lot is what stops a skyline reading as a bar chart.
+ */
+const enum Form { Slab, Stepped, Pencil, Signage, Crown }
+
 interface LotParams {
   zone: Zone;
   height: number;
@@ -667,6 +791,9 @@ interface LotParams {
   inset: number;
   neon: number; // 0 none, else neon block id
   awning: number; // street-level awning color for low-rise shops
+  form: Form;
+  /** Extra inset for pencil buildings, which sit on a fraction of the plot. */
+  pinch: number;
 }
 
 function lotParams(lotX: number, lotZ: number): LotParams {
@@ -709,7 +836,22 @@ function lotParams(lotX: number, lotZ: number): LotParams {
   }
   const awnings = [B.Red, B.Yellow, B.NeonCyan, B.NeonPink];
   const awning = awnings[Math.floor(hash2(lotX - 7, lotZ + 13) * 4) % 4];
-  return { zone, height, wall, glassy, inset, neon, awning };
+
+  const f = hash2(lotX * 5 - 23, lotZ * 3 + 61);
+  let form: Form;
+  if (zone === Zone.Core) {
+    form = f < 0.34 ? Form.Stepped : f < 0.58 ? Form.Crown : f < 0.78 ? Form.Slab : Form.Pencil;
+  } else if (zone === Zone.Midrise) {
+    form = f < 0.30 ? Form.Signage : f < 0.55 ? Form.Pencil : f < 0.80 ? Form.Slab : Form.Stepped;
+  } else if (zone === Zone.Lowrise) {
+    form = f < 0.52 ? Form.Signage : Form.Slab;
+  } else {
+    form = Form.Slab;
+  }
+  // pencil buildings squeeze onto a sliver of the plot, as they do in Tokyo
+  // wherever a lot was subdivided down to almost nothing
+  const pinch = form === Form.Pencil ? 3 + Math.floor(hash2(lotX + 3, lotZ - 8) * 3) : 0;
+  return { zone, height, wall, glassy, inset, neon, awning, form, pinch };
 }
 
 /**
@@ -922,7 +1064,12 @@ export function generateChunkData(cx: number, cz: number): Uint8Array {
           // Streetlamps march along the kerb at a regular spacing so the roads
           // read as lit at night rather than randomly speckled.
           const onKerb = lxm === ROAD_W || lzm === ROAD_W;
-          const spaced = mod(x + z * 3, 9) === 0;
+          // Lamps every 9 blocks read as a picket fence — at roughly 1.4m to
+          // the block that is a lamp every twelve metres. Real streets space
+          // them about 30m apart, and they line up along the kerb rather than
+          // wandering, so this keys off the axis the kerb runs along.
+          const alongX = lzm === ROAD_W;
+          const spaced = alongX ? mod(x, 22) === 4 : mod(z, 22) === 4;
           if (onKerb && spaced && !isTreeAnchor(x, z)) {
             for (let y = 1; y <= 5; y++) setY(y, B.Pole);
             setY(6, B.Roof);          // lamp housing
@@ -1023,7 +1170,7 @@ export function generateChunkData(cx: number, cz: number): Uint8Array {
         case ColKind.Lot: {
           const p = lotParams(info.lotX!, info.lotZ!);
           const lxm = mod(x, CELL), lzm = mod(z, CELL);
-          const lo = ROAD_W + 1 + p.inset, hi = CELL - 2 - p.inset;
+          const lo = ROAD_W + 1 + p.inset + p.pinch, hi = CELL - 2 - p.inset - p.pinch;
 
           // A school takes a whole block, because that is how they are built:
           // one long concrete teaching wing along the street, a gymnasium, a
@@ -1197,14 +1344,33 @@ export function generateChunkData(cx: number, cz: number): Uint8Array {
 
           if (lxm >= lo && lxm <= hi && lzm >= lo && lzm <= hi) {
             setY(0, B.Plaza);
-            // tall towers step back to a narrower upper tier
-            const tall = p.height >= 30;
-            const tierY = Math.floor(p.height * 0.66);
+            // Silhouette by archetype rather than one rule for everything.
+            // Stepped towers set back twice on the way up, crowns carry a
+            // narrow mast section, slabs go straight up.
             const inner = lxm >= lo + 2 && lxm <= hi - 2 && lzm >= lo + 2 && lzm <= hi - 2;
-            const topY = tall && !inner ? tierY : p.height;
+            const inner2 = lxm >= lo + 4 && lxm <= hi - 4 && lzm >= lo + 4 && lzm <= hi - 4;
+            let topY = p.height;
+            if (p.form === Form.Stepped && p.height >= 22) {
+              const t1 = Math.floor(p.height * 0.55), t2 = Math.floor(p.height * 0.80);
+              topY = inner2 ? p.height : inner ? t2 : t1;
+            } else if (p.form === Form.Crown && p.height >= 26) {
+              // a slender crown block continues well above the main mass
+              topY = inner2 ? Math.floor(p.height * 1.22) : Math.floor(p.height * 0.78);
+            } else if (p.form === Form.Pencil) {
+              topY = p.height; // already narrow; goes straight up
+            }
+            // which ring of the footprint is the facade at this height
+            const step1 = Math.floor(p.height * 0.55), step2 = Math.floor(p.height * 0.80);
             for (let y = 1; y < topY; y++) {
-              const upperTier = tall && y > tierY;
-              const perim = upperTier
+              let ring = 0;
+              if (p.form === Form.Stepped && p.height >= 22) {
+                ring = y > step2 ? 4 : y > step1 ? 2 : 0;
+              } else if (p.form === Form.Crown && p.height >= 26) {
+                ring = y > Math.floor(p.height * 0.78) ? 4 : 0;
+              }
+              const perim = ring === 4
+                ? lxm === lo + 4 || lxm === hi - 4 || lzm === lo + 4 || lzm === hi - 4
+                : ring === 2
                 ? lxm === lo + 2 || lxm === hi - 2 || lzm === lo + 2 || lzm === hi - 2
                 : lxm === lo || lxm === hi || lzm === lo || lzm === hi;
               let id: number = p.wall;
@@ -1217,6 +1383,25 @@ export function generateChunkData(cx: number, cz: number): Uint8Array {
                 }
                 // colorful shop awnings above the ground floor of low-rises
                 if (p.height < 14 && y === 2) id = p.awning;
+                // corner pilasters read as structure and stop the facade
+                // dissolving into pure window from a distance
+                const cornerX = lxm === lo || lxm === hi, cornerZ = lzm === lo || lzm === hi;
+                if (cornerX && cornerZ) id = p.wall;
+                // ground floor is glazed shopfront with a solid entrance bay
+                if (y === 1) {
+                  const doorway = mod(lxm + lzm, 7) === 3;
+                  id = doorway ? B.WallGray : (hash2(x, z) < 0.45 ? B.WindowLit : B.Glass);
+                }
+                // balcony rails every third storey on housing blocks
+                if ((p.zone === Zone.Residential || p.zone === Zone.Lowrise)
+                    && y > 2 && mod(y, 3) === 0 && !(cornerX && cornerZ)) {
+                  id = B.Stone;
+                }
+                // vertical neon sign running the height of a corner
+                if (p.form === Form.Signage && cornerX && cornerZ
+                    && lxm === lo && lzm === lo && y > 2 && y < p.height - 1) {
+                  id = mod(y, 6) < 3 ? B.NeonPink : B.NeonCyan;
+                }
               }
               setY(y, id);
             }

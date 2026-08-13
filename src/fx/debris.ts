@@ -44,6 +44,34 @@ export class Debris {
     }
   }
 
+  /** Directional hot-metal contact sparks. Reuses the bounded debris pool so
+   * repeated beam/vulcan hits cannot create unbounded meshes or draw calls. */
+  sparks(p: THREE.Vector3, away: THREE.Vector3, n = 10, hot = false): void {
+    const direction = away.lengthSq() > 0.001 ? away.clone().normalize() : new THREE.Vector3(0, 1, 0);
+    for (let i = 0; i < n; i++) {
+      if (this.particles.length >= MAX) this.particles.shift();
+      const speed = 9 + Math.random() * (hot ? 20 : 13);
+      const spread = new THREE.Vector3(
+        (Math.random() - 0.5) * 1.1,
+        Math.random() * 0.75,
+        (Math.random() - 0.5) * 1.1,
+      );
+      const vel = direction.clone().multiplyScalar(speed).addScaledVector(spread, speed * 0.72);
+      vel.y += 3 + Math.random() * 8;
+      this.particles.push({
+        pos: p.clone().add(new THREE.Vector3(
+          (Math.random() - 0.5) * 1.2,
+          (Math.random() - 0.5) * 1.2,
+          (Math.random() - 0.5) * 1.2,
+        )),
+        vel,
+        life: 0.28 + Math.random() * (hot ? 0.5 : 0.3),
+        size: 0.1 + Math.random() * (hot ? 0.22 : 0.14),
+        color: new THREE.Color(Math.random() < 0.28 ? 0xffffff : hot ? 0xff7a20 : 0xffcf55),
+      });
+    }
+  }
+
   update(dt: number): void {
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
