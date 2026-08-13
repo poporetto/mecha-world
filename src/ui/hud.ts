@@ -417,18 +417,21 @@ export class Hud {
         @keyframes dmgpop { 0%{opacity:1;transform:translate(-50%,0) scale(1.1)} 100%{opacity:0;transform:translate(-50%,-40px) scale(.8)} }
         /* development tool: only revealed when bindChapterDebug is called,
            which now happens solely under ?debug */
-        .debug-btn { display:none; position:absolute; right:24px; top:142px; pointer-events:auto; cursor:pointer; z-index:35;
+        .debug-btn { display:none; position:absolute; right:24px; top:326px; pointer-events:auto; cursor:pointer; z-index:35;
                      color:#ffd86a; background:#17150dcc; border:1px solid #ffd86a99;
                      border-radius:4px; padding:7px 10px; font-size:9px; letter-spacing:2px; }
         .debug-btn:hover { background:#3a3213; box-shadow:0 0 14px #ffd86a55; }
-        .dash-action { display:none; position:absolute; right:24px; top:182px; width:74px; height:42px;
+        /* The radar occupies right:24 top:150 through 318. Both this and the
+           debug button were sitting inside that box and drawing over it. They
+           now use the gap above it that the old weapon button left behind. */
+        .dash-action { display:none; position:absolute; right:24px; top:74px; width:74px; height:42px;
                        pointer-events:auto; cursor:pointer; z-index:18; border-radius:5px;
                        border:1px solid #58c8ff; color:#eaffff; background:#09233ddd;
                        font-size:10px; letter-spacing:2px; box-shadow:0 0 15px #168cff44; }
         .dash-action.ready { display:block; }
         .dash-action:active { background:#168cff; transform:scale(.96); }
         .tc-on .dash-action { display:none !important; }
-        .debug-panel { position:absolute; right:108px; top:60px; width:250px; padding:12px;
+        .debug-panel { position:absolute; right:108px; top:326px; width:250px; padding:12px;
                        display:none; pointer-events:auto; z-index:36; background:#080d16f2;
                        border:1px solid #ffd86a88; border-radius:6px; box-shadow:0 8px 28px #000b; }
         .debug-panel.open { display:block; }
