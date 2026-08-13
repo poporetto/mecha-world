@@ -386,56 +386,76 @@ export class Sky {
       'cumulus', 'cumulus', 'cumulus', 'cumulus', 'cumulus', 'cumulus', 'cumulus',
       'cirrus', 'cirrus', 'cirrus', 'cirrus', 'cirrus', 'cirrus',
     ];
+    // Lobes are placed as a CLUSTER, not a chain. Chaining same-sized lobes
+    // along one axis is what produced 125x10 planks with flat tops and
+    // straight edges: the union of a row of equal boxes is a box. A cloud
+    // needs a big core, satellites scattered around it in both horizontal
+    // axes, and — the part that actually matters — lobes that get smaller
+    // towards the edges, so the silhouette tapers instead of ending square.
+    const cluster = (
+      core: { rx: number; ry: number; rz: number },
+      count: number,
+      spread: number,
+      rise: number,
+      flatBase: boolean,
+    ): { x: number; y: number; z: number; rx: number; ry: number; rz: number }[] => {
+      const out = [{ x: 0, y: 0, z: 0, ...core }];
+      for (let l = 0; l < count; l++) {
+        // walk outward around the core; taper hard with distance from it
+        const ang = Math.random() * Math.PI * 2;
+        const dist = (0.35 + Math.random() * 0.75) * spread;
+        const falloff = 1 - Math.min(0.72, (dist / spread) * 0.72);
+        const scale = falloff * (0.45 + Math.random() * 0.45);
+        const ry = core.ry * scale;
+        out.push({
+          x: Math.sin(ang) * dist * core.rx,
+          // heaped clouds pile upward and sit on a flat base, so a smaller
+          // lobe rides higher rather than hanging below the bottom
+          y: flatBase ? (core.ry - ry) * rise * Math.random() : (Math.random() - 0.5) * core.ry * rise,
+          z: Math.cos(ang) * dist * core.rz * 0.75,
+          rx: core.rx * scale, ry, rz: core.rz * scale,
+        });
+      }
+      return out;
+    };
+
     for (let i = 0; i < plan.length; i++) {
       const kind = plan[i];
       const g = new THREE.Group();
-      const lobes: { x: number; y: number; z: number; rx: number; ry: number; rz: number }[] = [];
-      let cx = 0;
+      let lobes: { x: number; y: number; z: number; rx: number; ry: number; rz: number }[];
       let cell = 2.4;
       let y = 0;
 
       if (kind === 'stratus') {
-        // wide, flat, low: a sheet with a soft ragged edge
-        cell = 3.2;
+        // a broad low raft: many small lobes scattered across a wide disc, so
+        // the outline is ragged rather than a straight-edged sheet
+        // A sheet one or two voxels thick is a plank no matter how ragged its
+        // outline is, so the raft is kept at least four cubes deep.
+        cell = 2.6;
         y = 74 + Math.random() * 16;
-        const n = 4 + Math.floor(Math.random() * 3);
-        for (let l = 0; l < n; l++) {
-          const rx = 13 + Math.random() * 10;
-          lobes.push({
-            x: cx, y: (Math.random() - 0.5) * 3, z: (Math.random() - 0.5) * 14,
-            rx, ry: 2.6 + Math.random() * 1.8, rz: 10 + Math.random() * 8,
-          });
-          cx += rx * 1.05;
-        }
+        lobes = cluster(
+          { rx: 16 + Math.random() * 7, ry: 6 + Math.random() * 2, rz: 14 + Math.random() * 6 },
+          7 + Math.floor(Math.random() * 4), 1.6, 0.6, true,
+        );
       } else if (kind === 'cumulus') {
-        // heaped and tall, flat-bottomed: lobes rise towards the middle
+        // heaped and flat-bottomed, wider than tall but not by a lot
         cell = 2.4;
         y = 106 + Math.random() * 40;
-        const n = 3 + Math.floor(Math.random() * 3);
-        for (let l = 0; l < n; l++) {
-          const mid = 1 - Math.abs(l - (n - 1) / 2) / n;
-          const rx = 7 + Math.random() * 6;
-          lobes.push({
-            // the base stays level and the mass piles upward, which is what
-            // makes a cumulus read as a cumulus
-            x: cx, y: mid * 5 + Math.random() * 1.5, z: (Math.random() - 0.5) * 5,
-            rx, ry: 4 + mid * 7 + Math.random() * 2, rz: 6 + Math.random() * 4,
-          });
-          cx += rx * 1.15;
-        }
+        lobes = cluster(
+          { rx: 12 + Math.random() * 5, ry: 13 + Math.random() * 5, rz: 10 + Math.random() * 4 },
+          6 + Math.floor(Math.random() * 4), 1.35, 1.2, true,
+        );
       } else {
-        // high, thin, stretched: torn streaks well above the cumulus deck
-        cell = 2.8;
+        // high wisps: a short, thin, tapering streak — still a cluster, just
+        // stretched, so the ends fray instead of stopping square
+        // Same trap as the stratus: this used to come out exactly one cube
+        // thick — a 45-unit plank hanging in the sky.
+        cell = 2.2;
         y = 168 + Math.random() * 55;
-        const n = 3 + Math.floor(Math.random() * 3);
-        for (let l = 0; l < n; l++) {
-          const rx = 16 + Math.random() * 14;
-          lobes.push({
-            x: cx, y: (Math.random() - 0.5) * 4, z: (Math.random() - 0.5) * 6,
-            rx, ry: 1.7 + Math.random() * 1.2, rz: 3.5 + Math.random() * 3,
-          });
-          cx += rx * (0.85 + Math.random() * 0.4);
-        }
+        lobes = cluster(
+          { rx: 14 + Math.random() * 6, ry: 4.5 + Math.random() * 1.5, rz: 6 + Math.random() * 3 },
+          5 + Math.floor(Math.random() * 3), 1.5, 0.8, false,
+        );
       }
 
       const mat = kind === 'cirrus' ? this.cirrusMat : this.cloudMat;
