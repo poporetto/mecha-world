@@ -211,13 +211,16 @@ export class Sky {
       m.rotation.y = -a2;
       g.add(m);
     };
+    // Both bands sit down on the skirt — the mountain is 250 tall, so anything
+    // above ~50 hangs across the cone instead of collaring its foot. The
+    // radius tracks the cone: at this height it is still close to full width.
     for (let i = 0; i < 22; i++) {
-      bank(i, 22, Math.sin(i * 3.1) * 0.18, 118 + Math.sin(i * 1.3) * 14,
-           0.80 + Math.sin(i * 2.3) * 0.16, R * 0.30, 11);
+      bank(i, 22, Math.sin(i * 3.1) * 0.18, 34 + Math.sin(i * 1.3) * 9,
+           0.93 + Math.sin(i * 2.3) * 0.07, R * 0.30, 11);
     }
-    // a second, lower and wider band so the skirt is fully occluded
+    // a second, lower and wider band so the waterline is fully occluded
     for (let i = 0; i < 16; i++) {
-      bank(i, 16, 0.4, 86 + Math.sin(i * 2.1) * 10, 1.02 + Math.sin(i * 1.9) * 0.12, R * 0.38, 57);
+      bank(i, 16, 0.4, 12 + Math.sin(i * 2.1) * 6, 1.07 + Math.sin(i * 1.9) * 0.08, R * 0.38, 57);
     }
     g.renderOrder = -1;
     return g;

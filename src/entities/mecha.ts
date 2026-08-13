@@ -1043,27 +1043,33 @@ export class MechaModel {
         } else {
           this.armR.rotation.x = THREE.MathUtils.lerp(
             this.chainedSwing ? -0.72 : 0.035,
-            diagonal ? -1.48 : -0.18,
+            diagonal ? -1.48 : 1.02,
             k,
           );
           // The reverse cut chambers with the saber almost level at shoulder
           // height. A large Z rotation is required because the blade extends
           // down the forearm's local Y axis.
+          // A level cut is a shoulder YAW with the arm held out in front, not
+          // a roll. Rolling the shoulder to 1.34 swung the whole arm across
+          // the chest and buried it in the torso; z now only holds the arm
+          // clear of the ribs and the arc comes from rotation.y below.
           this.armR.rotation.z = THREE.MathUtils.lerp(
             0.08,
-            horizontal ? 1.34 : -0.48 * dir,
+            horizontal ? 0.46 : -0.48 * dir,
             k,
           );
           // The support arm closes into a compact guard without crossing
           // unrealistically through the chest.
           this.armL.rotation.x = THREE.MathUtils.lerp(0.055, -0.62, k);
           this.armL.rotation.z = THREE.MathUtils.lerp(-0.08, 0.18 * dir, k);
-          this.elbowR.rotation.x = THREE.MathUtils.lerp(-0.28, horizontal ? -0.42 : -1.02, k);
+          // Chambered with a real bend — the blade sits back beside the head,
+          // not on the end of a locked-out arm.
+          this.elbowR.rotation.x = THREE.MathUtils.lerp(-0.28, horizontal ? -1.02 : -1.02, k);
           this.elbowL.rotation.x = THREE.MathUtils.lerp(-0.24, -0.78, k);
           // Draw the weapon behind the shoulder and across the body. Shoulder
           // yaw creates the broad arc; forearm roll keeps the blade edge
           // aligned instead of letting it paddle flat through the target.
-          this.armR.rotation.y = -0.54 * dir * k;
+          this.armR.rotation.y = (horizontal ? -1.12 : -0.54 * dir) * k;
           this.armL.rotation.y = 0.18 * dir * k;
           this.elbowR.rotation.y = (horizontal ? -0.08 : 0.38 * dir) * k;
           this.elbowL.rotation.y = -0.2 * dir * k;
@@ -1107,17 +1113,23 @@ export class MechaModel {
           // readable even from the chase camera.
           this.armR.rotation.x = diagonal
             ? THREE.MathUtils.lerp(-1.48, -0.88, k)
-            : THREE.MathUtils.lerp(-0.18, 0.12, k);
+            : THREE.MathUtils.lerp(1.02, 1.24, k);
           this.armR.rotation.z = horizontal
-            ? THREE.MathUtils.lerp(1.34, -1.34, k)
+            ? THREE.MathUtils.lerp(0.46, 0.10, k)
             : (-0.48 + 1.26 * k) * dir;
           this.armL.rotation.x = -0.62 - 0.08 * k;
           this.armL.rotation.z = (0.18 + 0.10 * k) * dir;
+          // The elbow opens through contact but never locks straight; a
+          // fully extended arm is what made the cut read as stiff.
           this.elbowR.rotation.x = horizontal
-            ? THREE.MathUtils.lerp(-0.42, -0.18, k)
+            ? THREE.MathUtils.lerp(-1.02, -0.46, k)
             : -(1.02 - 0.68 * k);
           this.elbowL.rotation.x = -(0.78 - 0.18 * k);
-          this.armR.rotation.y = THREE.MathUtils.lerp(-0.54, 0.82, k) * dir;
+          // The sweep itself: shoulder yaw carries the blade across the front
+          // in a level plane, clear of the chest the whole way.
+          this.armR.rotation.y = horizontal
+            ? THREE.MathUtils.lerp(-1.12, 1.02, k)
+            : THREE.MathUtils.lerp(-0.54, 0.82, k) * dir;
           this.armL.rotation.y = THREE.MathUtils.lerp(0.18, -0.16, k) * dir;
           this.elbowR.rotation.y = horizontal
             ? THREE.MathUtils.lerp(-0.08, 0.08, k)
@@ -1165,19 +1177,19 @@ export class MechaModel {
           this.elbowL.rotation.z = THREE.MathUtils.lerp(-0.05, 0, k);
           this.torso.rotation.x = this.lean + 0.34 * (1 - k);
         } else {
-          const followX = diagonal ? -0.88 : 0.12;
+          const followX = diagonal ? -0.88 : horizontal ? 1.24 : 0.12;
           const recoverX = this.chainedSwing ? -0.72 : 0.035;
           this.armR.rotation.x = THREE.MathUtils.lerp(followX - over, recoverX, k);
           this.armR.rotation.z = THREE.MathUtils.lerp(
-            horizontal ? -1.34 : 0.78 * dir,
+            horizontal ? 0.10 : 0.78 * dir,
             0.08,
             k,
           );
           this.armL.rotation.x = THREE.MathUtils.lerp(-0.7, 0.055, k);
           this.armL.rotation.z = THREE.MathUtils.lerp(0.28 * dir, -0.08, k);
-          this.elbowR.rotation.x = THREE.MathUtils.lerp(-0.34, -0.28, k);
+          this.elbowR.rotation.x = THREE.MathUtils.lerp(horizontal ? -0.46 : -0.34, -0.28, k);
           this.elbowL.rotation.x = THREE.MathUtils.lerp(-0.56, -0.24, k);
-          this.armR.rotation.y = THREE.MathUtils.lerp(0.82 * dir, 0, k);
+          this.armR.rotation.y = THREE.MathUtils.lerp(horizontal ? 1.02 : 0.82 * dir, 0, k);
           this.armL.rotation.y = THREE.MathUtils.lerp(-0.42 * dir, 0, k);
           this.elbowR.rotation.y = THREE.MathUtils.lerp(-0.28 * dir, 0, k);
           this.elbowL.rotation.y = THREE.MathUtils.lerp(0.16 * dir, 0, k);

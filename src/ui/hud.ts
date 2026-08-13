@@ -161,7 +161,10 @@ export class Hud {
         .start .keys b { color:#7fdcff; }
         .start .go.resume { border-color:#ffd86a; color:#ffe9b0; box-shadow:0 0 26px #ffd86a33; margin-top:30px; }
         .start .go.resume:hover { background:#3a3213; }
-        .start .go + .go { margin-top:12px; font-size:12px; opacity:.75; letter-spacing:3px; }
+        /* Pushed well clear of CONTINUE — these two sat close enough that a
+           slightly low click on the resume button started a new run instead,
+           which wipes the checkpoint. */
+        .start .go + .go { margin-top:42px; font-size:12px; opacity:.75; letter-spacing:3px; }
         .start .go { margin-top:30px; color:#fff; font-size:14px; letter-spacing:4px; border:1px solid #39e6e0;
                      padding:10px 26px; border-radius:4px; animation:pulse 1.6s infinite; }
         @keyframes pulse { 50% { box-shadow:0 0 22px #39e6e088; } }
