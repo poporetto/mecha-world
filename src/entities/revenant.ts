@@ -148,12 +148,11 @@ export class Revenant extends Monster {
       this.corruption.add(shard);
     };
 
-    // Uneven crown and cheek thorns break the heroic helmet outline.
-    addShard(-0.47, 5.02, -0.05, 0.22, 0.5, 0.22, -0.08, -0.28);
-    addShard(0.5, 4.9, -0.18, 0.18, 0.38, 0.18, 0.12, 0.38, true);
-    // Shoulder/back growths point away from the torso like torn armour.
-    addShard(-1.35, 4.15, -0.12, 0.42, 0.68, 0.42, 0.25, -0.92);
-    addShard(1.42, 4.0, -0.28, 0.34, 0.56, 0.34, -0.2, 0.98);
+    // Every shard now sits inside the frame's own silhouette. Four used to
+    // break it — two crown thorns above the helmet and two shoulder growths
+    // out past the pauldrons — which read as loose blocks floating beside the
+    // machine rather than as corruption growing through it.
+    // Back growths, tucked behind the shoulder line.
     addShard(-0.72, 3.75, -0.72, 0.3, 0.62, 0.3, -0.75, -0.28, true);
     addShard(0.58, 3.55, -0.78, 0.26, 0.5, 0.26, -0.68, 0.25);
     // Smaller outer-leg spurs keep the corruption visible in chase/profile.
