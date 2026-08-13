@@ -10,12 +10,101 @@ const CYCLE = 300; // seconds for a full day
 // rather than as a different time of day.
 const RIFT_SKY = new THREE.Color(0x1a0f2b);
 const RIFT_FOG = new THREE.Color(0x3a1f52);
+const _WHITE = new THREE.Color(0xffffff);
 const DAY_SKY = new THREE.Color(0xa5d5f5);
 const DAY_FOG = new THREE.Color(0xc3e4f8);
 const DUSK_SKY = new THREE.Color(0xf2b48c);
 const DUSK_FOG = new THREE.Color(0xf6cba4);
 const NIGHT_SKY = new THREE.Color(0x101832);
 const NIGHT_FOG = new THREE.Color(0x1b2544);
+
+/**
+ * A cumulus built out of cubes on a lattice, the way a voxel game would draw
+ * one. A single stretched box reads as a slab; what sells a cloud is the
+ * stepped silhouette you get when you fill overlapping ellipsoid lobes with
+ * same-sized cubes and let the edges fall where the lattice says they do.
+ *
+ * `cell` is the cube edge, `lobes` the blobs that make up the mass. Cubes are
+ * merged into one geometry so a hundred-cube cloud is still one draw call.
+ */
+function voxelCloud(
+  cell: number,
+  lobes: { x: number; y: number; z: number; rx: number; ry: number; rz: number }[],
+  mat: THREE.Material,
+  seed = 1,
+): THREE.Mesh {
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (const l of lobes) {
+    minX = Math.min(minX, l.x - l.rx); maxX = Math.max(maxX, l.x + l.rx);
+    minY = Math.min(minY, l.y - l.ry); maxY = Math.max(maxY, l.y + l.ry);
+    minZ = Math.min(minZ, l.z - l.rz); maxZ = Math.max(maxZ, l.z + l.rz);
+  }
+  const geos: THREE.BufferGeometry[] = [];
+  // one cube geometry, cloned and offset — cheaper than building each from new
+  const unit = new THREE.BoxGeometry(cell * 1.02, cell * 1.02, cell * 1.02);
+  const rnd = (a: number, b: number, c: number) => {
+    const v = Math.sin(a * 12.9898 + b * 78.233 + c * 37.719 + seed * 4.1) * 43758.5453;
+    return v - Math.floor(v);
+  };
+  const solid = (x: number, y: number, z: number): boolean => {
+    let d = 0;
+    for (const l of lobes) {
+      const dx = (x - l.x) / l.rx, dy = (y - l.y) / l.ry, dz = (z - l.z) / l.rz;
+      d = Math.max(d, 1 - (dx * dx + dy * dy + dz * dz));
+    }
+    // jitter the threshold so the rim crumbles instead of reading as a clean
+    // ellipsoid staircase
+    return d >= 0.06 + rnd(x, y, z) * 0.22;
+  };
+  for (let x = minX; x <= maxX; x += cell) {
+    for (let y = minY; y <= maxY; y += cell) {
+      for (let z = minZ; z <= maxZ; z += cell) {
+        if (!solid(x, y, z)) continue;
+        // shell only — a cube buried on all six sides is never seen, and
+        // these clouds are semi-transparent so interiors would only muddy it
+        if (solid(x + cell, y, z) && solid(x - cell, y, z)
+         && solid(x, y + cell, z) && solid(x, y - cell, z)
+         && solid(x, y, z + cell) && solid(x, y, z - cell)) continue;
+        const g = unit.clone();
+        g.translate(x, y, z);
+        geos.push(g);
+      }
+    }
+  }
+  unit.dispose();
+  const merged = mergeGeometries(geos);
+  for (const g of geos) g.dispose();
+  return new THREE.Mesh(merged, mat);
+}
+
+/** Minimal geometry merge — avoids pulling in the addons build. */
+function mergeGeometries(geos: THREE.BufferGeometry[]): THREE.BufferGeometry {
+  const out = new THREE.BufferGeometry();
+  if (!geos.length) return out;
+  let vTotal = 0, iTotal = 0;
+  for (const g of geos) {
+    vTotal += g.getAttribute('position').count;
+    iTotal += g.getIndex()!.count;
+  }
+  const pos = new Float32Array(vTotal * 3);
+  const nor = new Float32Array(vTotal * 3);
+  const idx = new Uint32Array(iTotal);
+  let vo = 0, io = 0;
+  for (const g of geos) {
+    const gp = g.getAttribute('position') as THREE.BufferAttribute;
+    const gn = g.getAttribute('normal') as THREE.BufferAttribute;
+    const gi = g.getIndex()!;
+    pos.set(gp.array as Float32Array, vo * 3);
+    nor.set(gn.array as Float32Array, vo * 3);
+    for (let i = 0; i < gi.count; i++) idx[io + i] = gi.getX(i) + vo;
+    vo += gp.count; io += gi.count;
+  }
+  out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  out.setIndex(new THREE.BufferAttribute(idx, 1));
+  out.computeBoundingSphere();
+  return out;
+}
 
 export interface SkyState {
   sunDir: THREE.Vector3;
@@ -54,7 +143,7 @@ export class Sky {
   private clouds: Cloud[] = [];
   private birds: Bird[] = [];
   private birdMat = new THREE.MeshLambertMaterial({ color: 0x2c3038 });
-  private cloudMat: THREE.MeshLambertMaterial;
+  private cloudMat: THREE.MeshBasicMaterial;
   private ash: THREE.Points;
   /** Low cloud ring at the streaming edge, so the world does not just stop. */
   private haze!: THREE.Group;
@@ -104,28 +193,31 @@ export class Sky {
     const cloudMat = () => new THREE.MeshBasicMaterial({
       color: 0xf2f6fb, fog: false, transparent: true, opacity: 0.85, depthWrite: false,
     });
-    for (let i = 0; i < 26; i++) {
-      const a2 = (i / 26) * Math.PI * 2 + Math.sin(i * 3.1) * 0.18;
-      const rr = R * (0.80 + Math.sin(i * 2.3) * 0.16);
-      const puff = new THREE.Mesh(
-        new THREE.BoxGeometry(R * (0.34 + Math.sin(i * 1.7) * 0.10), 26 + Math.sin(i) * 10, R * 0.22),
-        cloudMat()
-      );
-      puff.position.set(Math.sin(a2) * rr, 118 + Math.sin(i * 1.3) * 16, Math.cos(a2) * rr);
-      puff.rotation.y = -a2;
-      g.add(puff);
+    const CELL = R * 0.045;
+    const bank = (i: number, count: number, phase: number, y: number, rad: number, span: number, seed: number) => {
+      const a2 = (i / count) * Math.PI * 2 + phase;
+      const rr = R * rad;
+      const lobes = [];
+      const n = 3;
+      for (let l = 0; l < n; l++) {
+        const mid = 1 - Math.abs(l - (n - 1) / 2) / n;
+        lobes.push({
+          x: (l - (n - 1) / 2) * span * 0.8, y: mid * span * 0.16, z: Math.sin(i + l) * span * 0.12,
+          rx: span * 0.55, ry: span * (0.16 + mid * 0.12), rz: span * 0.30,
+        });
+      }
+      const m = voxelCloud(CELL, lobes, cloudMat(), seed + i);
+      m.position.set(Math.sin(a2) * rr, y, Math.cos(a2) * rr);
+      m.rotation.y = -a2;
+      g.add(m);
+    };
+    for (let i = 0; i < 22; i++) {
+      bank(i, 22, Math.sin(i * 3.1) * 0.18, 118 + Math.sin(i * 1.3) * 14,
+           0.80 + Math.sin(i * 2.3) * 0.16, R * 0.30, 11);
     }
     // a second, lower and wider band so the skirt is fully occluded
-    for (let i = 0; i < 18; i++) {
-      const a2 = (i / 18) * Math.PI * 2 + 0.4;
-      const rr = R * (1.02 + Math.sin(i * 1.9) * 0.12);
-      const puff = new THREE.Mesh(
-        new THREE.BoxGeometry(R * 0.42, 34, R * 0.26),
-        cloudMat()
-      );
-      puff.position.set(Math.sin(a2) * rr, 86 + Math.sin(i * 2.1) * 12, Math.cos(a2) * rr);
-      puff.rotation.y = -a2;
-      g.add(puff);
+    for (let i = 0; i < 16; i++) {
+      bank(i, 16, 0.4, 86 + Math.sin(i * 2.1) * 10, 1.02 + Math.sin(i * 1.9) * 0.12, R * 0.38, 57);
     }
     g.renderOrder = -1;
     return g;
@@ -208,7 +300,11 @@ export class Sky {
     );
     this.group.add(this.moon);
 
-    this.cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff, fog: false, transparent: true, opacity: 0.92 });
+    // Same material as the Fuji banks: unlit and pale. A lit material makes
+    // these read as dark olive slabs at night instead of cloud.
+    this.cloudMat = new THREE.MeshBasicMaterial({
+      color: 0xf2f6fb, fog: false, transparent: true, opacity: 0.85, depthWrite: false,
+    });
     // Fine ash becomes visible as the line approaches the seam. Keeping it as
     // one Points draw call adds atmosphere without multiplying scene objects.
     this.ashPos = new Float32Array(240 * 3);
@@ -226,17 +322,21 @@ export class Sky {
     this.group.add(this.ash);
     for (let i = 0; i < 16; i++) {
       const g = new THREE.Group();
-      const puffs = 3 + Math.floor(Math.random() * 4);
+      // three or four overlapping lobes along the drift axis, the tallest in
+      // the middle — a cumulus, not a row of slabs
+      const n = 3 + Math.floor(Math.random() * 2);
+      const lobes = [];
       let cx = 0;
-      for (let p = 0; p < puffs; p++) {
-        const w = 10 + Math.random() * 16;
-        const h = 2.5 + Math.random() * 2.5;
-        const d = 8 + Math.random() * 12;
-        const puff = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), this.cloudMat);
-        puff.position.set(cx, (Math.random() - 0.5) * 2.5, (Math.random() - 0.5) * 8);
-        g.add(puff);
-        cx += w * 0.55;
+      for (let l = 0; l < n; l++) {
+        const mid = 1 - Math.abs(l - (n - 1) / 2) / n;
+        const rx = 7 + Math.random() * 6;
+        lobes.push({
+          x: cx, y: (Math.random() - 0.5) * 2 + mid * 2.5, z: (Math.random() - 0.5) * 5,
+          rx, ry: 4.5 + mid * 6 + Math.random() * 2, rz: 6 + Math.random() * 4,
+        });
+        cx += rx * 1.15;
       }
+      g.add(voxelCloud(2.4, lobes, this.cloudMat, i + 1));
       g.position.set((Math.random() - 0.5) * 600, 105 + Math.random() * 45, (Math.random() - 0.5) * 600);
       this.group.add(g);
       this.clouds.push({ group: g, speed: 1.2 + Math.random() * 1.8 });
@@ -251,17 +351,17 @@ export class Sky {
       const a2 = (i / 44) * Math.PI * 2;
       const rr = 430 + Math.sin(i * 2.7) * 40;
       const bank = new THREE.Group();
+      const lobes = [];
       for (let p = 0; p < 3; p++) {
-        const puff = new THREE.Mesh(
-          new THREE.BoxGeometry(90 + Math.sin(i + p) * 34, 16 + Math.sin(i * 1.7 + p) * 9, 46),
-          new THREE.MeshBasicMaterial({
-            color: 0xdceaf6, fog: false, transparent: true,
-            opacity: 0.30 + Math.sin(i * 1.3 + p) * 0.10, depthWrite: false,
-          })
-        );
-        puff.position.set((p - 1) * 46, Math.sin(i * 2.1 + p) * 10, Math.sin(i + p * 2) * 16);
-        bank.add(puff);
+        lobes.push({
+          x: (p - 1) * 44, y: Math.sin(i * 2.1 + p) * 7, z: Math.sin(i + p * 2) * 12,
+          rx: 34 + Math.sin(i + p) * 10, ry: 9 + Math.sin(i * 1.7 + p) * 4, rz: 22,
+        });
       }
+      bank.add(voxelCloud(10, lobes, new THREE.MeshBasicMaterial({
+        color: 0xdceaf6, fog: false, transparent: true,
+        opacity: 0.34 + Math.sin(i * 1.3) * 0.08, depthWrite: false,
+      }), i + 101));
       bank.position.set(Math.sin(a2) * rr, 16 + Math.sin(i * 1.9) * 14, Math.cos(a2) * rr);
       bank.rotation.y = -a2;
       this.haze.add(bank);
@@ -371,8 +471,9 @@ export class Sky {
       }
     });
 
-    // clouds dim at night
-    this.cloudMat.color.setScalar(0.35 + day * 0.65);
+    // clouds take the sky's own colour rather than darkening to grey, so at
+    // night they read as pale cloud lit by the sky, not black slabs
+    this.cloudMat.color.copy(_fog).lerp(_WHITE, 0.45 + day * 0.35);
 
     const ashMat = this.ash.material as THREE.PointsMaterial;
     ashMat.opacity = Math.max(0, (corruption - 0.08) * 0.8);
