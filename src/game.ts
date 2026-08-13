@@ -56,7 +56,16 @@ const _v = new THREE.Vector3();
 /** Global outgoing balance modifiers, kept at the collision boundary so new
  * weapons and support shots inherit the intended campaign difficulty. */
 const PLAYER_ATTACK_DAMAGE = 0.7;
-const ALLY_ATTACK_DAMAGE = 0.5;
+/**
+ * Support fire — Hinata's frame, Kotetsu's shells, the defence wing — is
+ * meant to read as the city helping, not as a second player. At 0.5 the wing
+ * and the allies were doing enough of the boss's health bar that a fight
+ * could resolve itself while you watched. It is now nominal: visible, audible,
+ * and worth almost nothing on the bar.
+ */
+const ALLY_ATTACK_DAMAGE = 0.14;
+/** The defence wing is the most numerous of the three, so it is quieter still. */
+const WING_ATTACK_DAMAGE = 0.08;
 // Bosses are endurance encounters rather than oversized regular enemies.
 // This is deliberately separate from drone/building damage so crowd-control
 // weapons remain satisfying while single-target boss burst stays controlled.
@@ -2849,7 +2858,7 @@ export class Game {
     for (const hit of wingEvents.hits) {
       const monster = this.monster;
       if (!monster || monster.dying) break;
-      monster.takeDamage(hit.damage * ALLY_ATTACK_DAMAGE, 'defense-wing');
+      monster.takeDamage(hit.damage * WING_ATTACK_DAMAGE, 'defense-wing');
       this.debris.burst(hit.at, [15], 2);
     }
     for (const at of wingEvents.crashes) {
