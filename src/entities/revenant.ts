@@ -161,10 +161,19 @@ export class Revenant extends Monster {
     addShard(0.65, 0.72, -0.12, 0.2, 0.36, 0.2, 0, 0.9, true);
   }
 
+  /**
+   * Difficulty floor on the adaptive resistance. On Story the frame still
+   * learns your weapons — the fight is unreadable otherwise — but it never
+   * shrugs off as much, so a first-timer is not required to rotate the whole
+   * arsenal perfectly to make progress. 0 leaves the tuned behaviour alone.
+   */
+  resistFloor = 0;
+
   /** Current resistance to a weapon, 1 = fresh, MIN_MULT = fully learned. */
   resistTo(src: string): number {
     const t = this.learned.get(src) ?? 0;
-    return Math.max(MIN_MULT, 1 - (t / ADAPT) * (1 - MIN_MULT));
+    const floor = Math.max(MIN_MULT, this.resistFloor);
+    return Math.max(floor, 1 - (t / ADAPT) * (1 - floor));
   }
 
   /** How thoroughly it has learned a weapon, 0..1 — for the HUD readout. */

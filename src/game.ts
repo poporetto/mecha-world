@@ -29,7 +29,7 @@ import { Sky } from './fx/sky';
 import { sfx } from './fx/sound';
 import { ACT2_START, AYA_HINATA, BARKS, CHAPTERS, Line, ENDLESS_LINES, EPILOGUE, HINATA_CHAPTER, JOTETSU_BARKS, JOTETSU_CHAPTER, KOTETSU_BARKS, KOTETSU_CHAPTER, LATE_MEMORIES, MEMORIES, MONSTER_BARKS, PROLOGUE, REVENANT_BEATS, RIFT_EPILOGUE } from './core/story';
 import { Tutorial } from './core/tutorial';
-import { GameSettings, Hud, RadarKind, WEAPONS, WeaponId } from './ui/hud';
+import { GameSettings, Hud, RadarKind, WEAPONS, WeaponId, DIFFICULTY} from './ui/hud';
 import { isTouchDevice, TouchControls } from './ui/touch';
 
 interface Projectile {
@@ -216,10 +216,16 @@ export class Game {
   private comboWindow = 0; // time left to chain the next saber hit
   private comboStep = 0; // 0..2 in the saber combo
   private clock = new THREE.Clock();
+  // rolling one-second frame-time window for the F3 overlay
+  private perfFrames = 0;
+  private perfSum = 0;
+  private perfWorst = 0;
+  private perfWindow = 0;
   private time = 0;
   private footstepT = 0;
   private servoT = 0;
   private settings: GameSettings = {
+    difficulty: 'normal',
     music: 0.62, effects: 0.68, shake: 0.85, sensitivity: 1,
     subtitles: true, highContrast: false, reducedMotion: false,
   };
@@ -483,6 +489,7 @@ export class Game {
       }
       if (e.code === 'KeyG') this.quakeSlam();
       if (e.code === 'Escape' && this.started) this.setPaused(!this.paused);
+      if (e.code === 'F3' && !e.repeat) { e.preventDefault(); this.hud.togglePerf(); }
       // R: begin charging (release fires); e.repeat guards the auto-repeat
       if (e.code === 'KeyR' && !e.repeat && this.started) { this.charging = true; this.chargeT = 0; }
     });
@@ -2169,7 +2176,10 @@ export class Game {
       : chapter >= ACT2_START
         ? 1.18 + (chapter - ACT2_START) * 0.025
         : 1.14 + chapter * 0.035;
-    m.maxHp = m.hp = Math.round(m.maxHp * hpScale);
+    m.maxHp = m.hp = Math.round(m.maxHp * hpScale * this.diff.bossHp);
+    // Story raises the floor the Revenant's adaptive resistance can drag a
+    // weapon down to, so the fight stops being a knowledge check.
+    if (m instanceof Revenant) m.resistFloor = this.settings.difficulty === 'story' ? 0.55 : 0;
   }
 
   // ---------------------------------------------------------------- tutorial
@@ -2321,7 +2331,10 @@ export class Game {
           if (dirty.size) this.chunks.markDirty(dirty);
         },
       };
-      this.monster.update(dt, this.time, ctx);
+      // Difficulty tempo is applied as the boss's own clock rate, so windups,
+      // cooldowns and movement all shift together and telegraphs stay
+      // proportional to the attacks they precede.
+      this.monster.update(dt * this.diff.tempo, this.time, ctx);
       this.plowBoss(this.monster);
       this.hud.setBossHP(this.monster.hp / this.monster.maxHp, this.monster.phase, this.monster.vulnerable);
       if (this.monster.phaseAnnounce) this.announcePhase(this.monster.phaseAnnounce);
@@ -2614,6 +2627,9 @@ export class Game {
     }
   }
 
+  /** The active difficulty preset's multipliers. */
+  private get diff() { return DIFFICULTY[this.settings.difficulty]; }
+
   private damagePlayer(amount: number): void {
     if (this.redeploying) return;
     if (this.evadeT > 0) {
@@ -2634,7 +2650,7 @@ export class Game {
     // drones and hazards uniformly, preventing support-heavy late chapters
     // from becoming safer than the opening act.
     const campaignThreat = 1 + Math.min(0.42, Math.max(0, this.bossIndex - 1) * 0.028);
-    amount *= campaignThreat;
+    amount *= campaignThreat * this.diff.incoming;
     if (this.player.abilities.shield) {
       // Aegis is meaningful mitigation, not permanent half-damage immunity.
       amount *= 0.65;
@@ -2694,6 +2710,7 @@ export class Game {
   // ------------------------------------------------------------------ frame
 
   private frame(): void {
+    const frameStart = this.hud.perfOn ? performance.now() : 0;
     const rawDt = Math.min(0.05, this.clock.getDelta());
     // A full-screen story card takes the controls away, but the world used to
     // keep running underneath it — so a kaiju standing on you during a chapter
@@ -2962,6 +2979,41 @@ export class Game {
     this.updateCamera();
     this.updateTargetLock();
     this.renderer.render(this.scene, this.camera);
+    if (frameStart) this.samplePerf(performance.now() - frameStart, rawDt);
+  }
+
+  /**
+   * One-second rolling window: mean and worst frame, plus what the chunk
+   * streamer and the renderer are each costing. Worst frame is the number
+   * that matters — a hitch while a boss is coming apart is what a player
+   * actually feels, and a mean hides it completely.
+   */
+  private samplePerf(ms: number, rawDt: number): void {
+    this.perfFrames++;
+    this.perfSum += ms;
+    this.perfWorst = Math.max(this.perfWorst, ms);
+    this.perfWindow += rawDt;
+    if (this.perfWindow < 1) return;
+    const mean = this.perfSum / Math.max(1, this.perfFrames);
+    const info = this.renderer.info;
+    // over one 60fps frame gets highlighted; that is the whole point
+    const budget = (v: number): string =>
+      v > 16.6 ? `<b>${v.toFixed(1)}</b>` : v.toFixed(1);
+    this.hud.setPerf(
+      `fps  ${Math.round(this.perfFrames / this.perfWindow)}
+` +
+      `mean ${budget(mean)} ms
+` +
+      `worst ${budget(this.perfWorst)} ms
+` +
+      `chunks ${this.chunks.lastBudgetMs.toFixed(1)} ms
+` +
+      `draws ${info.render.calls}  tris ${(info.render.triangles / 1000).toFixed(0)}k`
+    );
+    this.perfFrames = 0;
+    this.perfSum = 0;
+    this.perfWorst = 0;
+    this.perfWindow = 0;
   }
 
   // burn tick: consumed blocks puff to debris + dirty their chunks; a fire

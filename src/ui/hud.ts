@@ -17,7 +17,23 @@ export type WeaponId = (typeof WEAPONS)[number]['id'];
 /** What a radar blip represents. */
 export type RadarKind = 'boss' | 'drone' | 'pickup' | 'shelter' | 'shelterHit';
 
+export type Difficulty = 'story' | 'normal' | 'veteran';
+
+/**
+ * What each preset actually changes. The Revenant in particular is tuned for
+ * someone who has played the whole campaign; a first-timer needs a way past
+ * it that is not "get better or stop playing".
+ */
+export const DIFFICULTY: Record<Difficulty, {
+  label: string; blurb: string; incoming: number; tempo: number; bossHp: number;
+}> = {
+  story: { label: 'STORY', blurb: 'For the campaign, not the challenge', incoming: 0.55, tempo: 0.84, bossHp: 0.82 },
+  normal: { label: 'NORMAL', blurb: 'The fight as it was designed', incoming: 1, tempo: 1, bossHp: 1 },
+  veteran: { label: 'VETERAN', blurb: 'They hit harder and move sooner', incoming: 1.4, tempo: 1.12, bossHp: 1.18 },
+};
+
 export interface GameSettings {
+  difficulty: Difficulty;
   music: number;
   effects: number;
   shake: number;
@@ -359,6 +375,14 @@ export class Hud {
                     border:1px solid #31516d; border-radius:6px; background:#08111dcc; }
         .settings-title { color:#7fdcff; font-size:10px; letter-spacing:4px; margin-bottom:10px; text-align:center; }
         .settings-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px 20px; }
+        .difficulty { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:14px; }
+        .diff { display:flex; flex-direction:column; gap:3px; padding:8px 6px; cursor:pointer;
+                border:1px solid #31516d; border-radius:8px; background:#0a1622; font:inherit; text-align:center; }
+        .diff-name { color:#b9d6ed; font-size:11px; letter-spacing:3px; }
+        .diff-blurb { color:#6f92b3; font-size:9px; letter-spacing:.5px; line-height:1.4; }
+        .diff:hover { border-color:#4d7ea6; }
+        .diff.on { border-color:#39e6e0; background:#0d2733; box-shadow:0 0 18px #39e6e033; }
+        .diff.on .diff-name { color:#7fdcff; }
         .setting { display:grid; grid-template-columns:110px 1fr 34px; align-items:center; gap:8px;
                    color:#b9d6ed; font-size:10px; letter-spacing:1px; }
         .setting input[type=range] { width:100%; accent-color:#39e6e0; }
@@ -376,6 +400,11 @@ export class Hud {
         .shield-flash.on { animation:shieldHit .32s ease-out both; }
         @keyframes shieldHit { 0%{opacity:.9;transform:scale(.985)} 100%{opacity:0;transform:scale(1)} }
         @media(max-width:650px){ .settings-grid{grid-template-columns:1fr}.settings{max-height:42vh;overflow:auto}.pkeys{display:none} }
+        .perf { position:absolute; right:14px; bottom:14px; display:none; pointer-events:none;
+                font:11px/1.55 ui-monospace,Menlo,monospace; color:#9fe8c4; white-space:pre;
+                text-shadow:0 1px 3px #000; letter-spacing:.5px; }
+        .perf.on { display:block; }
+        .perf b { color:#ffd06a; font-weight:400; }
         .scorebox { position:absolute; left:24px; top:60px; }
         .score-wave { color:#ffd0a0; font-size:12px; letter-spacing:3px; text-shadow:0 1px 3px #000; }
         .score-val { color:#fff; font-size:32px; font-weight:700; letter-spacing:2px; line-height:1.1;
@@ -457,6 +486,7 @@ export class Hud {
         <div class="chip locked" id="chip-shield">AEGIS ARMOR — ???</div>
         <div class="chip" id="chip-power" style="display:none"></div>
       </div>
+      <div class="perf" id="perf"></div>
       <div class="toast" id="toast"><h1 id="toast-h"></h1><p id="toast-p"></p></div>
       <div class="impact-flash" id="impact-flash"></div>
       <div class="critical-state" id="critical-state"></div>
@@ -524,6 +554,13 @@ export class Hud {
         <div class="pbtn" id="p-restart">RESTART RUN</div>
         <div class="settings">
           <div class="settings-title">SYSTEM CONFIGURATION</div>
+          <div class="difficulty" id="set-difficulty">
+            ${(Object.keys(DIFFICULTY) as Difficulty[]).map((d) =>
+              `<button type="button" class="diff" data-diff="${d}">
+                 <span class="diff-name">${DIFFICULTY[d].label}</span>
+                 <span class="diff-blurb">${DIFFICULTY[d].blurb}</span>
+               </button>`).join('')}
+          </div>
           <div class="settings-grid">
             <label class="setting">MUSIC <input id="set-music" type="range" min="0" max="100"/><output id="out-music"></output></label>
             <label class="setting">EFFECTS <input id="set-effects" type="range" min="0" max="100"/><output id="out-effects"></output></label>
@@ -683,6 +720,21 @@ export class Hud {
     for (const id of ['set-subtitles', 'set-contrast', 'set-motion']) {
       document.getElementById(id)!.addEventListener('change', emit);
     }
+    const diffButtons = Array.from(
+      document.querySelectorAll<HTMLButtonElement>('#set-difficulty .diff')
+    );
+    const paintDifficulty = (): void => {
+      for (const b of diffButtons) b.classList.toggle('on', b.dataset.diff === settings.difficulty);
+    };
+    for (const b of diffButtons) {
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        settings.difficulty = b.dataset.diff as Difficulty;
+        paintDifficulty();
+        emit();
+      });
+    }
+    paintDifficulty();
     emit();
   }
 
@@ -996,6 +1048,24 @@ export class Hud {
   /** The always-visible goal line under the boss bar. */
   setObjective(text: string): void {
     document.getElementById('obj')!.innerHTML = 'OBJECTIVE · <b>' + text + '</b>';
+  }
+
+  /**
+   * Frame-budget overlay, toggled with F3. Shipping without one means the
+   * only way to notice a hitch is to feel it, which is not a measurement.
+   */
+  togglePerf(): boolean {
+    const el = document.getElementById('perf')!;
+    const on = el.classList.toggle('on');
+    return on;
+  }
+
+  get perfOn(): boolean {
+    return document.getElementById('perf')!.classList.contains('on');
+  }
+
+  setPerf(html: string): void {
+    document.getElementById('perf')!.innerHTML = html;
   }
 
   setWave(wave: number): void {
