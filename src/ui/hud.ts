@@ -399,7 +399,10 @@ export class Hud {
                         border:5px solid #67e8ff; box-shadow:inset 0 0 90px #31cfff88; }
         .shield-flash.on { animation:shieldHit .32s ease-out both; }
         @keyframes shieldHit { 0%{opacity:.9;transform:scale(.985)} 100%{opacity:0;transform:scale(1)} }
-        @media(max-width:650px){ .settings-grid{grid-template-columns:1fr}.settings{max-height:42vh;overflow:auto}.pkeys{display:none} }
+        /* three blurbs side by side at phone width wrap to four lines each and
+           push the sliders off the panel; the labels alone still read */
+        @media(max-width:650px){ .diff-blurb{display:none} .diff{padding:10px 4px}
+                                 .settings-grid{grid-template-columns:1fr}.settings{max-height:42vh;overflow:auto}.pkeys{display:none} }
         .perf { position:absolute; right:14px; bottom:14px; display:none; pointer-events:none;
                 font:11px/1.55 ui-monospace,Menlo,monospace; color:#9fe8c4; white-space:pre;
                 text-shadow:0 1px 3px #000; letter-spacing:.5px; }
