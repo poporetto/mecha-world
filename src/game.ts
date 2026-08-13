@@ -36,7 +36,7 @@ interface Projectile {
   pos: THREE.Vector3;
   vel: THREE.Vector3;
   life: number;
-  kind: 'laser' | 'rocket' | 'boulder' | 'missile' | 'charge' | 'ally' | 'shell';
+  kind: 'laser' | 'rocket' | 'boulder' | 'charge' | 'ally' | 'shell';
   mesh: THREE.Mesh;
   dmg?: number; // override damage / blast radius for player weapons
 }
@@ -126,14 +126,12 @@ export class Game {
   private hemi: THREE.HemisphereLight;
   private sun: THREE.DirectionalLight;
   private novaCooldown = 0;
-  private quakeCooldown = 0;
-  private missileCooldown = 0;
   private chargeT = 0; // how long R has been held
   private charging = false;
   private power = 1;
   private powerLevel = 1;
-  // saber/rifle/missiles ship with the mecha; the rest are earned from bosses
-  private unlockedWeapons = new Set<WeaponId>(['saber', 'rifle', 'missiles']);
+  // saber and rifle ship with the mecha; the rest are earned from bosses
+  private unlockedWeapons = new Set<WeaponId>(['saber', 'rifle']);
   private selectedWeapon: WeaponId = 'saber';
   private railCooldown = 0;
   private vulcanCooldown = 0;
@@ -153,10 +151,8 @@ export class Game {
   private blocksWrecked = 0;
   /** First-run onboarding; null on a resumed or already-taught run. */
   private tutorial: Tutorial | null = null;
-  private tutWalked = 0;
   private tutWrecked = 0;
   private tutMarker: THREE.Mesh | null = null;
-  private tutLastPos = new THREE.Vector3();
   private monsterBarkT = 0;   // gap between remarks about the current kaiju
   private monsterBarkFor = ''; // which kaiju those remarks are about
   private memoryIdx = 0;       // next backstory fragment to surface
@@ -292,7 +288,6 @@ export class Game {
         onAttackDown: () => this.attackDown(),
         onAttackUp: () => this.attackUp(),
         onNova: () => this.novaPulse(),
-        onQuake: () => this.quakeSlam(),
         onDash: () => this.dash(),
         onWheel: () => this.hud.toggleWheel(),
         onLook: (dx, dy) => {
@@ -445,10 +440,9 @@ export class Game {
     if (this.player.abilities.beam) this.hud.unlock('beam', '<b>E (hold)</b> PLASMA BEAM');
     if (this.player.abilities.thrust) this.hud.unlock('boots', '<b>SPACE</b> OVERDRIVE THRUSTERS');
     if (this.player.abilities.dash) { this.hud.unlockDash(); this.touch?.unlockDash(); }
-    if (this.player.abilities.nova) this.hud.unlock('nova', '<b>Q</b> NOVA PULSE');
-    if (this.player.abilities.shield) this.hud.unlock('shield', 'AEGIS ARMOR · DAMAGE -35%');
+    if (this.player.abilities.nova) this.hud.unlock('nova', this.novaLabel());
     if (this.player.abilities.blades) this.hud.unlock('blades', 'CRIMSON EDGE');
-    if (this.player.abilities.quake) this.hud.unlock('quake', '<b>G</b> QUAKE SLAM');
+    if (this.player.abilities.quake) this.hud.unlock('nova', this.novaLabel());
     this.selectWeapon('saber');
     this.droneBase = Math.min(14, 4 + Math.floor(d.chapter * 0.75));
     this.drones.target = this.droneBase;
@@ -474,7 +468,6 @@ export class Game {
       // hurrying a conversation can never also make the mecha do something.
       if (e.code === 'Enter' || e.code === 'NumpadEnter') { this.hud.skipLine(); return; }
       if (e.code === 'KeyF') this.fireLaser();
-      if (e.code === 'KeyT') this.fireMissiles();
       if (e.code === 'KeyQ') this.novaPulse();
       if (e.code === 'KeyC' && !e.repeat) this.dash();
       if ((e.code === 'KeyL' || e.code === 'Tab') && !e.repeat) { e.preventDefault(); this.toggleLockOn(); }
@@ -487,7 +480,6 @@ export class Game {
         const n = Number(e.code.slice(5)) - 1;
         if (n >= 0 && n < WEAPONS.length) this.selectWeapon(WEAPONS[n].id);
       }
-      if (e.code === 'KeyG') this.quakeSlam();
       if (e.code === 'Escape' && this.started) this.setPaused(!this.paused);
       if (e.code === 'F3' && !e.repeat) { e.preventDefault(); this.hud.togglePerf(); }
       // R: begin charging (release fires); e.repeat guards the auto-repeat
@@ -704,13 +696,12 @@ export class Game {
     this.touch?.setWeapon(w);
   }
 
-  // main attack pressed: melee/missiles fire at once; rifle starts charging;
+  // main attack pressed: melee fires at once; rifle starts charging;
   // flamer/aqua are held streams handled per-frame in updateStreams()
   private attackDown(): void {
     if (!this.started) return;
     const w = this.selectedWeapon;
     if (w === 'saber') this.swingSaber();
-    else if (w === 'missiles') this.fireMissiles();
     else if (w === 'railgun') this.fireRailgun();
     else if (w === 'flamer' || w === 'aqua' || w === 'vulcan') this.attackHeld = true;
     else { this.charging = true; this.chargeT = 0; }
@@ -719,33 +710,6 @@ export class Game {
   private attackUp(): void {
     this.attackHeld = false;
     if (this.selectedWeapon === 'rifle' && this.charging) this.releaseCharge();
-  }
-
-  // Homing micro-missile volley: four rockets that fan out then curve onto
-  // the locked boss (or fly straight if there's none). Default weapon on T.
-  private fireMissiles(): void {
-    if (this.missileCooldown > 0 || !this.started) return;
-    this.missileCooldown = 1.4;
-    sfx.rocket(1);
-    this.player.yaw = this.camYaw + Math.PI;
-    this.player.model.group.rotation.y = this.player.yaw;
-    const dir = this.aimDir();
-    const base = this.player.pos.clone();
-    base.y += 7;
-    for (let i = 0; i < 4; i++) {
-      const spread = (i - 1.5) * 0.28;
-      const cos = Math.cos(spread), sin = Math.sin(spread);
-      const d = new THREE.Vector3(dir.x * cos - dir.z * sin, dir.y + 0.15, dir.x * sin + dir.z * cos).normalize();
-      const from = base.clone().addScaledVector(d, 4);
-      const mesh = new THREE.Mesh(
-        new THREE.BoxGeometry(0.35, 0.35, 1.2),
-        new THREE.MeshBasicMaterial({ color: 0xfff0a0 })
-      );
-      mesh.position.copy(from);
-      mesh.lookAt(from.clone().add(d));
-      this.scene.add(mesh);
-      this.projectiles.push({ pos: from, vel: d.multiplyScalar(34), life: 3, kind: 'missile', mesh, dmg: 9 * this.power });
-    }
   }
 
   // Railgun (Sky Reaver): instant hitscan lance that punches through the city
@@ -855,32 +819,6 @@ export class Game {
     }
   }
 
-  // Quake slam (Magma Golem): a ground pound that ruptures a ring of street.
-  private quakeSlam(): void {
-    if (!this.player.abilities.quake || this.quakeCooldown > 0 || !this.started) return;
-    this.quakeCooldown = 7;
-    const c = this.player.pos.clone();
-    c.y += 1;
-    sfx.explode(1, 1);
-    this.shake = Math.max(this.shake, 1.1);
-    this.explosions.boom(c, 16);
-    // rupture two rings of pavement outward from the impact
-    for (const [radius, count] of [[11, 10], [19, 14]] as const) {
-      for (let i = 0; i < count; i++) {
-        const a = (i / count) * Math.PI * 2;
-        const p = c.clone();
-        p.x += Math.sin(a) * radius;
-        p.z += Math.cos(a) * radius;
-        p.y = this.world.groundHeight(p.x, p.z, 40) + 1;
-        this.destroyAt(p, 5, 0.4);
-      }
-    }
-    if (this.monster && !this.monster.dying) {
-      const d = this.monster.group.position.distanceTo(this.player.pos);
-      if (d < 40) this.monster.takeDamage(60 * this.power * PLAYER_ATTACK_DAMAGE * PLAYER_BOSS_DAMAGE, 'quake');
-    }
-  }
-
   // Charged rifle: hold R to build up, release for a fat high-damage lance.
   private releaseCharge(): void {
     this.charging = false;
@@ -920,23 +858,47 @@ export class Game {
   }
 
   // AoE shockwave unlocked by defeating the Volt Serpent
+  /** Chip text for the one AoE button, which the Golem's reward overcharges. */
+  private novaLabel(): string {
+    return this.player.abilities.quake
+      ? '<b>Q</b> NOVA PULSE · OVERCHARGED'
+      : '<b>Q</b> NOVA PULSE';
+  }
+
+  /**
+   * The single area attack. The Volt Serpent grants the shockwave; the Magma
+   * Golem's reward overcharges it, adding the outer ground rupture that used
+   * to be a separate button on a separate key. Two near-identical AoE moves
+   * cost the player a key and a HUD slot and gave them no new decision.
+   */
   private novaPulse(): void {
     if (!this.player.abilities.nova || this.novaCooldown > 0 || !this.started) return;
-    this.novaCooldown = 6;
+    const heavy = this.player.abilities.quake;
+    this.novaCooldown = heavy ? 7 : 6;
     const c = this.player.pos.clone();
     c.y += 4;
-    this.explosions.boom(c, 14);
+    this.explosions.boom(c, heavy ? 16 : 14);
     sfx.explode(1, 1);
-    for (let i = 0; i < 8; i++) {
-      const a = (i / 8) * Math.PI * 2;
-      const p = c.clone();
-      p.x += Math.sin(a) * 10;
-      p.z += Math.cos(a) * 10;
-      this.destroyAt(p, 4.5, 0.3);
+    this.shake = Math.max(this.shake, heavy ? 1.1 : 0.6);
+    const rings: [number, number][] = heavy
+      ? [[10, 8], [19, 14]]   // overcharged: the shockwave plus a ruptured street
+      : [[10, 8]];
+    for (const [radius, count] of rings) {
+      for (let i = 0; i < count; i++) {
+        const a = (i / count) * Math.PI * 2;
+        const p = c.clone();
+        p.x += Math.sin(a) * radius;
+        p.z += Math.cos(a) * radius;
+        // the outer rupture follows the street surface; the inner ring is airborne
+        if (radius > 12) p.y = this.world.groundHeight(p.x, p.z, 40) + 1;
+        this.destroyAt(p, radius > 12 ? 5 : 4.5, radius > 12 ? 0.4 : 0.3);
+      }
     }
     if (this.monster && !this.monster.dying) {
       const d = this.monster.group.position.distanceTo(this.player.pos);
-      if (d < 34) this.monster.takeDamage(45 * this.power * PLAYER_ATTACK_DAMAGE * PLAYER_BOSS_DAMAGE, 'nova');
+      const reach = heavy ? 40 : 34;
+      const dmg = (heavy ? 75 : 45) * this.power * PLAYER_ATTACK_DAMAGE * PLAYER_BOSS_DAMAGE;
+      if (d < reach) this.monster.takeDamage(dmg, 'nova');
     }
   }
 
@@ -1790,9 +1752,8 @@ export class Game {
     if (abilities.beam) this.hud.unlock('beam', '<b>E (hold)</b> PLASMA BEAM');
     if (abilities.thrust) this.hud.unlock('boots', '<b>SPACE</b> OVERDRIVE THRUSTERS');
     if (abilities.dash) { this.hud.unlockDash(); this.touch?.unlockDash(); }
-    if (abilities.nova) this.hud.unlock('nova', '<b>Q</b> NOVA PULSE');
-    if (abilities.shield) this.hud.unlock('shield', 'AEGIS ARMOR · DAMAGE -50%');
-    if (abilities.quake) this.hud.unlock('quake', '<b>G</b> QUAKE SLAM');
+    if (abilities.nova) this.hud.unlock('nova', this.novaLabel());
+    if (abilities.quake) this.hud.unlock('nova', this.novaLabel());
     if (abilities.blades) this.hud.unlock('blades', 'CRIMSON EDGE');
     for (const weapon of weapons) {
       this.hud.unlockWeapon(weapon);
@@ -1896,7 +1857,7 @@ export class Game {
     this.frontLine = null;
     this.notedReiPattern = false;
     this.revenantBeats.clear();
-    this.unlockedWeapons = new Set<WeaponId>(['saber', 'rifle', 'missiles']);
+    this.unlockedWeapons = new Set<WeaponId>(['saber', 'rifle']);
     this.player.abilities = {
       beam: false, boots: true, thrust: false, dash: false, nova: false,
       shield: false, blades: false, quake: false,
@@ -2194,9 +2155,7 @@ export class Game {
     this.tutorial = new Tutorial();
     // an empty sky for the lesson; the swarm resumes with the boss timer
     this.drones.target = 0;
-    this.tutWalked = 0;
     this.tutWrecked = 0;
-    this.tutLastPos.copy(this.player.pos);
     this.clearTutorialMarker();
   }
 
@@ -2240,22 +2199,11 @@ export class Game {
     const t = this.tutorial;
     if (!t) return;
 
-    // ground distance only — hovering in place is not walking
-    if (this.player.grounded || this.player.onPlatform) {
-      this.tutWalked += Math.hypot(
-        this.player.pos.x - this.tutLastPos.x,
-        this.player.pos.z - this.tutLastPos.z,
-      );
-    }
-    this.tutLastPos.copy(this.player.pos);
-
     const deck = this.world.groundHeight(this.player.pos.x, this.player.pos.z);
     const wasStep = t.step?.id;
     t.update(dt, {
-      walked: this.tutWalked,
       altitude: this.player.pos.y - deck,
       wrecked: this.tutWrecked,
-      flying: !this.player.grounded && !this.player.onPlatform,
     });
 
     if (t.justCleared) {
@@ -2417,7 +2365,7 @@ export class Game {
       { make: (x2, z2) => new IronColossus(x2, z2), toast: ['⚠ HEAVY FOOTFALLS ⚠', 'IRON COLOSSUS approaching. Defeat it to earn the AEGIS SHIELD.'] },
       { make: (x2, z2) => new SkyReaver(x2, z2), toast: ['⚠ SHADOW OVERHEAD ⚠', 'SKY REAVER circling above. Defeat it to salvage its RAILGUN.'] },
       { make: (x2, z2) => new CrimsonMantis(x2, z2), toast: ['⚠ RAPID MOVEMENT ⚠', 'CRIMSON MANTIS closing fast. Defeat it to forge the CRIMSON EDGE.'] },
-      { make: (x2, z2) => new MagmaGolem(x2, z2), toast: ['⚠ MOLTEN MASS ⚠', 'MAGMA GOLEM erupting. Defeat it to learn the QUAKE SLAM.'] },
+      { make: (x2, z2) => new MagmaGolem(x2, z2), toast: ['⚠ MOLTEN MASS ⚠', 'MAGMA GOLEM erupting. Defeat it to overcharge the NOVA PULSE.'] },
       { make: (x2, z2) => new DeepMaw(x2, z2), toast: ['⚠ TREMORS ⚠', 'DEEP MAW burrowing below. Defeat it to mount HEAD VULCANS.'] },
       { make: (x2, z2) => new CinderWyrm(x2, z2), toast: ['⚠ FIRESTORM ⚠', 'CINDER WYRM torching the district. Defeat it to claim its FLAMETHROWER.'] },
       { make: (x2, z2) => new TideLeviathan(x2, z2), toast: ['⚠ FLOOD WARNING ⚠', 'TIDE LEVIATHAN surfacing. Defeat it to claim its AQUA BLASTER.'] },
@@ -2537,12 +2485,10 @@ export class Game {
     this.hud.unlock('beam', '<b>E (hold)</b> PLASMA BEAM');
     this.hud.unlock('boots', '<b>SPACE</b> OVERDRIVE THRUSTERS');
     this.hud.unlock('nova', '<b>Q</b> NOVA PULSE');
-    this.hud.unlock('shield', 'AEGIS ARMOR · DAMAGE -50%');
-    this.hud.unlock('quake', '<b>G</b> QUAKE SLAM');
+    this.hud.unlock('nova', this.novaLabel());
     this.hud.unlock('blades', 'CRIMSON EDGE');
     this.touch?.unlock('beam');
     this.touch?.unlock('nova');
-    this.touch?.unlock('quake');
     for (const w of WEAPONS) {
       this.unlockedWeapons.add(w.id);
       this.hud.unlockWeapon(w.id);
@@ -2584,13 +2530,14 @@ export class Game {
       case 'nova':
         this.player.abilities.nova = true;
         this.touch?.unlock('nova');
-        this.hud.unlock('nova', '<b>Q</b> NOVA PULSE');
+        this.hud.unlock('nova', this.novaLabel());
         this.hud.toast('NOVA PULSE UNLOCKED', 'Press Q for a devastating shockwave', 5);
         break;
       case 'shield':
+        // Passive: it costs no button and needs no chip cluttering the HUD.
+        // The armour plates visibly deploy on the frame and the toast says so.
         this.player.abilities.shield = true;
         this.player.model.setAegisArmor(true);
-        this.hud.unlock('shield', 'AEGIS ARMOR · DAMAGE -35%');
         this.hud.toast('AEGIS ARMOR ONLINE', 'Reinforced plating deployed · incoming damage reduced by 35%', 5);
         break;
       case 'blades':
@@ -2601,10 +2548,13 @@ export class Game {
         this.hud.toast('CRIMSON EDGE FORGED', 'Red laser saber · 60% stronger strikes', 5);
         break;
       case 'quake':
+        // Not a second button: the Golem's reward overcharges the pulse the
+        // Serpent gave you. Two nearly identical AoE buttons on two keys was
+        // the worst of both — more UI, no more depth.
         this.player.abilities.quake = true;
-        this.touch?.unlock('quake');
-        this.hud.unlock('quake', '<b>G</b> QUAKE SLAM');
-        this.hud.toast('QUAKE SLAM UNLOCKED', 'Press G to rupture the ground around you', 5);
+        if (!this.player.abilities.nova) { this.player.abilities.nova = true; this.touch?.unlock('nova'); }
+        this.hud.unlock('nova', this.novaLabel());
+        this.hud.toast('NOVA PULSE OVERCHARGED', 'The pulse now ruptures the ground it lands on', 5);
         break;
       case 'railgun':
         this.grantWeapon('railgun', 'RAILGUN ACQUIRED', 'Weapon 4 · a piercing lance that bores through city blocks');
@@ -2736,10 +2686,8 @@ export class Game {
     this.time += dt;
     this.laserCooldown -= dt;
     this.novaCooldown -= dt;
-    this.missileCooldown -= dt;
     this.railCooldown -= dt;
     this.vulcanCooldown -= dt;
-    this.quakeCooldown -= dt;
     this.crimsonCooldown -= dt;
     this.dashT = Math.max(0, this.dashT - rawDt);
     this.dashFxT = Math.max(0, this.dashFxT - rawDt);
@@ -3040,7 +2988,7 @@ export class Game {
   private updateProjectiles(dt: number): void {
     // friendly ordnance — the player's own plus KOTETSU's covering fire
     const playerShot = (k: Projectile['kind']) =>
-      k === 'laser' || k === 'missile' || k === 'charge' || k === 'ally' || k === 'shell';
+      k === 'laser' || k === 'charge' || k === 'ally' || k === 'shell';
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const p = this.projectiles[i];
       p.life -= dt;
@@ -3049,18 +2997,6 @@ export class Game {
         p.vel.y -= 16 * dt;
         p.mesh.rotation.x += dt * 3;
         p.mesh.rotation.z += dt * 2;
-      }
-      if (p.kind === 'missile') {
-        // steer toward the boss: bend velocity toward the target each frame
-        const m = this.monster;
-        if (m && !m.dying) {
-          _v.copy(m.group.position); _v.y += m.centerY;
-          _v.sub(p.pos).normalize();
-          const speed = p.vel.length();
-          p.vel.lerp(_v.multiplyScalar(speed), Math.min(1, dt * 2.5));
-          p.vel.setLength(Math.min(52, speed + 40 * dt)); // accelerate
-        }
-        p.mesh.lookAt(p.pos.clone().add(p.vel));
       }
       p.pos.addScaledVector(p.vel, dt);
       p.mesh.position.copy(p.pos);
@@ -3087,7 +3023,7 @@ export class Game {
       if (boom) {
         const r = p.kind === 'shell' ? 10  // his misses take out whole blocks
           : p.kind === 'charge' ? 4.5 : p.kind === 'laser' ? 2.4
-          : p.kind === 'missile' ? 3 : p.kind === 'boulder' ? 5 : 3.6;
+          : p.kind === 'boulder' ? 5 : 3.6;
         this.destroyAt(p.pos, r, 0.2);
       }
       if (boom || p.life <= 0) {

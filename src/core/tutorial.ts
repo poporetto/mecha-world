@@ -1,9 +1,10 @@
 // First-run onboarding. The suit carries a weapon wheel, a dash, lock-on,
-// rocket boots, a charged rifle, missiles and six unlockable abilities, and
-// until now a new pilot met all of it at once behind a keys list on the title
-// card. This gates the first kaiju behind three things you have to actually
-// do, narrated by the two voices already on the channel in chapter one —
-// Hinata does not join until chapter two, so she cannot be the teacher.
+// lift jets, a charged rifle and several unlockable abilities, and until now
+// a new pilot met all of it at once behind a keys list on the title card.
+// This gates the first kaiju behind the two things that are not discoverable
+// on their own — that the saber cuts the city, and that jump is a throttle —
+// narrated by the two voices already on the channel in chapter one. Hinata
+// does not join until chapter two, so she cannot be the teacher.
 //
 // Pure state machine: game.ts feeds it a snapshot each frame and reacts to
 // what comes back. It never touches the world itself.
@@ -11,14 +12,10 @@
 import { AYA, KUROSAWA, type Line } from './story';
 
 export interface TutorialSnapshot {
-  /** Metres travelled on the ground since the run began. */
-  walked: number;
   /** Height above whatever the pilot is standing over. */
   altitude: number;
   /** Blocks the player has personally wrecked. */
   wrecked: number;
-  /** True while the boots are burning. */
-  flying: boolean;
 }
 
 export interface TutorialStep {
@@ -39,50 +36,37 @@ export interface TutorialStep {
   nudge?: Line;
 }
 
-/** Distances are deliberately short — this is orientation, not a fetch quest. */
+/**
+ * Two beats, not three. Walking is the one thing nobody needs taught — a
+ * player who has reached the deploy button will move — so the check that
+ * mattered least came out, and each remaining step briefs in a single line.
+ */
 export const TUTORIAL_STEPS: TutorialStep[] = [
   {
-    id: 'move',
-    objective: 'Get moving — walk clear of the launch deck',
-    say: [
-      { who: AYA, text: 'Kuroki, the frame is live. Walk it. I need to see the legs answer before you go anywhere near the water.' },
-      // Deliberately not the word "boost": chapter two's reward is named
-      // OVERDRIVE THRUSTERS, and a pilot told to "hold boost" in chapter one
-      // reasonably reads that as an upgrade they have not been given yet.
-      { who: KUROSAWA, text: 'Left stick, or the arrow keys — it does not care which. Hold SHIFT and it will run.' },
-    ],
-    cleared: ['LOCOMOTION NOMINAL', 'The legs answer. Kurosawa is delighted.'],
-    done: (from, now) => now.walked - from.walked >= 60,
-    nudge: { who: AYA, text: 'Kuroki. Move the suit. Any direction.' },
-  },
-  {
     id: 'strike',
-    objective: 'Cut something — test the saber on the condemned block',
+    objective: 'Cut the marked block — hold A or click',
     say: [
-      { who: KUROSAWA, text: 'Now the arm. There is a condemned block right in front of you — the ward cleared it out this morning. Take it down.' },
-      { who: AYA, text: 'It is empty, Kuroki. Nobody is in it. Swing.' },
+      { who: KUROSAWA, text: 'Frame is live. That block ahead is condemned and empty — put the saber through it.' },
     ],
-    cleared: ['WEAPON HOT', 'The beam saber cuts anything the city is made of.'],
-    done: (from, now) => now.wrecked - from.wrecked >= 45,
-    nudge: { who: KUROSAWA, text: 'The saber. Attack while you are stood against it — it will come apart.' },
+    cleared: ['WEAPON HOT', 'The saber cuts anything the city is made of.'],
+    done: (from, now) => now.wrecked - from.wrecked >= 30,
+    nudge: { who: KUROSAWA, text: 'Stand against it and attack, Kuroki. It will come apart.' },
   },
   {
     id: 'fly',
-    objective: 'Get airborne — hold jump to climb on the lift jets',
+    objective: 'Get airborne — hold jump to climb',
     say: [
-      { who: KUROSAWA, text: 'Last thing. The lift jets — the small ones, you have those already. Hold the jump, do not tap it, and the frame will climb.' },
-      { who: AYA, text: 'You will need the height. The things coming through the bay do not stay on the ground.' },
+      { who: AYA, text: 'Now get off the ground. Hold the jump — hold it, do not tap — and stay up. The things coming through the bay do not stay down here.' },
     ],
     cleared: ['LIFT JETS NOMINAL', 'Altitude is the whole fight. Use it.'],
-    done: (_from, now) => now.altitude >= 34,
-    nudge: { who: KUROSAWA, text: 'Hold the jump down, Kuroki. It is a throttle, not a button.' },
+    done: (_from, now) => now.altitude >= 26,
+    nudge: { who: AYA, text: 'Hold the jump down. It is a throttle, not a button.' },
   },
 ];
 
 export const TUTORIAL_CLEARED: Line[] = [
-  { who: AYA, text: 'That is the check done. Kuroki — sonar just lit up under the bay.' },
-  { who: KUROSAWA, text: 'It is big. It is very big. I am so sorry.' },
-  { who: AYA, text: 'Go. Everything you just did, you are about to need all of it.' },
+  { who: AYA, text: 'Check done. Kuroki — sonar just lit up under the bay.' },
+  { who: KUROSAWA, text: 'It is big. I am so sorry.' },
 ];
 
 export class Tutorial {

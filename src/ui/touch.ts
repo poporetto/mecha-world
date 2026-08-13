@@ -12,7 +12,6 @@ export interface TouchCallbacks {
   onAttackDown: () => void;
   onAttackUp: () => void;
   onNova: () => void;
-  onQuake: () => void;
   onDash: () => void;
   onWheel: () => void;
   onLook: (dx: number, dy: number) => void;
@@ -36,7 +35,6 @@ export class TouchControls {
   private lookLast = { x: 0, y: 0 };
   private beamBtn: HTMLElement;
   private novaBtn: HTMLElement;
-  private quakeBtn: HTMLElement;
 
   constructor(root: HTMLElement, private cb: TouchCallbacks) {
     this.layer = document.createElement('div');
@@ -61,7 +59,7 @@ export class TouchControls {
                    grid-template-columns:70px 70px 92px;
                    grid-template-rows:44px 48px 58px;
                    grid-template-areas:
-                     "nova  quake beam"
+                     ".     nova  beam"
                      "dash  wheel boost"
                      ".     jump  attack";
                    gap:7px; }
@@ -74,7 +72,7 @@ export class TouchControls {
         /* situational abilities read quieter than the things used every second */
         .tc-btn.minor { font-size:9.5px; letter-spacing:1px; color:#a9c8e4;
                         border-color:#31536f; background:linear-gradient(180deg,#0e1e2fc4,#0a1626cc); }
-        #tc-nova { grid-area:nova; } #tc-quake { grid-area:quake; } #tc-beam { grid-area:beam; }
+        #tc-nova { grid-area:nova; } #tc-beam { grid-area:beam; }
         #tc-wheel { grid-area:wheel; } #tc-boost { grid-area:boost; } #tc-dash { grid-area:dash; }
         #tc-jump { grid-area:jump; } #tc-attack { grid-area:attack; }
         /* the primary action reads as the primary action */
@@ -91,7 +89,7 @@ export class TouchControls {
           .tc-btns { grid-template-columns:44px 48px 48px 64px;
                      grid-template-rows:44px 60px;
                      grid-template-areas:
-                       "nova quake beam  wheel"
+                       ".    nova  beam  wheel"
                        "dash boost jump  attack";
                      gap:7px; bottom:calc(10px + env(safe-area-inset-bottom)); }
           .tc-btn { font-size:9px; }
@@ -125,7 +123,6 @@ export class TouchControls {
       <div class="tc-hint" id="tc-hint">DRAG<br/>TO MOVE</div>
       <div class="tc-btns">
         <div class="tc-btn minor hidden" id="tc-nova">NOVA</div>
-        <div class="tc-btn minor hidden" id="tc-quake">QUAKE</div>
         <div class="tc-btn minor hidden" id="tc-beam">BEAM</div>
         <div class="tc-btn" id="tc-wheel">WEAPON</div>
         <div class="tc-btn hidden" id="tc-dash">DASH</div>
@@ -142,14 +139,13 @@ export class TouchControls {
     this.stickKnob = this.layer.querySelector('#tc-knob')!;
     this.beamBtn = this.layer.querySelector('#tc-beam')!;
     this.novaBtn = this.layer.querySelector('#tc-nova')!;
-    this.quakeBtn = this.layer.querySelector('#tc-quake')!;
 
     this.bindButtons();
     this.bindTouches();
   }
 
-  unlock(key: 'beam' | 'nova' | 'quake'): void {
-    const btn = key === 'beam' ? this.beamBtn : key === 'nova' ? this.novaBtn : this.quakeBtn;
+  unlock(key: 'beam' | 'nova'): void {
+    const btn = key === 'beam' ? this.beamBtn : this.novaBtn;
     btn?.classList.remove('hidden');
   }
 
@@ -201,7 +197,6 @@ export class TouchControls {
     };
     tap('tc-wheel', () => this.cb.onWheel());
     tap('tc-nova', () => this.cb.onNova());
-    tap('tc-quake', () => this.cb.onQuake());
     tap('tc-dash', () => this.cb.onDash());
     // attack button: press fires / starts charge, release ends charge
     const atk = this.layer.querySelector('#tc-attack')! as HTMLElement;

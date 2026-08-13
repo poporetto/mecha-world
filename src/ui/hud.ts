@@ -5,7 +5,6 @@
 export const WEAPONS = [
   { id: 'saber', icon: '⚔', label: 'SABER' },
   { id: 'rifle', icon: '🔫', label: 'RIFLE' },
-  { id: 'missiles', icon: '🚀', label: 'MISSILES' },
   { id: 'railgun', icon: '⚡', label: 'RAILGUN' },
   { id: 'vulcan', icon: '💥', label: 'VULCAN' },
   { id: 'flamer', icon: '🔥', label: 'FLAMER' },
@@ -480,13 +479,11 @@ export class Hud {
         <div class="boss-state" id="boss-state"></div>
       </div>
       <div class="chips">
-        <div class="chip" id="chip-weapon"><b>A</b> ATTACK · <b>1-7</b> or WHEEL to switch</div>
+        <div class="chip" id="chip-weapon"><b>A</b> ATTACK · <b>1-6</b> or WHEEL to switch</div>
         <div class="chip" id="chip-boots"><b>SPACE (hold)</b> ROCKET BOOTS</div>
         <div class="chip locked" id="chip-beam"><b>E</b> BEAM — ???</div>
         <div class="chip locked" id="chip-nova"><b>Q</b> NOVA — ???</div>
-        <div class="chip locked" id="chip-quake"><b>G</b> QUAKE — ???</div>
         <div class="chip locked" id="chip-blades">CRIMSON EDGE — ???</div>
-        <div class="chip locked" id="chip-shield">AEGIS ARMOR — ???</div>
         <div class="chip" id="chip-power" style="display:none"></div>
       </div>
       <div class="perf" id="perf"></div>
@@ -576,7 +573,7 @@ export class Hud {
         </div>
         <div class="pkeys">
           <b>ARROWS / WASD</b> move &nbsp; <b>SHIFT</b> boost &nbsp; <b>SPACE</b> jump / fly &nbsp; <b>C</b> dash<br/>
-          <b>A</b> or <b>click</b> attack &nbsp; <b>1-7</b> switch weapon &nbsp; <b>E</b> beam &nbsp; <b>Q</b> nova &nbsp; <b>G</b> quake<br/>
+          <b>A</b> or <b>click</b> attack &nbsp; <b>1-6</b> switch weapon &nbsp; <b>E</b> beam &nbsp; <b>Q</b> nova pulse<br/>
           <b>L</b> or <b>middle-click</b> lock on &nbsp; <b>ESC</b> pause
         </div>
       </div>
@@ -592,8 +589,6 @@ export class Hud {
       beam: document.getElementById('chip-beam')!,
       boots: document.getElementById('chip-boots')!,
       nova: document.getElementById('chip-nova')!,
-      shield: document.getElementById('chip-shield')!,
-      quake: document.getElementById('chip-quake')!,
       blades: document.getElementById('chip-blades')!,
     };
     this.wheel = document.getElementById('wheel')!;
@@ -651,9 +646,7 @@ export class Hud {
     const labels: Record<string, string> = {
       beam: '<b>E</b> BEAM — ???',
       nova: '<b>Q</b> NOVA — ???',
-      quake: '<b>G</b> QUAKE — ???',
       blades: 'CRIMSON EDGE — ???',
-      shield: 'AEGIS ARMOR — ???',
     };
     for (const k of Object.keys(labels)) {
       const chip = this.chips[k];
@@ -671,7 +664,7 @@ export class Hud {
     }
     for (const w of WEAPONS) {
       const seg = document.getElementById('w-' + w.id)!;
-      const starter = w.id === 'saber' || w.id === 'rifle' || w.id === 'missiles';
+      const starter = w.id === 'saber' || w.id === 'rifle';
       seg.classList.toggle('locked', !starter);
     }
     const pwr = document.getElementById('chip-power')!;
@@ -1145,7 +1138,7 @@ export class Hud {
       ? `<b>D-PAD / LEFT SIDE</b> move &nbsp; <b>RIGHT SIDE</b> drag to look around<br/>
          <b>SABER / RIFLE</b> attack &nbsp; <b>JUMP (hold)</b> fly with rocket boots<br/>`
       : `<b>ARROW KEYS / WASD</b> move &nbsp; <b>SHIFT</b> boost &nbsp; <b>SPACE</b> jump<br/>
-         <b>LEFT CLICK</b> beam saber &nbsp; <b>R (hold)</b> charge rifle &nbsp; <b>T</b> missiles<br/>`;
+         <b>A / LEFT CLICK</b> attack &nbsp; <b>R (hold)</b> charge the rifle<br/>`;
     el.innerHTML = `
       <h1>MECHA CITY</h1>
       <h2>NEO TOKYO · TERRA-ARMOR DEPLOYMENT</h2>
@@ -1251,8 +1244,9 @@ export class Hud {
     this.toastTimer = seconds;
   }
 
-  unlock(key: 'beam' | 'boots' | 'nova' | 'shield' | 'quake' | 'blades', label: string): void {
+  unlock(key: 'beam' | 'boots' | 'nova' | 'blades', label: string): void {
     const chip = this.chips[key];
+    if (!chip) return;
     chip.classList.remove('locked');
     chip.innerHTML = label;
     chip.style.borderColor = '#39e6e0';
