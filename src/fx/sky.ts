@@ -174,6 +174,8 @@ export class Sky {
   private clouds: Cloud[] = [];
   private birds: Bird[] = [];
   private birdMat = new THREE.MeshLambertMaterial({ color: 0x2c3038 });
+  private stars!: THREE.Points;
+  private starMat!: THREE.PointsMaterial;
   private cloudMat: THREE.MeshBasicMaterial;
   private cirrusMat: THREE.MeshBasicMaterial;
   private ash: THREE.Points;
@@ -334,6 +336,41 @@ export class Sky {
     halo.position.z = -0.5;
     this.sun.add(core, halo);
     this.group.add(this.sun);
+
+    // Stars. Scattered on the upper half of a sphere that rides with the
+    // player, so they never resolve into a pattern you can walk out of, and
+    // kept as one Points draw call. Voxel-flavoured: no size attenuation, so
+    // each one is a crisp screen-space square rather than a soft blob.
+    const STARS = 520;
+    const starPos = new Float32Array(STARS * 3);
+    const starSize = new Float32Array(STARS);
+    for (let i = 0; i < STARS; i++) {
+      // even-ish spread over the dome rather than clustered at the zenith
+      const u = Math.random(), v = Math.random() * 0.92 + 0.06;
+      const az = u * Math.PI * 2;
+      const el = Math.acos(1 - v);       // 0 at the zenith
+      const r = 900;
+      starPos[i * 3] = Math.sin(el) * Math.cos(az) * r;
+      starPos[i * 3 + 1] = Math.cos(el) * r;
+      starPos[i * 3 + 2] = Math.sin(el) * Math.sin(az) * r;
+      // a handful of bright ones so the field has structure
+      starSize[i] = Math.random() < 0.08 ? 3.4 : 1.1 + Math.random() * 1.1;
+    }
+    const starGeo = new THREE.BufferGeometry();
+    starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+    starGeo.setAttribute('aSize', new THREE.BufferAttribute(starSize, 1));
+    this.starMat = new THREE.PointsMaterial({
+      color: 0xffffff, size: 2, sizeAttenuation: false, fog: false,
+      transparent: true, opacity: 0, depthWrite: false,
+    });
+    // per-star size, so the bright ones actually read as brighter
+    this.starMat.onBeforeCompile = (shader) => {
+      shader.vertexShader = 'attribute float aSize;\n' +
+        shader.vertexShader.replace('gl_PointSize = size;', 'gl_PointSize = size * aSize;');
+    };
+    this.stars = new THREE.Points(starGeo, this.starMat);
+    this.stars.renderOrder = -2; // behind everything, including the clouds
+    this.group.add(this.stars);
 
     this.moon = new THREE.Mesh(
       new THREE.CircleGeometry(16, 24),
@@ -581,6 +618,15 @@ export class Sky {
     this.sun.position.copy(center).addScaledVector(sunDir, 430);
     this.sun.visible = elev > -0.06;
     this.sun.lookAt(camera.position);
+    // Stars fade up as the sun goes under and turn very slowly overhead. Near
+    // the seam they are smothered — that sky is not a night sky.
+    this.stars.position.copy(center);
+    this.stars.rotation.y = time * 0.004;
+    this.stars.rotation.z = 0.22;
+    const night = Math.max(0, Math.min(1, -elev * 4));
+    this.starMat.opacity = night * 0.9 * (1 - corruption * 0.85);
+    this.stars.visible = this.starMat.opacity > 0.01;
+
     this.moon.position.copy(center).addScaledVector(sunDir, -430);
     this.moon.visible = elev < 0.06;
     this.moon.lookAt(camera.position);

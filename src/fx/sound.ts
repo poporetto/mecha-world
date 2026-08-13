@@ -5,7 +5,8 @@ export type MusicMode = 'intro' | 'explore' | 'boss' | 'revenant';
 class Sfx {
   private ctx: AudioContext | null = null;
   private master!: GainNode;
-  private beamOsc: OscillatorNode | null = null;
+  /** Every source feeding the beam, so beamOff can stop all of them. */
+  private beamNodes: Array<OscillatorNode | AudioBufferSourceNode> = [];
   private beamGain: GainNode | null = null;
 
   // ------- background music (procedural, scheduled ahead in small windows)
@@ -241,24 +242,85 @@ class Sfx {
     });
   }
 
+  /**
+   * A continuous energy beam, not an idling engine. The old one was a single
+   * 70Hz sawtooth with a 13Hz vibrato — which is, acoustically, a chainsaw.
+   *
+   * A beam reads as three layers at once: a sub for weight, a bright detuned
+   * core swept by a resonant filter so it shimmers rather than sits, and
+   * band-passed noise for the roar of the air it is going through. Plus an
+   * ignition sweep, because energy weapons should sound like they strike
+   * before they sustain.
+   */
   beamOn(): void {
-    if (!this.ctx || this.beamOsc) return;
+    if (!this.ctx || this.beamNodes.length) return;
     const ctx = this.ctx, t = ctx.currentTime;
-    this.beamOsc = ctx.createOscillator();
-    this.beamOsc.type = 'sawtooth';
-    this.beamOsc.frequency.value = 70;
-    const lfo = ctx.createOscillator();
-    lfo.frequency.value = 13;
-    const lfoGain = ctx.createGain();
-    lfoGain.gain.value = 14;
-    lfo.connect(lfoGain).connect(this.beamOsc.frequency);
-    lfo.start(t);
+
     this.beamGain = ctx.createGain();
     this.beamGain.gain.setValueAtTime(0.0001, t);
-    this.beamGain.gain.exponentialRampToValueAtTime(0.3, t + 0.08);
-    this.beamOsc.connect(this.beamGain).connect(this.master);
-    this.beamOsc.start(t);
-    (this.beamOsc as any)._lfo = lfo;
+    this.beamGain.gain.exponentialRampToValueAtTime(0.34, t + 0.06);
+    this.beamGain.connect(this.master);
+
+    // resonant sweep — the filter is what makes it sing instead of buzz
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.Q.value = 9;
+    filter.frequency.setValueAtTime(320, t);
+    filter.frequency.exponentialRampToValueAtTime(2100, t + 0.14); // ignition
+    filter.connect(this.beamGain);
+    const sweep = ctx.createOscillator();
+    sweep.frequency.value = 5.5;
+    const sweepAmt = ctx.createGain();
+    sweepAmt.gain.value = 520;
+    sweep.connect(sweepAmt).connect(filter.frequency);
+    sweep.start(t);
+    this.beamNodes.push(sweep);
+
+    // bright core, two detuned saws so it has width
+    for (const cents of [-9, 9]) {
+      const o = ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.value = 165;
+      o.detune.value = cents;
+      const g = ctx.createGain();
+      g.gain.value = 0.5;
+      o.connect(g).connect(filter);
+      o.start(t);
+      this.beamNodes.push(o);
+    }
+
+    // sub for weight, straight through so the filter sweep cannot swallow it
+    const sub = ctx.createOscillator();
+    sub.type = 'sine';
+    sub.frequency.value = 55;
+    const subGain = ctx.createGain();
+    subGain.gain.value = 0.5;
+    sub.connect(subGain).connect(this.beamGain);
+    sub.start(t);
+    this.beamNodes.push(sub);
+
+    // the roar: looping noise through a narrow band that rides with the sweep
+    const noise = ctx.createBufferSource();
+    noise.buffer = this.noiseBuffer(2);
+    noise.loop = true;
+    const band = ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.frequency.value = 2400;
+    band.Q.value = 1.4;
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.value = 0.22;
+    noise.connect(band).connect(noiseGain).connect(this.beamGain);
+    noise.start(t);
+    this.beamNodes.push(noise);
+
+    // a fast flutter on the noise only — the crackle at the edge of the beam
+    const flutter = ctx.createOscillator();
+    flutter.frequency.value = 37;
+    const flutterAmt = ctx.createGain();
+    flutterAmt.gain.value = 0.09;
+    flutter.connect(flutterAmt).connect(noiseGain.gain);
+    flutter.start(t);
+    this.beamNodes.push(flutter);
   }
 
   // ------------------------------------------------------------- music
@@ -540,14 +602,13 @@ class Sfx {
   }
 
   beamOff(): void {
-    if (!this.ctx || !this.beamOsc) return;
+    if (!this.ctx || !this.beamNodes.length) return;
     const t = this.ctx.currentTime;
     this.beamGain!.gain.cancelScheduledValues(t);
     this.beamGain!.gain.setValueAtTime(this.beamGain!.gain.value, t);
-    this.beamGain!.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
-    this.beamOsc.stop(t + 0.15);
-    ((this.beamOsc as any)._lfo as OscillatorNode).stop(t + 0.15);
-    this.beamOsc = null;
+    this.beamGain!.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
+    for (const n of this.beamNodes) n.stop(t + 0.18);
+    this.beamNodes = [];
     this.beamGain = null;
   }
 }
