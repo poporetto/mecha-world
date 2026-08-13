@@ -12,6 +12,8 @@ export interface TouchCallbacks {
   onAttackDown: () => void;
   onAttackUp: () => void;
   onNova: () => void;
+  /** Swipe up on ATTACK: advance to the next earned weapon. */
+  onCycleWeapon: () => void;
   onDash: () => void;
   onLook: (dx: number, dy: number) => void;
 }
@@ -81,6 +83,11 @@ export class TouchControls {
         .tc-btn.held { background:linear-gradient(180deg,#2ea9b0,#1d7f8a); border-color:#7ff5ef;
                        color:#f2ffff; box-shadow:0 0 22px #39e6e077; }
         .tc-btn.hidden { visibility:hidden; }
+        .tc-btn.cycling { border-color:#ffd06a; color:#fff3d0; box-shadow:0 0 18px #ffd06a66; }
+        /* the swipe hint only matters once there is more than one weapon */
+        .tc-btn.multi::after { content:'▲'; position:absolute; top:2px; right:5px;
+                               font-size:7px; color:#7fdcff99; }
+        #tc-attack { position:relative; }
         /* Landscape phones are short. The portrait pad would take well over
            half the height, so it flattens into two rows and the abilities
            tuck in beside the movement keys instead of above them. */
@@ -151,7 +158,9 @@ export class TouchControls {
 
   // weapons are earned from bosses and equipped straight away; nothing to
   // reveal on the pad itself — kept so game.ts can call it uniformly
-  unlockWeapon(_w: WeaponId): void {}
+  unlockWeapon(_w: WeaponId): void {
+    this.layer.querySelector('#tc-attack')?.classList.add('multi');
+  }
 
   unlockDash(): void {
     this.layer.querySelector('#tc-dash')?.classList.remove('hidden');
@@ -197,17 +206,38 @@ export class TouchControls {
     };
     tap('tc-nova', () => this.cb.onNova());
     tap('tc-dash', () => this.cb.onDash());
-    // attack button: press fires / starts charge, release ends charge
+    // Attack button: press fires / starts charge, release ends charge — and
+    // an upward SWIPE off it cycles the equipped weapon. With the radial gone
+    // this is how the earned weapons stay reachable on a phone, and putting
+    // the gesture on the button whose weapon it changes makes the mapping
+    // obvious. A swipe cancels the shot it started, so a cycle never fires.
     const atk = this.layer.querySelector('#tc-attack')! as HTMLElement;
+    let atkY = 0;
+    let swiped = false;
     atk.addEventListener('touchstart', (e) => {
       e.preventDefault(); e.stopPropagation();
+      atkY = e.changedTouches[0]?.clientY ?? 0;
+      swiped = false;
       atk.classList.add('held');
       this.cb.onAttackDown();
+    });
+    atk.addEventListener('touchmove', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      if (swiped) return;
+      const y = e.changedTouches[0]?.clientY ?? atkY;
+      if (atkY - y > 28) {
+        swiped = true;
+        this.cb.onAttackUp();   // cancel whatever the press began
+        this.cb.onCycleWeapon();
+        atk.classList.remove('held');
+        atk.classList.add('cycling');
+        setTimeout(() => atk.classList.remove('cycling'), 200);
+      }
     });
     const atkUp = (e: Event) => {
       e.preventDefault(); e.stopPropagation();
       atk.classList.remove('held');
-      this.cb.onAttackUp();
+      if (!swiped) this.cb.onAttackUp();
     };
     atk.addEventListener('touchend', atkUp);
     atk.addEventListener('touchcancel', atkUp);

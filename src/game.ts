@@ -69,7 +69,11 @@ const WING_ATTACK_DAMAGE = 0.08;
 // Bosses are endurance encounters rather than oversized regular enemies.
 // This is deliberately separate from drone/building damage so crowd-control
 // weapons remain satisfying while single-target boss burst stays controlled.
-const PLAYER_BOSS_DAMAGE = 0.62;
+// Dropped from 0.62: with the campaign HP curve and the punish windows the
+// fights were still ending well before their third phase had anything to say.
+// Only single-target boss damage moves — crowd control against drones and the
+// city stays where it was, so the suit does not feel weaker to use.
+const PLAYER_BOSS_DAMAGE = 0.40;
 /** What a kaiju's palette drains toward after a long stay in the seam. */
 const _riftTint = new THREE.Color(0x4a3060);
 
@@ -297,6 +301,7 @@ export class Game {
         onAttackDown: () => this.attackDown(),
         onAttackUp: () => this.attackUp(),
         onNova: () => this.novaPulse(),
+        onCycleWeapon: () => this.cycleWeapon(),
         onDash: () => this.dash(),
         onLook: (dx, dy) => {
           this.camYaw -= dx * 0.006 * this.settings.sensitivity;
@@ -701,6 +706,20 @@ export class Game {
   }
 
   // ---- weapon selection + unified attack button (A / on-screen ATTACK) ----
+
+  /**
+   * Advance to the next earned weapon, wrapping. With the radial wheel gone
+   * this is the only way to change weapon on a phone (swipe up on ATTACK);
+   * on a keyboard 1-6 still selects directly.
+   */
+  private cycleWeapon(): void {
+    const owned = WEAPONS.filter((w) => this.unlockedWeapons.has(w.id));
+    if (owned.length < 2) return;
+    const at = owned.findIndex((w) => w.id === this.selectedWeapon);
+    const next = owned[(at + 1) % owned.length];
+    this.selectWeapon(next.id);
+    this.hud.toast(next.label, 'Weapon equipped', 1.4);
+  }
 
   selectWeapon(w: WeaponId): void {
     if (!this.unlockedWeapons.has(w)) return; // not earned yet

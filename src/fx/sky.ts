@@ -170,7 +170,7 @@ export class Sky {
   }
   /** Extra brightness on the distant rift while a breach is running. */
   private riftFlare = 0;
-  private moon: THREE.Mesh;
+  private moon: THREE.Group;
   private clouds: Cloud[] = [];
   private birds: Bird[] = [];
   private birdMat = new THREE.MeshLambertMaterial({ color: 0x2c3038 });
@@ -372,10 +372,47 @@ export class Sky {
     this.stars.renderOrder = -2; // behind everything, including the clouds
     this.group.add(this.stars);
 
-    this.moon = new THREE.Mesh(
-      new THREE.CircleGeometry(16, 24),
-      new THREE.MeshBasicMaterial({ color: 0xe8ecff, fog: false, transparent: true, opacity: 0.9 })
+    // The moon was a flat 16-unit disc — present, but so plain and so small
+    // that it read as a smudge. It is now a proper body: a bigger face, a
+    // scatter of darker maria, a bitten terminator so it is not a perfect
+    // circle, and a halo like the sun's so it has presence in a dark sky.
+    this.moon = new THREE.Group();
+    const MOON_R = 27;
+    const face = new THREE.Mesh(
+      new THREE.CircleGeometry(MOON_R, 26),
+      new THREE.MeshBasicMaterial({ color: 0xf2f4ff, fog: false, transparent: true, opacity: 0.96 })
     );
+    this.moon.add(face);
+    // maria: flat darker patches, square because everything here is voxels
+    const maria = [
+      [-8, 6, 9], [5, 10, 6], [10, -4, 7], [-4, -9, 5], [-12, -3, 4], [2, -2, 4],
+    ];
+    for (const [mx, my, mr] of maria) {
+      const patch = new THREE.Mesh(
+        new THREE.PlaneGeometry(mr * 1.6, mr * 1.5),
+        new THREE.MeshBasicMaterial({
+          color: 0xd2d7ee, fog: false, transparent: true, opacity: 0.75, depthWrite: false,
+        })
+      );
+      patch.position.set(mx, my, 0.4);
+      patch.rotation.z = (mx + my) * 0.11;
+      this.moon.add(patch);
+    }
+    // a shallow bite out of one limb so the disc is not machine-perfect
+    const bite = new THREE.Mesh(
+      new THREE.CircleGeometry(MOON_R * 0.55, 18),
+      new THREE.MeshBasicMaterial({ color: 0xd2d7ee, fog: false, transparent: true, opacity: 0.35, depthWrite: false })
+    );
+    bite.position.set(MOON_R * 0.72, MOON_R * 0.38, 0.3);
+    this.moon.add(bite);
+    const moonHalo = new THREE.Mesh(
+      new THREE.CircleGeometry(MOON_R * 2.2, 26),
+      new THREE.MeshBasicMaterial({
+        color: 0xcdd8ff, fog: false, transparent: true, opacity: 0.16, depthWrite: false,
+      })
+    );
+    moonHalo.position.z = -0.6;
+    this.moon.add(moonHalo);
     this.group.add(this.moon);
 
     // Same material as the Fuji banks: unlit and pale. A lit material makes
