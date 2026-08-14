@@ -180,7 +180,6 @@ export class Game {
   /** 0 in the clean city, 1 at the seam. Recomputed each frame from position. */
   private corruption = 0;
   /** Act II: where the line currently is. Null for the whole of Act I. */
-  private frontLine: THREE.Vector3 | null = null;
   private notedReiPattern = false;
   /** Which of the Revenant's mid-fight beats have already played. */
   private revenantBeats = new Set<string>();
@@ -1907,7 +1906,6 @@ export class Game {
     this.drones.target = this.droneBase;
     this.warnedContact = false;
     this.lastSpawnFar = false;
-    this.frontLine = null;
     this.notedReiPattern = false;
     this.revenantBeats.clear();
     this.unlockedWeapons = new Set<WeaponId>(['saber', 'rifle']);
@@ -2150,7 +2148,6 @@ export class Game {
   private advanceLine(adv: { frac: number; name: string }): THREE.Vector3 {
     const front = new THREE.Vector3(RIFT_SITE.x * adv.frac, 0, RIFT_SITE.z * adv.frac);
     front.y = this.world.groundHeight(front.x, front.z, 90);
-    this.frontLine = front;
 
     // shelter sits a little way back down the road you came in on
     const back = Math.max(0, adv.frac - 0.11);

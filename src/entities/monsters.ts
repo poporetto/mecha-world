@@ -951,11 +951,11 @@ export class IronColossus extends Monster {
   private sinceHit = 0;
   /** Fraction of incoming damage that gets through the plate, by phase. */
   private get armor(): number {
-    return this.phase === 3 ? 0.78 : this.phase === 2 ? 0.5 : 0.3;
+    return this.phase === 3 ? 0.85 : this.phase === 2 ? 0.68 : 0.5;
   }
 
   constructor(x: number, z: number) {
-    super(430);
+    super(340);
     const IRON = 0x8d939e;
     const RUST = 0xb87e5e;
     const DARK = 0x3c4048;
@@ -1046,8 +1046,14 @@ export class IronColossus extends Monster {
     // never out-heal real pressure, fast enough that backing off to plink at
     // it from range gives the ground back.
     this.sinceHit += dt;
-    if (this.sinceHit > 3.5 && this.hp < this.maxHp) {
-      this.hp = Math.min(this.maxHp, this.hp + dt * 11);
+    // It welds itself shut when nobody is hurting it, but only back up to the
+    // gear it is currently in. At 11hp/s uncapped this out-healed a sustained
+    // saber chain outright — that is not attrition, that is a fight you cannot
+    // finish. Ground already taken never has to be taken twice: a phase
+    // threshold crossed is a threshold kept.
+    const ceiling = this.maxHp * (this.phase === 3 ? 0.25 : this.phase === 2 ? 0.6 : 1);
+    if (this.sinceHit > 3.5 && this.hp < ceiling) {
+      this.hp = Math.min(ceiling, this.hp + dt * 6);
     }
 
     const dx = ctx.playerPos.x - this.group.position.x;

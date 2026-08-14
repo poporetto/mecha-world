@@ -13,7 +13,6 @@ class Sfx {
   private musicGain: GainNode | null = null;
   /** Pads and melody go through this: gentle lowpass, then reverb + dry. */
   private musicVoice: AudioNode | null = null;
-  private musicWet: GainNode | null = null;
   private musicTimer: number | null = null;
   /** Panners reused per voice role so the mix has width without churn. */
   private panL: StereoPannerNode | null = null;
@@ -358,7 +357,6 @@ class Sfx {
     tone.connect(dry).connect(this.musicGain);
     tone.connect(verb).connect(wet).connect(this.musicGain);
     this.musicVoice = tone; // entry point for every musical (non-drum) voice
-    this.musicWet = wet;
     this.panL = ctx.createStereoPanner();
     this.panL.pan.value = -0.35;
     this.panL.connect(tone);

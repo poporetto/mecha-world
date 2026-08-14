@@ -67,7 +67,6 @@ export class Hud {
   private vignette!: HTMLElement;
   private chips: Record<string, HTMLElement> = {};
   private toastTimer = 0;
-  private onSelectWeapon: (w: WeaponId) => void = () => {};
 
   constructor() {
     this.root = document.getElementById('hud')!;
@@ -550,7 +549,7 @@ export class Hud {
           <b>L</b> or <b>middle-click</b> lock on &nbsp; <b>ESC</b> pause
         </div>
       </div>
-      <div class="hint">ARROWS / WASD move · SHIFT boost · SPACE rise · X descend · C dash<br/>A / click attack · F Crimson Breaker · L or middle-click lock-on</div>
+      <div class="hint">ARROWS / WASD move · SHIFT run · SPACE rise · X descend · C dash<br/>A / click attack · E ranged · Q nova · 1-6 weapon · L lock-on</div>
     `;
     this.hpFill = document.getElementById('hpfill')!;
     this.bossWrap = document.getElementById('boss')!;
