@@ -166,6 +166,8 @@ export class Game {
   private tutorial: Tutorial | null = null;
   private tutWrecked = 0;
   private tutMarker: THREE.Mesh | null = null;
+  /** Which tutorial step the HUD is currently showing. */
+  private tutPainted: string | null = null;
   private monsterBarkT = 0;   // gap between remarks about the current kaiju
   private monsterBarkFor = ''; // which kaiju those remarks are about
   private memoryIdx = 0;       // next backstory fragment to surface
@@ -2212,6 +2214,7 @@ export class Game {
       return;
     }
     this.tutorial = new Tutorial();
+    this.tutPainted = null;
     // an empty sky for the lesson; the swarm resumes with the boss timer
     this.drones.target = 0;
     this.tutWrecked = 0;
@@ -2222,6 +2225,7 @@ export class Game {
   private endTutorial(): void {
     if (!this.tutorial) return;
     this.tutorial = null;
+    this.tutPainted = null;
     this.clearTutorialMarker();
     this.drones.target = this.droneBase;
   }
@@ -2240,24 +2244,36 @@ export class Game {
    * to guess which of a hundred is the condemned one.
    */
   private markCondemnedBuilding(): void {
-    let best: { x: number; z: number; h: number } | null = null;
+    // Nearest modest building, not the tallest one in range. Picking by height
+    // chose a skyscraper and put a column of light 78 units up, well above the
+    // eyeline of a pilot standing on the street being told to go hit it.
+    let best: { x: number; z: number; h: number; d: number } | null = null;
     for (let i = 0; i < 40; i++) {
       const a2 = (i / 40) * Math.PI * 2;
       for (const d of [26, 40, 56]) {
         const x = Math.round(this.player.pos.x + Math.sin(a2) * d);
         const z = Math.round(this.player.pos.z + Math.cos(a2) * d);
         const h = this.world.groundHeight(x, z);
-        if (h >= 8 && (!best || h > best.h)) best = { x, z, h };
+        // low enough to cut down, tall enough to be worth pointing at
+        if (h >= 8 && h <= 26 && (!best || d < best.d)) best = { x, z, h, d };
       }
     }
     if (!best) return;
+    // The column stands ON the ground and clears the roof, so it reads as a
+    // beam over that building from anywhere, including right next to it.
+    const tall = best.h + 14;
+    // Additive, so it reads as a shaft of light rather than a grey box, and
+    // bright enough to survive a daylight city. At the old 0.05-0.17 alpha it
+    // was invisible against pale concrete — the objective said "the marked
+    // block" and nothing on screen was marked.
     const mesh = new THREE.Mesh(
-      new THREE.BoxGeometry(9, 46, 9),
+      new THREE.BoxGeometry(9, tall, 9),
       new THREE.MeshBasicMaterial({
-        color: 0xffc44f, transparent: true, opacity: 0.16, depthWrite: false,
+        color: 0xffc44f, transparent: true, opacity: 0.34, depthWrite: false,
+        blending: THREE.AdditiveBlending,
       })
     );
-    mesh.position.set(best.x + 0.5, best.h + 22, best.z + 0.5);
+    mesh.position.set(best.x + 0.5, tall / 2, best.z + 0.5);
     this.scene.add(mesh);
     this.tutMarker = mesh;
   }
@@ -2267,7 +2283,6 @@ export class Game {
     if (!t) return;
 
     const deck = this.world.groundHeight(this.player.pos.x, this.player.pos.z);
-    const wasStep = t.step?.id;
     t.update(dt, {
       altitude: this.player.pos.y - deck,
       wrecked: this.tutWrecked,
@@ -2279,8 +2294,14 @@ export class Game {
     }
     if (t.pending && !this.hud.cardOpen) this.hud.say(t.pending);
 
+    // Track what has actually been PAINTED rather than diffing against the
+    // step before update(). The first step is already current before the very
+    // first update runs, so a before/after comparison never fired for it —
+    // step one got no objective line and no marker over its target building,
+    // which is most of the tutorial's instruction.
     const step = t.step;
-    if (step && step.id !== wasStep) {
+    if (step && step.id !== this.tutPainted) {
+      this.tutPainted = step.id;
       this.hud.setObjective(step.objective);
       this.clearTutorialMarker();
       if (step.id === 'strike') this.markCondemnedBuilding();
@@ -2288,7 +2309,7 @@ export class Game {
     if (this.tutMarker) {
       // slow pulse so it reads as a marker and not as scenery
       const m = this.tutMarker.material as THREE.MeshBasicMaterial;
-      m.opacity = 0.11 + Math.sin(this.time * 2.4) * 0.06;
+      m.opacity = 0.34 + Math.sin(this.time * 2.4) * 0.12;
     }
     if (t.complete) {
       this.endTutorial();

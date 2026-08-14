@@ -463,7 +463,6 @@ export class Hud {
       <div class="chips">
         <div class="chip" id="chip-weapon"><b>A</b> SABER · <b>E</b> RIFLE · <b>1-6</b> to switch</div>
         <div class="chip" id="chip-boots"><b>SPACE (hold)</b> ROCKET BOOTS</div>
-        <div class="chip locked" id="chip-beam"><b>E</b> BEAM — ???</div>
         <div class="chip locked" id="chip-nova"><b>Q</b> NOVA — ???</div>
         <div class="chip locked" id="chip-blades">CRIMSON EDGE — ???</div>
         <div class="chip" id="chip-power" style="display:none"></div>
@@ -558,7 +557,6 @@ export class Hud {
     this.toastEl = document.getElementById('toast')!;
     this.vignette = document.getElementById('vig')!;
     this.chips = {
-      beam: document.getElementById('chip-beam')!,
       boots: document.getElementById('chip-boots')!,
       nova: document.getElementById('chip-nova')!,
       blades: document.getElementById('chip-blades')!,
@@ -599,7 +597,6 @@ export class Hud {
   resetUnlocks(): void {
     document.getElementById('dash-action')!.classList.remove('ready');
     const labels: Record<string, string> = {
-      beam: '<b>E</b> BEAM — ???',
       nova: '<b>Q</b> NOVA — ???',
       blades: 'CRIMSON EDGE — ???',
     };
@@ -1099,7 +1096,7 @@ export class Hud {
       ? `<b>D-PAD / LEFT SIDE</b> move &nbsp; <b>RIGHT SIDE</b> drag to look around<br/>
          <b>SABER / RIFLE</b> attack &nbsp; <b>JUMP (hold)</b> fly with rocket boots<br/>`
       : `<b>ARROW KEYS / WASD</b> move &nbsp; <b>SHIFT</b> boost &nbsp; <b>SPACE</b> jump<br/>
-         <b>A / LEFT CLICK</b> attack &nbsp; <b>R (hold)</b> charge the rifle<br/>`;
+         <b>A / LEFT CLICK</b> attack &nbsp; <b>E (hold)</b> charge the rifle<br/>`;
     el.innerHTML = `
       <h1>MECHA CITY</h1>
       <h2>NEO TOKYO · TERRA-ARMOR DEPLOYMENT</h2>
