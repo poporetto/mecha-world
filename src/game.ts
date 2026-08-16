@@ -1702,7 +1702,12 @@ export class Game {
     // Only once the fighting has actually stopped, so it never lands mid-brawl.
     if (this.idleChatterT <= 0 && !this.monster && this.drones.count === 0) {
       this.idleChatterT = 45;
-      if (this.ally.active && this.ayaHinataIdx < AYA_HINATA.length
+      // Most AYA_HINATA scenes are just the two of them, but one has a
+      // Kotetsu line — and he joins a full chapter after she does, so a scene
+      // is only eligible once everyone speaking in it has actually arrived.
+      const nextScene = this.ayaHinataIdx < AYA_HINATA.length ? AYA_HINATA[this.ayaHinataIdx] : null;
+      const sceneReady = !!nextScene && nextScene.every((l) => this.hasJoined(l.who));
+      if (this.ally.active && sceneReady
           && this.memoryIdx % 2 === 1 && !this.hud.busy && !this.hud.cardOpen) {
         this.hud.say(AYA_HINATA[this.ayaHinataIdx++]);
         this.barkT = 20;
