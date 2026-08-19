@@ -209,6 +209,12 @@ export class Game {
   private bossIntroT = 0;
   private readonly bossIntroDuration = 3;
   private lockOn = false; // lock-on targets the boss
+  // Camera state is intentionally separate from the player transform. A
+  // lightly sprung chase camera makes a 30-ton machine feel weighty while
+  // still snapping inward quickly enough to stay out of buildings.
+  private cameraPivot = new THREE.Vector3();
+  private cameraChase = new THREE.Vector3();
+  private cameraReady = false;
   private dashT = 0; // dash cooldown
   private dashFxT = 0;
   private evadeT = 0;
@@ -221,6 +227,10 @@ export class Game {
   private bossTelegraph = new THREE.Mesh(
     new THREE.RingGeometry(5.5, 7.3, 32),
     new THREE.MeshBasicMaterial({ color: 0xff5a35, transparent: true, opacity: 0.55, depthWrite: false, side: THREE.DoubleSide })
+  );
+  private bossTelegraphCore = new THREE.Mesh(
+    new THREE.RingGeometry(2.1, 2.75, 32),
+    new THREE.MeshBasicMaterial({ color: 0xffb04a, transparent: true, opacity: 0.52, depthWrite: false, side: THREE.DoubleSide })
   );
   private evadeRewarded = false;
   private comboWindow = 0; // time left to chain the next saber hit
@@ -286,6 +296,9 @@ export class Game {
     this.bossTelegraph.rotation.x = -Math.PI / 2;
     this.bossTelegraph.visible = false;
     this.scene.add(this.bossTelegraph);
+    this.bossTelegraphCore.rotation.x = -Math.PI / 2;
+    this.bossTelegraphCore.visible = false;
+    this.scene.add(this.bossTelegraphCore);
 
 
     // beam (unlockable): a long emissive box scaled to hit distance
@@ -1944,6 +1957,7 @@ export class Game {
     this.rollTarget = 0;
     this.bossIntroT = 0;
     this.shake = 0;
+    this.cameraReady = false;
 
     this.barkT = 0;
     this.lastBark = '';
@@ -3000,13 +3014,22 @@ export class Game {
     // information without filling the HUD with another warning panel.
     if (this.monster && !this.monster.dying && this.monster.threatening) {
       this.bossTelegraph.visible = true;
+      this.bossTelegraphCore.visible = true;
       const gy = this.world.groundHeight(this.player.pos.x, this.player.pos.z, 60);
       this.bossTelegraph.position.set(this.player.pos.x, gy + 0.18, this.player.pos.z);
+      this.bossTelegraphCore.position.set(this.player.pos.x, gy + 0.2, this.player.pos.z);
       const pulse = 1 + Math.sin(this.time * 18) * 0.12;
       this.bossTelegraph.scale.setScalar(pulse);
+      // Counter-rotate and contract the inner marker so the warning reads as
+      // an imminent impact rather than a static selection circle.
+      this.bossTelegraph.rotation.z += dt * 1.9;
+      this.bossTelegraphCore.rotation.z -= dt * 3.2;
+      this.bossTelegraphCore.scale.setScalar(1.35 - Math.sin(this.time * 18) * 0.2);
       (this.bossTelegraph.material as THREE.MeshBasicMaterial).opacity = 0.42 + Math.sin(this.time * 18) * 0.18;
+      (this.bossTelegraphCore.material as THREE.MeshBasicMaterial).opacity = 0.46 + Math.sin(this.time * 22) * 0.16;
     } else {
       this.bossTelegraph.visible = false;
+      this.bossTelegraphCore.visible = false;
     }
     // shelters: only kaiju hurt them, and losing one ends the run
     const dronePos = this.drones.group.children.map((d) => d.position);
@@ -3097,7 +3120,7 @@ export class Game {
     this.hud.update(dt);
     this.updateSupportArrivals();
 
-    this.updateCamera();
+    this.updateCamera(rawDt);
     this.updateTargetLock();
     this.renderer.render(this.scene, this.camera);
     if (frameStart) this.samplePerf(performance.now() - frameStart, rawDt);
@@ -3245,7 +3268,7 @@ export class Game {
     }
   }
 
-  private updateCamera(): void {
+  private updateCamera(rawDt: number): void {
     const pivot = this.player.pos.clone();
     pivot.y += 9.9;
     const speed = Math.hypot(this.player.vel.x, this.player.vel.z);
@@ -3258,6 +3281,16 @@ export class Game {
       _v.y += this.monster.centerY;
       pivot.lerp(_v, cinematicBlend);
     }
+    // When locked on, bias toward the space between Terra-Armor and the boss.
+    // This keeps both silhouettes readable without stealing yaw control from
+    // the player, and fades away naturally for distant targets.
+    if (cinematicBlend < 0.01 && this.lockOn && this.monster && !this.monster.dying) {
+      _v.copy(this.monster.group.position);
+      _v.y += this.monster.centerY;
+      const separation = _v.distanceTo(this.player.pos);
+      const combatBlend = THREE.MathUtils.clamp((155 - separation) / 430, 0, 0.27);
+      pivot.lerp(_v, combatBlend);
+    }
     const dist = 28
       + Math.min(5, speed * 0.18)
       + dashPull * 4.5
@@ -3268,7 +3301,7 @@ export class Game {
       + dashPull * 3
       + cinematicBlend * 5
       - Math.min(5, this.impactZoom * 3.4);
-    this.camera.fov += (targetFov - this.camera.fov) * 0.16;
+    this.camera.fov += (targetFov - this.camera.fov) * (1 - Math.exp(-rawDt * 10));
     this.camera.updateProjectionMatrix();
     const dir = new THREE.Vector3(
       Math.sin(this.camYaw) * Math.cos(this.camPitch),
@@ -3278,7 +3311,20 @@ export class Game {
     // keep the camera out of buildings
     const hit = this.world.raycast(pivot.x, pivot.y, pivot.z, dir.x, dir.y, dir.z, dist);
     const d = hit ? Math.max(3.5, hit.dist - 0.8) : dist;
-    this.camera.position.copy(pivot).addScaledVector(dir, d);
+    const desiredCamera = pivot.clone().addScaledVector(dir, d);
+    if (!this.cameraReady) {
+      this.cameraPivot.copy(pivot);
+      this.cameraChase.copy(desiredCamera);
+      this.cameraReady = true;
+    } else {
+      const pivotBlend = 1 - Math.exp(-rawDt * 11);
+      // Occlusion gets a much firmer response so smoothing never lets the
+      // viewpoint coast through a wall; open-air motion stays cinematic.
+      const chaseBlend = 1 - Math.exp(-rawDt * (hit ? 24 : 7.5));
+      this.cameraPivot.lerp(pivot, pivotBlend);
+      this.cameraChase.lerp(desiredCamera, chaseBlend);
+    }
+    this.camera.position.copy(this.cameraChase);
     // directional shove first, so a blow reads as a push rather than static
     this.camera.position.add(this.kick);
     // additive shake — jitter the final camera position, never the input yaw/pitch
@@ -3288,7 +3334,7 @@ export class Game {
       this.camera.position.y += (Math.random() - 0.5) * s;
       this.camera.position.z += (Math.random() - 0.5) * s;
     }
-    this.camera.lookAt(pivot);
+    this.camera.lookAt(this.cameraPivot);
     // Roll last: lookAt zeroes it, so banking and impact tilt have to be
     // applied to the already-oriented camera.
     if (Math.abs(this.camRoll) > 0.0005) this.camera.rotateZ(this.camRoll);
