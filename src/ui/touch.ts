@@ -130,7 +130,7 @@ export class TouchControls {
       <div class="tc-btns">
         <div class="tc-btn minor hidden" id="tc-nova">NOVA</div>
         <div class="tc-btn minor" id="tc-beam">RIFLE</div>
-        <div class="tc-btn hidden" id="tc-dash">DASH</div>
+        <div class="tc-btn" id="tc-dash">DODGE</div>
         <div class="tc-btn" id="tc-boost">BOOST</div>
         <div class="tc-btn" id="tc-jump">JUMP</div>
         <div class="tc-btn big" id="tc-attack">ATTACK</div>
@@ -162,8 +162,11 @@ export class TouchControls {
     this.layer.querySelector('#tc-attack')?.classList.add('multi');
   }
 
+  /** Overdrive upgrades the dodge rather than revealing it — it ships visible. */
   unlockDash(): void {
-    this.layer.querySelector('#tc-dash')?.classList.remove('hidden');
+    const b = this.layer.querySelector('#tc-dash');
+    b?.classList.remove('hidden');
+    if (b) b.textContent = 'DODGE+';
   }
 
   setWeapon(w: WeaponId): void {

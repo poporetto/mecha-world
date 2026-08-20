@@ -215,9 +215,13 @@ export class Game {
   private cameraPivot = new THREE.Vector3();
   private cameraChase = new THREE.Vector3();
   private cameraReady = false;
-  private dashT = 0; // dash cooldown
+  private dashT = 0; // dodge cooldown
+  private touchBoostHeld = false; // rising-edge latch for the pad's BOOST
   private dashFxT = 0;
   private evadeT = 0;
+  /** Cooldown for physical boss impacts so an overlapping body cannot launch
+   * the frame again on every simulation tick. */
+  private bossBounceT = 0;
   private counterWindow = 0;
   private crimsonCooldown = 0;
   private redeploying = false;
@@ -467,7 +471,10 @@ export class Game {
       this.touch?.unlockWeapon(w);
     }
     if (this.powerLevel > 1) this.hud.setPowerLevel(this.powerLevel);
-    if (this.player.abilities.beam) this.hud.unlock('beam', '<b>E (hold)</b> PLASMA BEAM'); this.hud.setRangedSlot('PLASMA BEAM');
+    if (this.player.abilities.beam) {
+      this.hud.unlock('beam', '<b>E (hold)</b> PLASMA BEAM');
+      this.hud.setRangedSlot('PLASMA BEAM');
+    }
     if (this.player.abilities.thrust) this.hud.unlock('boots', '<b>SPACE</b> OVERDRIVE THRUSTERS');
     if (this.player.abilities.dash) { this.hud.unlockDash(); this.touch?.unlockDash(); }
     if (this.player.abilities.nova) this.hud.unlock('nova', this.novaLabel());
@@ -493,13 +500,17 @@ export class Game {
       // a story card is modal: swallow input so dismissing it cannot also
       // jump, attack or switch weapons
       if (this.hud.cardOpen) return;
+      // Rising edge: held modifiers repeat their keydown in some browsers, and
+      // the dodge below must fire once per press, not once per frame of a hold.
+      const fresh = !this.keys.has(e.code);
       this.keys.add(e.code);
       // Enter runs the radio on. It is not bound to anything in the fight, so
       // hurrying a conversation can never also make the mecha do something.
       if (e.code === 'Enter' || e.code === 'NumpadEnter') { this.hud.skipLine(); return; }
-      if (e.code === 'KeyF') this.fireLaser();
       if (e.code === 'KeyQ') this.novaPulse();
       if (e.code === 'KeyC' && !e.repeat) this.dash();
+      // Tap boost to dodge, keep holding it to run out of the recovery.
+      if ((e.code === 'ShiftLeft' || e.code === 'ShiftRight') && fresh) this.dash();
       if ((e.code === 'KeyL' || e.code === 'Tab') && !e.repeat) { e.preventDefault(); this.toggleLockOn(); }
       // A: main attack — fires the selected weapon (hold to charge the rifle)
       if (e.code === 'KeyA' && !e.repeat) this.attackDown();
@@ -597,13 +608,24 @@ export class Game {
     this.hud.setLockOn(this.lockOn);
   }
 
-  // Quick evasive dash in the current movement (or facing) direction.
+  /**
+   * The dodge. A burst in the movement (or facing) direction with real
+   * invulnerability frames, so getting out of the way is a thing you DO
+   * rather than something you hope the geometry does for you.
+   *
+   * It lives on the boost key because that is where the hand already is when
+   * something is about to hit you: tapping SHIFT dodges, continuing to hold
+   * it runs. Overdrive (the chapter-two reward) upgrades the same verb rather
+   * than adding a second one — longer i-frames, a shorter cooldown, and the
+   * dash-strike damage bonus — so there is one defensive button all game.
+   */
   private dash(): void {
-    if (this.dashT > 0 || !this.started || !this.player.abilities.dash) return;
-    this.dashT = DASH_DURATION;
-    // A short invulnerability window makes the dash a deliberate defensive
-    // verb. The reward is only granted if an attack actually intersects it.
-    this.evadeT = 0.36;
+    if (this.dashT > 0 || !this.started) return;
+    const upgraded = this.player.abilities.dash;
+    this.dashT = upgraded ? DASH_DURATION * 0.62 : DASH_DURATION;
+    // The invulnerability window is what makes this a defensive verb. The
+    // perfect-evade reward is only granted if an attack actually intersects it.
+    this.evadeT = upgraded ? 0.36 : 0.26;
     this.evadeRewarded = false;
     const right = this.keys.has('KeyD') || this.keys.has('ArrowRight');
     const left = this.keys.has('ArrowLeft');
@@ -1811,7 +1833,10 @@ export class Game {
 
     // Restore the checkpoint loadout in both the model and the HUD without
     // replaying reward toasts.
-    if (abilities.beam) this.hud.unlock('beam', '<b>E (hold)</b> PLASMA BEAM'); this.hud.setRangedSlot('PLASMA BEAM');
+    if (abilities.beam) {
+      this.hud.unlock('beam', '<b>E (hold)</b> PLASMA BEAM');
+      this.hud.setRangedSlot('PLASMA BEAM');
+    }
     if (abilities.thrust) this.hud.unlock('boots', '<b>SPACE</b> OVERDRIVE THRUSTERS');
     if (abilities.dash) { this.hud.unlockDash(); this.touch?.unlockDash(); }
     if (abilities.nova) this.hud.unlock('nova', this.novaLabel());
@@ -1948,6 +1973,7 @@ export class Game {
     this.defenseWingAnnounced = false;
     this.defenseLossCursor = 0;
     this.evadeT = 0;
+    this.bossBounceT = 0;
     this.evadeRewarded = false;
     this.counterWindow = 0;
     this.crimsonCooldown = 0;
@@ -2446,6 +2472,38 @@ export class Game {
     this.sky.showFootCloud(p.x, ankle, p.z, m.hitRadius * 0.9);
   }
 
+  /** Apply a gameplay impulse away from the boss while keeping Terra-Armor
+   * facing the fight. The controller's impulse channel decays naturally, so
+   * the player regains steering instead of losing control for a canned stun. */
+  private bounceFromBoss(m: Monster, force: number, lift: number): void {
+    if (this.bossBounceT > 0 || m.dying) return;
+    const away = this.player.pos.clone().sub(m.group.position).setY(0);
+    if (away.lengthSq() < 0.001) {
+      away.set(Math.sin(this.player.yaw), 0, Math.cos(this.player.yaw));
+    }
+    away.normalize();
+    this.player.knockback(away, force, lift);
+    this.player.model.flinchT = Math.max(this.player.model.flinchT, 0.28);
+    this.addKick(away, Math.min(4.2, force * 0.075));
+    this.shake = Math.max(this.shake, Math.min(1, force * 0.018));
+    this.bossBounceT = 0.48;
+  }
+
+  /** Boss bodies are solid combat obstacles even when their current animation
+   * is not an attack. A loose capsule approximation keeps the player out of
+   * the torso without changing any authored monster hitboxes. */
+  private resolveBossContact(m: Monster): void {
+    if (this.bossBounceT > 0 || this.evadeT > 0 || this.bossIntroT > 0 || m.dying) return;
+    const dx = this.player.pos.x - m.group.position.x;
+    const dz = this.player.pos.z - m.group.position.z;
+    const contactRadius = m.hitRadius * 0.68 + 2.2;
+    if (dx * dx + dz * dz >= contactRadius * contactRadius) return;
+    const relativeY = this.player.pos.y - m.group.position.y;
+    if (relativeY < -2 || relativeY > m.centerY * 1.35) return;
+    this.bounceFromBoss(m, 34 + Math.min(18, m.hitRadius * 0.65), 8.5);
+    sfx.thud();
+  }
+
   private updateBosses(dt: number): void {
     if (!this.monster) this.sky.hideFootCloud();
     if (this.monster) {
@@ -2468,6 +2526,7 @@ export class Game {
       // proportional to the attacks they precede.
       this.monster.update(dt * this.diff.tempo, this.time, ctx);
       this.plowBoss(this.monster);
+      this.resolveBossContact(this.monster);
       this.veilBossFeet(this.monster);
       this.hud.setBossHP(this.monster.hp / this.monster.maxHp, this.monster.phase, this.monster.vulnerable);
       if (this.monster.phaseAnnounce) this.announcePhase(this.monster.phaseAnnounce);
@@ -2804,8 +2863,19 @@ export class Game {
     this.hud.damageFlash();
     // knocked back from whatever hit you: the camera shoves away from the
     // source, so a hit off-screen still tells you which way to look
-    const src = this.monster && !this.monster.dying ? this.monster.group.position : null;
-    if (src) this.addKick(this.player.pos.clone().sub(src), Math.min(3.4, 0.9 + amount * 0.09));
+    const activeBoss = this.monster && !this.monster.dying ? this.monster : null;
+    if (activeBoss) {
+      const away = this.player.pos.clone().sub(activeBoss.group.position);
+      this.addKick(away, Math.min(3.4, 0.9 + amount * 0.09));
+      // Small attacks shove; heavy slams visibly launch. A cooldown inside the
+      // helper keeps damage-over-time breath and flood volumes from pinballing
+      // the player while they remain in contact.
+      this.bounceFromBoss(
+        activeBoss,
+        THREE.MathUtils.clamp(20 + amount * 1.15, 24, 48),
+        THREE.MathUtils.clamp(4.5 + amount * 0.22, 5, 10),
+      );
+    }
     this.shake = Math.max(this.shake, Math.min(0.9, 0.25 + amount * 0.022));
     this.hitStop = Math.max(this.hitStop, Math.min(0.05, amount * 0.0022));
     sfx.thud();
@@ -2862,6 +2932,7 @@ export class Game {
     if (this.bossIntroT > 0) this.bossIntroT = Math.max(0, this.bossIntroT - rawDt);
     this.impactZoom = Math.max(0, this.impactZoom - rawDt * 4.2);
     this.monsterSmokeT = Math.max(0, this.monsterSmokeT - rawDt);
+    this.bossBounceT = Math.max(0, this.bossBounceT - rawDt);
     this.dashCameraT = Math.max(0, this.dashCameraT - rawDt);
     this.player.invulnT = Math.max(0, this.player.invulnT - rawDt);
     const dt = this.hitStop > 0 ? 0
@@ -2926,6 +2997,10 @@ export class Game {
         mx += this.touch.moveX;
         mz += this.touch.moveZ;
         jump = jump || this.touch.jump;
+        // Same verb as the keyboard: the rising edge of BOOST is a dodge,
+        // holding it through the recovery is a run.
+        if (this.touch.boost && !this.touchBoostHeld) this.dash();
+        this.touchBoostHeld = this.touch.boost;
         boost = boost || this.touch.boost;
       }
       // riding a plane: carry the mecha along with the deck before it moves

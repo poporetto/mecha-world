@@ -45,6 +45,11 @@ export interface GameSettings {
 /** Characters a degraded transmission resolves through before it settles. */
 const STATIC = '▓▒░#%&/\\|=+*<>';
 
+// Vite serves the production build from the repository subfolder on GitHub
+// Pages. Root-absolute `/...` URLs silently point at github.io itself, which
+// made the title artwork and every portrait 404 after deployment.
+const ASSET_BASE = './';
+
 export class Hud {
   // --- radio traffic -------------------------------------------------------
   private commsQueue: { who: string; text: string }[] = [];
@@ -105,8 +110,11 @@ export class Hud {
                      animation:openPulse .5s ease-in-out infinite alternate; }
         .boss.open .boss-open { display:block; }
         @keyframes openPulse { from { opacity:.6; } to { opacity:1; } }
+        /* Leave room for the control hint bottom-right (250px + its 24px
+           margin, plus a gap). At 62vw the chip row reached under the hint on
+           anything narrower than about 1000px and the two overlapped. */
         .chips { position:absolute; left:24px; bottom:18px; display:flex; gap:6px; flex-wrap:wrap;
-                 max-width:min(62vw, 760px); }
+                 max-width:min(calc(100vw - 320px), 760px); }
         .chip { padding:6px 10px; border-radius:2px; font-size:10px; letter-spacing:1.2px; color:#eaf6ff;
                 background:linear-gradient(110deg,#081625e8,#081625a8); border:1px solid #537b9a88;
                 border-left:2px solid #7fdcff; text-shadow:0 1px 2px #000; box-shadow:0 5px 16px #0005; }
@@ -178,7 +186,7 @@ export class Hud {
         }
         .start { position:absolute; inset:0; background:linear-gradient(90deg,#02050bea 0%,#07101a99 49%,#02050bd9 100%),
                  linear-gradient(180deg,#02050a66,transparent 40%,#02050ad9),
-                 url('/title-screen.png') center/cover no-repeat; display:flex; flex-direction:column;
+                 url('${ASSET_BASE}title-screen.png') center/cover no-repeat; display:flex; flex-direction:column;
                  align-items:center; justify-content:center; pointer-events:auto; cursor:pointer; overflow:hidden; }
         .start::before { content:''; position:absolute; inset:18px; border:1px solid #7fdcff25; pointer-events:none;
                          clip-path:polygon(0 0,19% 0,19% 1px,81% 1px,81% 0,100% 0,100% 100%,81% 100%,81% calc(100% - 1px),19% calc(100% - 1px),19% 100%,0 100%); }
@@ -338,7 +346,7 @@ export class Hud {
         .card .body { color:#cfe3f5; font-size:15px; line-height:2; letter-spacing:1px;
                       max-width:640px; }
         .card.epilogue { background:linear-gradient(180deg,#071426ee,#102333e8 58%,#d68b5255),
-                         url('/title-screen.png') center/cover no-repeat; }
+                         url('${ASSET_BASE}title-screen.png') center/cover no-repeat; }
         .card.epilogue .ch { color:#ffd582; }
         .card.epilogue h1 { text-shadow:0 0 30px #ffd58288; }
         .card.epilogue .body { color:#f3eadc; }
@@ -454,7 +462,7 @@ export class Hud {
         /* The radar occupies right:24 top:150 through 318. Both this and the
            debug button were sitting inside that box and drawing over it. They
            now use the gap above it that the old weapon button left behind. */
-        .dash-action { display:none; position:absolute; right:24px; top:74px; width:74px; height:42px;
+        .dash-action { display:block; position:absolute; right:24px; top:74px; width:74px; height:42px;
                        pointer-events:auto; cursor:pointer; z-index:18; border-radius:5px;
                        border:1px solid #58c8ff; color:#eaffff; background:#09233ddd;
                        font-size:10px; letter-spacing:2px; box-shadow:0 0 15px #168cff44; }
@@ -520,7 +528,7 @@ export class Hud {
       </div>
       <div class="cross"></div>
       <button class="debug-btn" id="debug-btn" type="button">DEBUG</button>
-      <button class="dash-action" id="dash-action" type="button"><b>C</b> DASH</button>
+      <button class="dash-action ready" id="dash-action" type="button"><b>SHIFT</b> DODGE</button>
       <div class="debug-panel" id="debug-panel">
         <div class="debug-title">JUMP TO CHAPTER</div>
         <div class="debug-grid" id="debug-grid"></div>
@@ -543,7 +551,7 @@ export class Hud {
       <div class="bossdist" id="bossdist"></div>
       <div class="comms" id="comms">
         <div class="comms-row">
-          <img class="comms-avatar" id="comms-avatar" src="/portraits/aya-command.png" alt="" />
+          <img class="comms-avatar" id="comms-avatar" src="${ASSET_BASE}portraits/aya-command.png" alt="" />
           <div class="comms-copy"><div class="comms-who" id="comms-who"></div>
           <div class="comms-text" id="comms-text"></div></div>
         </div>
@@ -582,12 +590,12 @@ export class Hud {
           </div>
         </div>
         <div class="pkeys">
-          <b>ARROWS / WASD</b> move &nbsp; <b>SHIFT</b> boost &nbsp; <b>SPACE</b> jump / fly &nbsp; <b>C</b> dash<br/>
+          <b>ARROWS / WASD</b> move &nbsp; <b>SHIFT</b> tap dodge / hold run &nbsp; <b>SPACE</b> jump / fly<br/>
           <b>A</b> or <b>click</b> saber &nbsp; <b>E (hold)</b> ranged &nbsp; <b>1-6</b> switch &nbsp; <b>Q</b> nova pulse<br/>
           <b>L</b> or <b>middle-click</b> lock on &nbsp; <b>ESC</b> pause
         </div>
       </div>
-      <div class="hint">ARROWS / WASD move · SHIFT run · SPACE rise · X descend · C dash<br/>A / click attack · E ranged · Q nova · 1-6 weapon · L lock-on</div>
+      <div class="hint">ARROWS / WASD move · SHIFT tap = DODGE, hold = run · SPACE rise · X descend<br/>A / click attack · E ranged · Q nova · 1-6 weapon · L lock-on</div>
     `;
     this.hpFill = document.getElementById('hpfill')!;
     this.bossWrap = document.getElementById('boss')!;
@@ -610,8 +618,11 @@ export class Hud {
     });
   }
 
+  /** Overdrive upgrades the dodge; it was never hidden, so just relabel it. */
   unlockDash(): void {
-    document.getElementById('dash-action')!.classList.add('ready');
+    const b = document.getElementById('dash-action')!;
+    b.classList.add('ready');
+    b.innerHTML = '<b>SHIFT</b> DODGE+';
   }
 
   /** The E slot shows what it currently holds: RIFLE until the beam lands. */
@@ -634,7 +645,7 @@ export class Hud {
 
   /** Re-lock every earned ability and weapon, for a fresh run. */
   resetUnlocks(): void {
-    document.getElementById('dash-action')!.classList.remove('ready');
+    document.getElementById('dash-action')!.innerHTML = '<b>SHIFT</b> DODGE';
     const labels: Record<string, string> = {
       nova: '<b>Q</b> NOVA — ???',
       blades: 'CRIMSON EDGE — ???',
@@ -821,7 +832,7 @@ export class Hud {
       // a missing portrait should collapse the slot, not show a broken image
       avatar.onerror = () => { avatar.style.display = 'none'; };
       avatar.style.display = '';
-      avatar.src = `/portraits/${portrait}.png`;
+      avatar.src = `${ASSET_BASE}portraits/${portrait}.png`;
       avatar.alt = line.who;
       document.getElementById('comms-who')!.textContent = line.who;
       document.getElementById('comms-text')!.textContent = '';

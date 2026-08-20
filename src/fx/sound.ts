@@ -13,6 +13,7 @@ class Sfx {
   private musicGain: GainNode | null = null;
   /** Pads and melody go through this: gentle lowpass, then reverb + dry. */
   private musicVoice: AudioNode | null = null;
+  private musicFilter: BiquadFilterNode | null = null;
   private musicTimer: number | null = null;
   /** Panners reused per voice role so the mix has width without churn. */
   private panL: StereoPannerNode | null = null;
@@ -337,7 +338,16 @@ class Sfx {
     this.musicMode = this.requestedMode = mode;
     this.musicGain = this.ctx.createGain();
     this.musicGain.gain.value = this.musicVolume;
-    this.musicGain.connect(this.ctx.destination);
+    // A gentle mastering stage glues the large boss stack together and keeps
+    // bright stingers from jumping out above effects. This is deliberately
+    // mild compression, not loudness maximisation.
+    const masterComp = this.ctx.createDynamicsCompressor();
+    masterComp.threshold.value = -20;
+    masterComp.knee.value = 16;
+    masterComp.ratio.value = 3;
+    masterComp.attack.value = 0.018;
+    masterComp.release.value = 0.28;
+    this.musicGain.connect(masterComp).connect(this.ctx.destination);
 
     // Every note used to run bare into the output, which is why the score read
     // as a chiptune: raw oscillators with no room around them. Pads and melody
@@ -348,6 +358,7 @@ class Sfx {
     tone.type = 'lowpass';
     tone.frequency.value = 3200;
     tone.Q.value = 0.4;
+    this.musicFilter = tone;
     const dry = ctx.createGain();
     dry.gain.value = 0.78;
     const wet = ctx.createGain();
@@ -453,8 +464,10 @@ class Sfx {
       // Quantize score changes to bar lines: no chopped notes or abrupt tempo
       // jumps, but the new encounter identity arrives within one phrase.
       if (this.musicMode !== this.requestedMode) {
+        const previous = this.musicMode;
         this.musicMode = this.requestedMode;
         this.barIndex = 0;
+        this.scheduleTransition(previous, this.musicMode, this.nextBarTime);
       }
       const activeLen = this.barLength(this.musicMode);
       this.scheduleBar(this.nextBarTime, activeLen);
@@ -511,6 +524,36 @@ class Sfx {
     src.start(t);
   }
 
+  /** A score change gets its own breath and tonal sweep. Without this, a boss
+   * encounter technically changed music on the beat but still felt like an
+   * oscillator preset being swapped. */
+  private scheduleTransition(from: MusicMode, to: MusicMode, t: number): void {
+    const out = this.musicGain!;
+    const target = this.musicVolume * (this.lowHealth ? 0.72 : 1);
+    out.gain.cancelScheduledValues(t);
+    out.gain.setValueAtTime(Math.max(0.0001, target), t);
+    out.gain.exponentialRampToValueAtTime(Math.max(0.0001, target * 0.62), t + 0.12);
+    out.gain.exponentialRampToValueAtTime(Math.max(0.0001, target), t + 0.72);
+    if (this.musicFilter) {
+      const f = this.musicFilter.frequency;
+      f.cancelScheduledValues(t);
+      f.setValueAtTime(from === 'revenant' ? 2100 : 3200, t);
+      f.exponentialRampToValueAtTime(to === 'revenant' ? 1500 : to === 'boss' ? 4200 : 3000, t + 0.58);
+    }
+    const dark = to === 'revenant';
+    const combat = to === 'boss' || dark;
+    if (combat) {
+      const root = dark ? 55 : 73.42;
+      this.note(root, t, 0.72, dark ? 'sawtooth' : 'triangle', 0.1, out, 0.025);
+      this.note(root * (dark ? Math.SQRT2 : 2), t + 0.16, 0.56, 'sine', 0.055, out, 0.035);
+      this.drum(t, 0.16, false, out);
+    } else if (from === 'boss' || from === 'revenant') {
+      // Release the combat tension into a soft fifth rather than cutting it.
+      this.note(110, t, 1.2, 'sine', 0.055, this.musicVoice ?? out, 0.24);
+      this.note(164.81, t + 0.08, 1.15, 'triangle', 0.035, this.musicVoice ?? out, 0.28);
+    }
+  }
+
   private scheduleBar(t: number, barLen: number): void {
     const out = this.musicGain!;
     const mode = this.musicMode;
@@ -537,13 +580,17 @@ class Sfx {
     // octave apart and drops a beat, so the loop stops announcing itself every
     // four bars the way it did when the only cycle was the chord table.
     const phrase = Math.floor(this.barIndex / 4) % 2 === 1;
+    // Sixteen-bar orchestration: the second eight bars thin the pads, lift
+    // the melody and introduce counter-rhythm. Harmony stays recognisable,
+    // but the ear no longer hears the loop seam every few seconds.
+    const development = Math.floor(this.barIndex / 8) % 2 === 1;
 
     // The Revenant loses the warm upper octave and gains detuned saw voices;
     // bosses get brass-like saw reinforcement; intro stays broad and clean.
     for (const f of chord) {
       // pads swell over a third of the bar and ring past its end
       this.note(f, t, barLen * 1.6, dark ? 'sawtooth' : 'triangle',
-        dark ? 0.025 : 0.042, voice, barLen * 0.3);
+        (dark ? 0.025 : 0.042) * (development ? 0.82 : 1), voice, barLen * 0.3);
       this.note(f, t, barLen * 1.6, dark ? 'sawtooth' : 'triangle',
         dark ? 0.018 : 0.03, wide, barLen * 0.34, dark ? 9 : 5);
       if (!dark) {
@@ -567,12 +614,38 @@ class Sfx {
       }
       this.drum(t + barLen * 0.5, 0.07, true, out);
       if (phrase) this.drum(t + barLen * 0.875, 0.05, true, out);
+      if (development) {
+        // Dry sixteenth hats add urgency in the developed phrase without
+        // increasing the low-frequency density that competes with impacts.
+        for (let i = 1; i < 8; i += 2) {
+          this.drum(t + barLen * (i / 8), i === 7 ? 0.045 : 0.028, true, out);
+        }
+        this.note(root * 2, t + barLen * 0.625, barLen * 0.13, 'triangle', 0.036, out, 0.01);
+      }
     } else if (dark) {
       this.drum(t, 0.11, false, out);
       this.drum(t + barLen * 0.75, 0.045, true, out);
+      // Uneven double heartbeat and a sub-tritone make TA-00 feel unstable,
+      // not merely slower than the ordinary boss music.
+      if (this.barIndex % 2 === 1) {
+        this.drum(t + barLen * 0.18, 0.065, false, out);
+        this.note(root * Math.SQRT2, t + barLen * 0.46, barLen * 0.7, 'sine', 0.045, out, 0.12, -8);
+      }
     } else {
       // a soft pulse on the downbeat so exploration has a floor to sit on
       this.drum(t, 0.05, false, out);
+      if (!intro && development) {
+        // Sparse city-light arpeggio; alternate channels so the patrol theme
+        // opens up without becoming busy while the player is navigating.
+        [0, 2, 1].forEach((degree, i) => this.note(
+          chord[degree] * 2,
+          t + barLen * (0.18 + i * 0.22),
+          barLen * 0.18,
+          'sine', 0.024,
+          i % 2 ? (this.panL ?? voice) : (this.panR ?? voice),
+          0.035,
+        ));
+      }
     }
     // Melodic motion: spacious intro, light exploration, frantic boss ostinato,
     // and an intentionally incomplete Revenant pulse that never resolves.
@@ -589,7 +662,9 @@ class Sfx {
     for (let i = 0; i < motif.length; i++) {
       const degree = motif[i];
       if (degree === null) continue; // the rest is the point
-      const octave = combat ? 2 : intro && i === motif.length - 1 ? 4 : phrase ? 4 : 2;
+      const octave = combat ? (development ? 4 : 2)
+        : intro && i === motif.length - 1 ? 4
+        : phrase || development ? 4 : 2;
       const f = chord[degree] * octave;
       const accent = i === 0 ? 1.25 : 1;
       this.note(f, t + (i / motif.length) * barLen, dark ? 0.62 : combat ? 0.26 : 0.44,
