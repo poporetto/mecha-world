@@ -1031,7 +1031,9 @@ export class Game {
       this.monsterBeamMesh = new THREE.Mesh(
         new THREE.BoxGeometry(1, 1, 1),
         new THREE.MeshBasicMaterial({
-          color: 0xff7a3c, transparent: true, opacity: 0.85,
+          // blue: it reads as energy rather than fire, and stays legible
+          // against the orange rubble and flame the fight throws up
+          color: 0x4fc8ff, transparent: true, opacity: 0.85,
           blending: THREE.AdditiveBlending, depthWrite: false,
         })
       );

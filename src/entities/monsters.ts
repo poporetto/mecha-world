@@ -583,8 +583,11 @@ export class Kaiju extends Monster {
     this.heading += dd * Math.min(1, dt * 1.5);
     this.group.rotation.y = this.heading;
 
-    // rooted through a punish window: a committed stomp cannot be walked off
-    if (dist > 4 && !this.vulnerable) {
+    // Rooted through a punish window, and through the beam: a committed stomp
+    // cannot be walked off, and a boss that strafes while firing a sustained
+    // lance gives the pilot nowhere to stand.
+    const beaming = this.beamCharge > 0 || this.beamFire > 0;
+    if (dist > 4 && !this.vulnerable && !beaming) {
       const speed = 4.5 * this.pace;
       this.group.position.x += Math.sin(this.heading) * speed * dt;
       this.group.position.z += Math.cos(this.heading) * speed * dt;
@@ -601,7 +604,7 @@ export class Kaiju extends Monster {
     // stomp: carve the city under and ahead of it
     this.telegraph = this.stompT < 0.5 && this.stompT > 0;
     this.stompT -= dt;
-    if (this.stompT <= 0 && !this.vulnerable) {
+    if (this.stompT <= 0 && !this.vulnerable && !beaming) {
       this.stompT = 1.1 / this.tempo;
       const fwd = new THREE.Vector3(Math.sin(this.heading), 0, Math.cos(this.heading));
       const p = this.group.position.clone().addScaledVector(fwd, 11);
@@ -627,6 +630,18 @@ export class Kaiju extends Monster {
    * and the throat glowing, because a hitscan-ish beam with no warning is not
    * a fight, it is a tax. Firing roots it, and it is wide open afterwards.
    */
+  /** Turn the body toward the pilot at a fixed rate. Returns how far off it
+   *  still is, in radians, so the caller can tell whether it has lined up. */
+  private aimAt(target: THREE.Vector3, dt: number, rate: number): number {
+    const want = Math.atan2(target.x - this.group.position.x, target.z - this.group.position.z);
+    let d = want - this.heading;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    this.heading += Math.max(-rate * dt, Math.min(rate * dt, d));
+    this.group.rotation.y = this.heading;
+    return Math.abs(d);
+  }
+
   private updateMouthBeam(dt: number, ctx: MonsterCtx, _dist: number): void {
     const mouth = new THREE.Vector3(0, 11, 7.4)
       .applyAxisAngle(_UP, this.heading)
@@ -636,8 +651,18 @@ export class Kaiju extends Monster {
     if (this.beamFire > 0) {
       this.beamFire -= dt;
       this.jaw.rotation.x = 0.85;
-      // It tracks, but slowly enough that moving across it is the counterplay
-      const aim = ctx.playerPos.clone();
+      // The beam only ever leaves the mouth, straight ahead. It used to be
+      // aimed at the pilot regardless of which way the head was pointing,
+      // so it could fire sideways or out of the back of the skull. Now the
+      // whole animal has to swing round to bring the muzzle onto you, and
+      // it sweeps while firing — outrunning the turn is the counterplay.
+      this.aimAt(ctx.playerPos, dt, 0.85 * this.pace);
+      const forward = new THREE.Vector3(Math.sin(this.heading), 0, Math.cos(this.heading));
+      // let the muzzle rise and fall toward the pilot's altitude
+      const lift = ctx.playerPos.y - mouth.y;
+      const flat = Math.hypot(ctx.playerPos.x - mouth.x, ctx.playerPos.z - mouth.z);
+      forward.y = Math.max(-0.9, Math.min(1.1, flat > 1 ? lift / flat : 0));
+      const aim = mouth.clone().addScaledVector(forward.normalize(), 200);
       ctx.monsterBeam?.(mouth, aim, 26, dt);
       if (this.beamFire <= 0) {
         this.beamCharge = 0;
@@ -651,6 +676,8 @@ export class Kaiju extends Monster {
     if (this.beamCharge > 0) {
       this.beamCharge -= dt;
       this.telegraph = true;
+      // squares up on you while the throat lights, so the tell is also the aim
+      this.aimAt(ctx.playerPos, dt, 1.7 * this.pace);
       this.jaw.rotation.x = 0.22 + (1 - Math.max(0, this.beamCharge) / 1.1) * 0.6;
       if (this.beamCharge <= 0) this.beamFire = this.phase === 3 ? 1.5 : 1.1;
       return;
