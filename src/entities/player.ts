@@ -191,8 +191,13 @@ export class Player {
   // Evasive burst: a decaying horizontal impulse layered on normal movement.
   dash(dir: THREE.Vector3): void {
     const airborne = !this.grounded && !this.onPlatform;
-    this.dashVel.set(dir.x, 0, dir.z).normalize().multiplyScalar(airborne ? 64 : 52);
-    this.dashTime = this.impulseDuration = DASH_DURATION;
+    // A stock frame can sidestep; an overdriven one can relocate. Before
+    // Missile Maw the dodge is deliberately a short, slow hop that still gets
+    // you out of the way, so the upgrade is felt as a change in kind.
+    const od = this.abilities.thrust;
+    const speed = od ? (airborne ? 70 : 58) : (airborne ? 34 : 29);
+    this.dashVel.set(dir.x, 0, dir.z).normalize().multiplyScalar(speed);
+    this.dashTime = this.impulseDuration = DASH_DURATION * (od ? 1 : 0.62);
     if (this.grounded) this.vel.y = 6;
     else if (airborne) this.vel.y = Math.max(this.vel.y, -3); // air-dodge recovery
     this.yaw = Math.atan2(dir.x, dir.z);

@@ -467,6 +467,7 @@ export class Game {
     this.player.abilities = { ...this.player.abilities, ...d.abilities };
     this.player.model.setCrimsonEdge(this.player.abilities.blades);
     this.player.model.setAegisArmor(this.player.abilities.shield);
+    this.player.model.setOverdrive(this.player.abilities.thrust);
     // Older checkpoints predate the separate dash flag; overdrive was already
     // the second-boss reward, so migrate those saves into the new ability.
     if (this.player.abilities.thrust) this.player.abilities.dash = true;
@@ -512,8 +513,9 @@ export class Game {
       // hurrying a conversation can never also make the mecha do something.
       if (e.code === 'Enter' || e.code === 'NumpadEnter') { this.hud.skipLine(); return; }
       if (e.code === 'KeyQ') this.novaPulse();
-      if (e.code === 'KeyC' && !e.repeat) this.dash();
-      // Tap boost to dodge, keep holding it to run out of the recovery.
+      // One dodge, one key. C and SHIFT used to be two bindings for the same
+      // verb sitting in two places on the HUD; the boost key is where the
+      // hand already is, so that is the one that survived.
       if ((e.code === 'ShiftLeft' || e.code === 'ShiftRight') && fresh) this.dash();
       if ((e.code === 'KeyL' || e.code === 'Tab') && !e.repeat) { e.preventDefault(); this.toggleLockOn(); }
       // A: main attack — fires the selected weapon (hold to charge the rifle)
@@ -625,11 +627,13 @@ export class Game {
    */
   private dash(): void {
     if (this.dashT > 0 || !this.started) return;
-    const upgraded = this.player.abilities.dash;
-    this.dashT = upgraded ? DASH_DURATION * 0.62 : DASH_DURATION;
+    // Overdrive — Missile Maw's reward — is what turns the stock sidestep into
+    // a real evasive burst: a longer window and a much shorter recovery.
+    const upgraded = this.player.abilities.thrust;
+    this.dashT = upgraded ? DASH_DURATION * 0.62 : DASH_DURATION * 1.15;
     // The invulnerability window is what makes this a defensive verb. The
     // perfect-evade reward is only granted if an attack actually intersects it.
-    this.evadeT = upgraded ? 0.36 : 0.26;
+    this.evadeT = upgraded ? 0.36 : 0.22;
     this.evadeRewarded = false;
     const right = this.keys.has('KeyD') || this.keys.has('ArrowRight');
     const left = this.keys.has('ArrowLeft');
@@ -1894,6 +1898,7 @@ export class Game {
       this.hud.setRangedSlot('PLASMA BEAM');
     }
     if (abilities.thrust) this.hud.unlock('boots', '<b>SPACE</b> OVERDRIVE THRUSTERS');
+    this.player.model.setOverdrive(abilities.thrust);
     if (abilities.dash) { this.hud.unlockDash(); this.touch?.unlockDash(); }
     if (abilities.nova) this.hud.unlock('nova', this.novaLabel());
     if (abilities.quake) this.hud.unlock('nova', this.novaLabel());
@@ -2016,6 +2021,7 @@ export class Game {
     };
     this.player.model.setCrimsonEdge(false);
     this.player.model.setAegisArmor(false);
+    this.player.model.setOverdrive(false);
     this.player.respawn();
     this.ridingPlane = null;
     this.slowmo = 0;
@@ -2781,6 +2787,7 @@ export class Game {
     a.beam = a.boots = a.thrust = a.dash = a.nova = a.shield = a.blades = a.quake = true;
     this.player.model.setCrimsonEdge(true);
     this.player.model.setAegisArmor(true);
+    this.player.model.setOverdrive(true);
     this.hud.unlockDash();
     this.touch?.unlockDash();
     this.hud.unlock('beam', '<b>E (hold)</b> PLASMA BEAM'); this.hud.setRangedSlot('PLASMA BEAM');
@@ -2824,10 +2831,11 @@ export class Game {
       case 'thrust':
         this.player.abilities.thrust = true;
         this.player.abilities.dash = true;
+        this.player.model.setOverdrive(true);
         this.hud.unlock('boots', '<b>SPACE</b> OVERDRIVE THRUSTERS');
         this.hud.unlockDash();
         this.touch?.unlockDash();
-        this.hud.toast('OVERDRIVE DASH ONLINE', 'Press C or DASH for a blue-thruster evasive burst', 5);
+        this.hud.toast('OVERDRIVE ONLINE', 'SHIFT dodges further and recovers faster · boost runs hotter', 5);
         break;
       case 'nova':
         this.player.abilities.nova = true;

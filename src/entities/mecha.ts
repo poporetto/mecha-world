@@ -812,6 +812,7 @@ export class MechaModel {
   }
 
   private boostGlow = 0;
+  private overdrive = false;
   private boostLitParts: THREE.Mesh[] = [];
 
   setThrusters(on: boolean): void {
@@ -820,9 +821,25 @@ export class MechaModel {
     this.flying = on;
   }
 
+  /**
+   * Overdrive online. Until Missile Maw goes down the frame is running on its
+   * stock lift jets: the blue thruster bloom and the whole-armour boost heat
+   * are the visible proof of the upgrade, so neither appears before it is
+   * earned. The dodge still exists without them, it is just plainer and slower.
+   */
+  setOverdrive(on: boolean): void {
+    this.overdrive = on;
+    if (!on) {
+      this.dashJetL.visible = false;
+      this.dashJetR.visible = false;
+      this.setBoostGlow(0);
+    }
+  }
+
   setDashThrusters(on: boolean): void {
-    this.dashJetL.visible = on;
-    this.dashJetR.visible = on;
+    const lit = on && this.overdrive;
+    this.dashJetL.visible = lit;
+    this.dashJetR.visible = lit;
   }
 
   /**
@@ -834,6 +851,7 @@ export class MechaModel {
    * rather than as two small jets somewhere below the knees.
    */
   setBoostGlow(v: number): void {
+    if (!this.overdrive) v = 0; // stock thrusters do not glow
     if (v <= 0.001 && this.boostGlow <= 0.001) return; // nothing to do, stay cheap
     this.boostGlow = v;
     if (!this.boostLitParts.length) {
