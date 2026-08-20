@@ -31,6 +31,8 @@ export class Player {
   vel = new THREE.Vector3();
   yaw = 0; // facing of the model
   grounded = false;
+  /** 0..1 how far the boost thrusters have wound up. */
+  boostSpool = 0;
   /** True while standing on a moving platform (an airliner deck). The plane
    *  check runs after update(), so this carries over one frame and keeps the
    *  mecha in a standing pose instead of flipping to the flight animation. */
@@ -59,9 +61,19 @@ export class Player {
   }
 
   update(dt: number, moveX: number, moveZ: number, camYaw: number, jump: boolean, run: boolean, descend = false): void {
-    // desired horizontal velocity in camera space
-    // overdrive also makes the boost sprint noticeably quicker
-    const speed = run ? (this.abilities.thrust ? RUN * 1.45 : RUN) : WALK;
+    // Boost SPOOL. Holding the boost winds the thrusters up rather than
+    // snapping to a fixed sprint: overdrive both raises the ceiling and keeps
+    // pulling for longer, so the rocket boots read as an engine you spin up
+    // and not a speed toggle. Releasing bleeds it back down quickly.
+    const spoolRate = this.abilities.thrust ? 0.55 : 0.9;
+    this.boostSpool = run
+      ? Math.min(1, this.boostSpool + dt * spoolRate)
+      : Math.max(0, this.boostSpool - dt * 2.4);
+    // overdrive: a higher top end, and the spool reaches further into it
+    const top = this.abilities.thrust ? RUN * 1.95 : RUN;
+    const speed = run || this.boostSpool > 0
+      ? WALK + (top - WALK) * (run ? 0.55 + this.boostSpool * 0.45 : this.boostSpool)
+      : WALK;
     let vx = 0, vz = 0;
     if (moveX !== 0 || moveZ !== 0) {
       const len = Math.hypot(moveX, moveZ);

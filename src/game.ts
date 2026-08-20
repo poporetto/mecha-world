@@ -217,6 +217,10 @@ export class Game {
   private cameraReady = false;
   private dashT = 0; // dodge cooldown
   private touchBoostHeld = false; // rising-edge latch for the pad's BOOST
+  private monsterBeamMesh: THREE.Mesh | null = null;
+  private monsterBeamLive = 0;
+  private lastMonsterBeamCarve = 0;
+  private lastMonsterBeamSound = 0;
   private dashFxT = 0;
   private evadeT = 0;
   /** Cooldown for physical boss impacts so an overlapping body cannot launch
@@ -989,6 +993,58 @@ export class Game {
     }, 140);
     this.explosions.boom(p, 5);
     sfx.zap(1 - Math.min(1, p.distanceTo(this.player.pos) / 130));
+  }
+
+  /**
+   * A monster's sustained beam. Drawn as a lance from the muzzle to whatever
+   * it hits, it burns the city along the way and damages the pilot by their
+   * distance from the LINE rather than from the monster — a beam you are
+   * standing in should hurt whether you are on the street or fifty metres up.
+   */
+  private monsterBeam(from: THREE.Vector3, toward: THREE.Vector3, dps: number, dt: number): void {
+    const dir = toward.clone().sub(from);
+    const len = Math.min(210, dir.length() + 24);
+    dir.normalize();
+
+    // shortest distance from the pilot to the beam segment
+    const toPlayer = this.player.pos.clone().addScaledVector(_v.set(0, 4, 0), 1).sub(from);
+    const along = Math.max(0, Math.min(len, toPlayer.dot(dir)));
+    const nearest = from.clone().addScaledVector(dir, along);
+    const miss = nearest.distanceTo(this.player.pos);
+    if (miss < 7) this.damagePlayer(dps * dt);
+
+    // burn a channel through whatever it crosses, a few steps per frame
+    if (this.time - this.lastMonsterBeamCarve > 0.09) {
+      this.lastMonsterBeamCarve = this.time;
+      for (let d = 14; d < len; d += 16) {
+        const p = from.clone().addScaledVector(dir, d);
+        this.destroyAt(p, 3.4, 0.12, false);
+      }
+    }
+
+    // the visible lance, rebuilt each frame it is live
+    if (!this.monsterBeamMesh) {
+      this.monsterBeamMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(1, 1, 1),
+        new THREE.MeshBasicMaterial({
+          color: 0xff7a3c, transparent: true, opacity: 0.85,
+          blending: THREE.AdditiveBlending, depthWrite: false,
+        })
+      );
+      this.scene.add(this.monsterBeamMesh);
+    }
+    const m = this.monsterBeamMesh;
+    m.visible = true;
+    const w = 2.6 + Math.sin(this.time * 40) * 0.5;
+    m.scale.set(w, w, len);
+    m.position.copy(from).addScaledVector(dir, len / 2);
+    m.lookAt(from.clone().addScaledVector(dir, len));
+    this.monsterBeamLive = 0.08;
+    this.shake = Math.max(this.shake, 0.22);
+    if (this.time - this.lastMonsterBeamSound > 0.35) {
+      this.lastMonsterBeamSound = this.time;
+      sfx.zap(0.7 * (1 - Math.min(1, from.distanceTo(this.player.pos) / 160)));
+    }
   }
 
   private throwBoulder(from: THREE.Vector3, toward: THREE.Vector3): void {
@@ -2516,6 +2572,7 @@ export class Game {
         throwBoulder: (f, t) => this.throwBoulder(f, t),
         zapAt: (p) => this.zapAt(p),
         igniteAt: (p, r) => { this.fire.igniteSphere(this.world, p.x, p.y, p.z, r); },
+        monsterBeam: (f, t2, dps, d) => this.monsterBeam(f, t2, dps, d),
         floodAt: (p, r) => {
           const dirty = this.flood.floodSphere(this.world, p.x, p.z, r);
           if (dirty.size) this.chunks.markDirty(dirty);
@@ -2946,9 +3003,16 @@ export class Game {
     this.railCooldown -= dt;
     this.vulcanCooldown -= dt;
     this.crimsonCooldown -= dt;
+    if (this.monsterBeamLive > 0) {
+      this.monsterBeamLive -= rawDt;
+      if (this.monsterBeamLive <= 0 && this.monsterBeamMesh) this.monsterBeamMesh.visible = false;
+    }
     this.dashT = Math.max(0, this.dashT - rawDt);
     this.dashFxT = Math.max(0, this.dashFxT - rawDt);
     this.player.model.setDashThrusters(this.dashFxT > 0);
+    // the frame heats up with the boost spool, and the camera leans back a
+    // little as it winds on so speed is felt and not merely measured
+    this.player.model.setBoostGlow(this.player.boostSpool);
     this.evadeT = Math.max(0, this.evadeT - rawDt);
     this.counterWindow = Math.max(0, this.counterWindow - rawDt);
     this.comboWindow -= dt;

@@ -5,6 +5,9 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
+/** Thruster heat the armour takes on under boost. */
+const _BOOST_HEAT = new THREE.Color(0x59d8ff);
+
 export const MECHA_SCALE = 2.2;
 export const MECHA_NAME = 'TERRA-ARMOR';
 
@@ -808,6 +811,9 @@ export class MechaModel {
     return arm;
   }
 
+  private boostGlow = 0;
+  private boostLitParts: THREE.Mesh[] = [];
+
   setThrusters(on: boolean): void {
     this.thrusterL.visible = on;
     this.thrusterR.visible = on;
@@ -817,6 +823,38 @@ export class MechaModel {
   setDashThrusters(on: boolean): void {
     this.dashJetL.visible = on;
     this.dashJetR.visible = on;
+  }
+
+  /**
+   * Boost heat across the WHOLE frame, not just the two ankle flames.
+   *
+   * `v` is 0..1 spool. Every painted panel picks up a rising cyan-white
+   * emissive, so the armour visibly loads up as the thrusters wind on and
+   * cools back down when you let go — the boost reads as the machine working
+   * rather than as two small jets somewhere below the knees.
+   */
+  setBoostGlow(v: number): void {
+    if (v <= 0.001 && this.boostGlow <= 0.001) return; // nothing to do, stay cheap
+    this.boostGlow = v;
+    if (!this.boostLitParts.length) {
+      this.group.traverse((o) => {
+        const m = o as THREE.Mesh;
+        const mat = m.material as THREE.MeshLambertMaterial | undefined;
+        if (m.isMesh && mat && 'emissive' in mat) this.boostLitParts.push(m);
+      });
+    }
+    const k = v * v; // late-loading, so a tap does not light the whole suit
+    for (const m of this.boostLitParts) {
+      const mat = m.material as THREE.MeshLambertMaterial;
+      const base = mat.userData.boostBase ??
+        (mat.userData.boostBase = mat.emissive.clone());
+      mat.emissive.copy(base).lerp(_BOOST_HEAT, k * 0.55);
+      mat.emissiveIntensity = Math.max(mat.emissiveIntensity ?? 1, k);
+    }
+    // the ankle flames stretch with the spool so the two read as one system
+    const stretch = 1 + k * 1.6;
+    this.thrusterL.scale.z = stretch;
+    this.thrusterR.scale.z = stretch;
   }
 
   private flickerThrusters(t: number): void {

@@ -10,6 +10,9 @@ export type Reward =
   | 'repair' // endless mode: repairs + power level
   | 'none'; // story rematches: recovery only, never duplicate upgrades
 
+/** Shared up-axis for rotating muzzle offsets into world space. */
+const _UP = new THREE.Vector3(0, 1, 0);
+
 export interface MonsterCtx {
   world: World;
   playerPos: THREE.Vector3;
@@ -20,6 +23,12 @@ export interface MonsterCtx {
   zapAt?: (p: THREE.Vector3) => void;
   igniteAt?: (p: THREE.Vector3, r: number) => void; // flamethrower
   floodAt?: (p: THREE.Vector3, r: number) => void; // aqua blaster
+  /**
+   * A sustained beam fired from a monster. Draws it, carves whatever it
+   * crosses and damages the pilot if they are anywhere near the line — the
+   * answer for a player who has simply flown out of reach.
+   */
+  monsterBeam?: (from: THREE.Vector3, toward: THREE.Vector3, dps: number, dt: number) => void;
 }
 
 function box(w: number, h: number, d: number, color: number, emissive = 0): THREE.Mesh {
@@ -150,6 +159,22 @@ export abstract class Monster {
 
   /** Bosses override to swap in phase-specific behaviour. */
   protected onPhase(_p: Phase): void {}
+
+  /**
+   * Is the pilot actually within reach of a ground melee?
+   *
+   * Several bosses gated their stomps and slashes on horizontal distance
+   * alone, so a pilot hovering sixty metres up was still being hit by a
+   * ground attack with nothing visibly connecting the two. Melee has to be
+   * honest about height; reaching an airborne target is what a boss's ranged
+   * option is for.
+   */
+  protected meleeReaches(playerPos: THREE.Vector3, horizontal: number, height = 22): boolean {
+    const dx = playerPos.x - this.group.position.x;
+    const dz = playerPos.z - this.group.position.z;
+    if (Math.hypot(dx, dz) > horizontal) return false;
+    return playerPos.y - this.group.position.y <= height;
+  }
 
   /**
    * Open the boss up. Call straight after committing to a heavy attack: it is
@@ -406,6 +431,17 @@ export class Kaiju extends Monster {
   private stompT = 0;
   private retargetT = 0;
   private target = new THREE.Vector3();
+  private jaw: THREE.Mesh;
+  /**
+   * The mouth beam. Gorgosaur was melee-only, which meant a pilot who simply
+   * took off could not be touched by the campaign's first boss at all. It
+   * charges visibly in the jaw, then fires a sustained lance that tracks the
+   * player, so height stops being a free defence and starts being a position
+   * you have to keep earning.
+   */
+  private beamT = 5;
+  private beamFire = 0;
+  private beamCharge = 0;
 
   constructor(x: number, z: number) {
     super(140);
@@ -438,6 +474,7 @@ export class Kaiju extends Monster {
     const jaw = box(1.7, 0.8, 2.8, BELLY);
     jaw.position.set(0, 11.0, 5.9);
     jaw.rotation.x = 0.22;
+    this.jaw = jaw;
     const eyeL = box(0.45, 0.4, 0.4, 0xffa020, 0xffa020);
     eyeL.position.set(-1.05, 12.9, 5.5);
     const eyeR = eyeL.clone();
@@ -581,6 +618,48 @@ export class Kaiju extends Monster {
       // leave the campaign's first boss immobile for a third of the fight.
       if (Math.random() < 0.2) this.openWindow(1.2);
     }
+
+    this.updateMouthBeam(dt, ctx, dist);
+  }
+
+  /**
+   * Charge, fire, recover. The charge is a long tell with the jaw hauled open
+   * and the throat glowing, because a hitscan-ish beam with no warning is not
+   * a fight, it is a tax. Firing roots it, and it is wide open afterwards.
+   */
+  private updateMouthBeam(dt: number, ctx: MonsterCtx, _dist: number): void {
+    const mouth = new THREE.Vector3(0, 11, 7.4)
+      .applyAxisAngle(_UP, this.heading)
+      .multiplyScalar(MONSTER_SCALE)
+      .add(this.group.position);
+
+    if (this.beamFire > 0) {
+      this.beamFire -= dt;
+      this.jaw.rotation.x = 0.85;
+      // It tracks, but slowly enough that moving across it is the counterplay
+      const aim = ctx.playerPos.clone();
+      ctx.monsterBeam?.(mouth, aim, 26, dt);
+      if (this.beamFire <= 0) {
+        this.beamCharge = 0;
+        // committed and spent: the punish window is the reward for surviving
+        this.openWindow(2.0);
+        this.beamT = (this.phase === 3 ? 5.5 : this.phase === 2 ? 7 : 9) / this.tempo;
+      }
+      return;
+    }
+
+    if (this.beamCharge > 0) {
+      this.beamCharge -= dt;
+      this.telegraph = true;
+      this.jaw.rotation.x = 0.22 + (1 - Math.max(0, this.beamCharge) / 1.1) * 0.6;
+      if (this.beamCharge <= 0) this.beamFire = this.phase === 3 ? 1.5 : 1.1;
+      return;
+    }
+
+    this.jaw.rotation.x = 0.22;
+    if (this.vulnerable) return; // not while it is reeling
+    this.beamT -= dt;
+    if (this.beamT <= 0) this.beamCharge = 1.1;
   }
 }
 
@@ -1101,7 +1180,7 @@ export class IronColossus extends Monster {
       const feet = this.group.position.clone();
       feet.y += 2;
       ctx.destroyAt(feet, 7, 0.4);
-      if (dist < 22) ctx.damagePlayer(16);
+      if (this.meleeReaches(ctx.playerPos, 22, 26)) ctx.damagePlayer(16);
     }
 
     // hurl a boulder in a high arc
@@ -1303,6 +1382,13 @@ export class CrimsonMantis extends Monster {
   private slashT = -1; // 0..1 while slashing
   private combo = 0;   // swings left in the current flurry
   private heading = 0;
+  // vertical answer: crouch, spring, strike, fall
+  private pounceT = 0;
+  private pounceWind = 0;
+  private pounceHit = false;
+  private crouchT = 0;
+  private pounceFall = false;
+  private pounceAim = new THREE.Vector3();
 
   constructor(x: number, z: number) {
     super(170);
@@ -1407,7 +1493,50 @@ export class CrimsonMantis extends Monster {
       this.legPhase += dt * 10 * this.pace;
     }
     const gy = ctx.world.groundHeight(this.group.position.x, this.group.position.z, 20);
-    this.group.position.y += ((gy > 14 ? 0 : gy) - this.group.position.y) * Math.min(1, dt * 4);
+    const deck = gy > 14 ? 0 : gy;
+
+    // POUNCE. The mantis is the fast one, and its whole kit was ground melee,
+    // so a pilot who took off simply could not be touched by it. It now
+    // crouches, then throws itself up at an airborne target — the answer to
+    // height is closing the distance, which is what this thing already is.
+    const above = ctx.playerPos.y - deck;
+    if (this.pounceT > 0) {
+      this.pounceT -= dt;
+      // A homing leap rather than a fixed arc: a fixed climb topped out around
+      // twenty metres and simply could not touch anything higher, which is the
+      // exact case this exists for. It commits to the position you were in
+      // when it jumped, so moving is still the counterplay.
+      const to = this.pounceAim.clone().sub(this.group.position);
+      const len = to.length();
+      if (len > 0.001) this.group.position.addScaledVector(to.divideScalar(len), Math.min(len, 62 * dt));
+      if (this.group.position.distanceTo(ctx.playerPos) < 18 && !this.pounceHit) {
+        this.pounceHit = true;
+        ctx.damagePlayer(15);
+      }
+      if (this.pounceT <= 0) this.pounceFall = true;
+    } else if (this.pounceFall) {
+      // drop back to the street once the leap is spent
+      this.group.position.y -= 46 * dt;
+      if (this.group.position.y <= deck) { this.group.position.y = deck; this.pounceFall = false; }
+    } else {
+      this.group.position.y += (deck - this.group.position.y) * Math.min(1, dt * 4);
+      this.crouchT -= dt;
+      if (above > 18 && dist < 60 && !this.vulnerable && this.crouchT <= 0) {
+        // a visible crouch first: a leap that lands with no tell is a tax
+        this.telegraph = true;
+        this.crouchT = 0.5;
+        this.pounceWind = 0.5;
+      }
+      if (this.pounceWind > 0) {
+        this.pounceWind -= dt;
+        if (this.pounceWind <= 0) {
+          this.pounceT = 0.95;
+          this.pounceHit = false;
+          this.pounceAim.copy(ctx.playerPos);
+          this.crouchT = (this.phase === 3 ? 2.4 : 3.4) / this.tempo;
+        }
+      }
+    }
 
     // idle sway + raised scythes
     const sway = Math.sin(t * 3) * 0.1;
@@ -1426,7 +1555,7 @@ export class CrimsonMantis extends Monster {
         p.addScaledVector(fwd, 14);
         p.y += 6;
         ctx.destroyAt(p, 4, 0.25);
-        if (dist < 26) ctx.damagePlayer(13);
+        if (this.meleeReaches(ctx.playerPos, 26, 20)) ctx.damagePlayer(13);
       }
       if (this.slashT >= 1) {
         this.slashT = -1;
@@ -1589,7 +1718,7 @@ export class MagmaGolem extends Monster {
         p.z += Math.cos(a) * reach;
         ctx.destroyAt(p, 4, 0.3);
       }
-      if (dist < 30) ctx.damagePlayer(18);
+      if (this.meleeReaches(ctx.playerPos, 30, 26)) ctx.damagePlayer(18);
       // fists buried to the wrist in the road
       this.openWindow(1.8);
     }
@@ -1621,6 +1750,7 @@ export class DeepMaw extends Monster {
   private submerged = true;
   private phaseT = 2.5;
   private surfaceY = 0;
+  private spitT = 2.5; // debris volley for targets it cannot reach
 
   constructor(x: number, z: number) {
     super(180);
@@ -1700,12 +1830,23 @@ export class DeepMaw extends Monster {
       this.group.position.y = this.surfaceY - 30; // buried
       // churn a shallow dust mound where it travels
       if (Math.random() < 0.25) ctx.destroyAt(this.group.position.clone().setY(this.surfaceY + 1), 2.4, 0.15);
+      // It cannot bite what is in the air, so it throws the ground at it.
+      this.spitT -= dt;
+      if (this.spitT <= 0 && ctx.throwBoulder && d < 110
+          && ctx.playerPos.y - this.surfaceY > 20) {
+        this.spitT = (this.phase === 3 ? 2.2 : 3.2) / this.tempo;
+        const from = this.group.position.clone().setY(this.surfaceY + 3);
+        ctx.destroyAt(from, 4, 0.2);
+        ctx.throwBoulder(from, ctx.playerPos.clone());
+      }
       if (this.phaseT <= 0 && d < 30) {
         this.submerged = false;
         this.phaseT = 3.5;
         // erupt: burst the ground open beneath it
         ctx.destroyAt(this.group.position.clone().setY(this.surfaceY + 2), 7, 0.5);
-        if (d < 22) ctx.damagePlayer(20);
+        // measured from the SURFACE it bursts through, not from the body,
+        // which is still thirty units underground at this instant
+        if (d < 22 && ctx.playerPos.y - this.surfaceY <= 24) ctx.damagePlayer(20);
         // beached on the surface until it can worm back under — the whole
         // surfaced stretch is the punish
         this.openWindow(3.5);
