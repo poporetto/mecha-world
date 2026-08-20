@@ -33,8 +33,15 @@ export class ChunkManager {
 
   // Chunk faces marked aGlow (lit windows, neon, lanterns) emit a warm light
   // once night falls, so the city switches on instead of going flat dark.
-  private makeMaterial(): THREE.MeshLambertMaterial {
-    const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  private makeMaterial(): THREE.MeshStandardMaterial {
+    // Standard lighting gives terrain proper sun-facing highlights and soft
+    // shadowed sides. A fairly rough surface preserves the stylised voxel look
+    // and avoids turning every city block into polished plastic.
+    const mat = new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      roughness: 0.82,
+      metalness: 0.04,
+    });
     mat.onBeforeCompile = (shader) => {
       shader.uniforms.uNight = this.nightAmount;
       shader.vertexShader = 'attribute float aGlow;\nvarying float vGlow;\n' +

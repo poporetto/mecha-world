@@ -302,6 +302,17 @@ export class MechaModel {
     const sternumRed = frustum(0.09, 0.16, 0.3, 0.058, 0.092, RED);
     sternumRed.position.set(0, 1.08, 0.596);
     this.torso.add(sternum, sternumRed);
+    // Fine panel breaks catch light across the broad white chest without
+    // changing the turnaround silhouette. They read as service hatches up
+    // close and as controlled value separation from the gameplay camera.
+    for (const side of [-1, 1]) {
+      const chestSeam = plate(0.26, 0.025, 0.018, DARK);
+      chestSeam.position.set(side * 0.48, 1.43, 0.607);
+      chestSeam.rotation.z = side * 0.2;
+      const chestBolt = plate(0.045, 0.045, 0.022, STEEL);
+      chestBolt.position.set(side * 0.62, 1.20, 0.592);
+      this.torso.add(chestSeam, chestBolt);
+    }
     // Narrow stepped side ribs preserve the reference's sharp chest wedge
     // when the model is viewed in profile.
     for (const side of [-1, 1]) {
@@ -695,6 +706,8 @@ export class MechaModel {
     // red-based; the reference keeps them white below the knee cap.
     const shinRed = frustum(0.07, 0.10, 0.26, 0.06, 0.075, RED);
     shinRed.position.set(x < 0 ? -0.19 : 0.19, -0.30, 0.42);
+    const shinServiceMark = plate(0.055, 0.16, 0.025, STEEL);
+    shinServiceMark.position.set(x < 0 ? 0.15 : -0.15, -0.76, 0.425);
     const calfRed = frustum(0.05, 0.07, 0.30, 0.07, 0.10, RED);
     calfRed.position.set(x < 0 ? 0.27 : -0.27, -0.62, -0.17);
     const ankle = cylinder(0.18, 0.28, JOINT, 12);
@@ -712,7 +725,7 @@ export class MechaModel {
     calfRear.position.set(0, -0.63, -0.14);
     const calfVent = plate(0.18, 0.34, 0.04, DARK);
     calfVent.position.set(0, -0.52, -0.30);
-    lower.add(knee, calfCore, shin, shinInset, shinBlade, shinRed, calfRed, ankle, heel, foot, sole, toe,
+    lower.add(knee, calfCore, shin, shinInset, shinBlade, shinRed, shinServiceMark, calfRed, ankle, heel, foot, sole, toe,
               calfRear, calfVent);
     leg.add(lower);
     (leg as THREE.Group & { lower: THREE.Group }).lower = lower;
@@ -772,10 +785,12 @@ export class MechaModel {
     fore.position.set(0, -0.42, 0.04);
     const foreGuard = frustum(0.13, 0.17, 0.24, 0.08, 0.10, RED);
     foreGuard.position.set(0, -0.34, 0.27);
+    const foreVent = plate(0.12, 0.055, 0.025, DARK);
+    foreVent.position.set(0, -0.58, 0.235);
     const fist = sphere(0.21, JOINT);
     fist.position.y = -0.91;
     fist.scale.set(0.9, 1.05, 0.9);
-    lower.add(foreCore, fore, foreGuard, fist);
+    lower.add(foreCore, fore, foreGuard, foreVent, fist);
     arm.add(
       shoulderJoint, pauldron, outerCap, topInset, upperCore, upperFront,
       capBrow, shoulderInset, shoulderLower, rimFront, rimRear,

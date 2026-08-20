@@ -50,28 +50,29 @@ export const enum B {
 }
 
 export const BLOCK_COLORS: number[] = [];
-// soft pastel palette — bright, white Tokyo look (crisp white towers, pale
-// blue-grey glass, red-and-white accents, cherry-blossom pink)
-BLOCK_COLORS[B.Road] = 0x8a8d9e;
-BLOCK_COLORS[B.Sidewalk] = 0xe4e5ec;
-BLOCK_COLORS[B.Grass] = 0xa9e0a2;
-BLOCK_COLORS[B.Water] = 0x9ed6f2;
-BLOCK_COLORS[B.Dirt] = 0xcdaa88;
-BLOCK_COLORS[B.WallGray] = 0xf8f9fc; // near-white concrete
-BLOCK_COLORS[B.WallTan] = 0xfcf5e6; // warm off-white
-BLOCK_COLORS[B.WallBrick] = 0xf6e2d7; // pale blush
-BLOCK_COLORS[B.Window] = 0xd4e6f2; // very pale blue glass
+// Cinematic anime-city palette. Strong value separation keeps roads, parks,
+// water and architecture readable from the chase camera while the warm/cool
+// shifts stop the voxel landscape looking like one uniformly pastel mass.
+BLOCK_COLORS[B.Road] = 0x555c69;
+BLOCK_COLORS[B.Sidewalk] = 0xc8cbd1;
+BLOCK_COLORS[B.Grass] = 0x5f9a63;
+BLOCK_COLORS[B.Water] = 0x4389b5;
+BLOCK_COLORS[B.Dirt] = 0x9b7455;
+BLOCK_COLORS[B.WallGray] = 0xdfe2e7;
+BLOCK_COLORS[B.WallTan] = 0xe8ddc8;
+BLOCK_COLORS[B.WallBrick] = 0xc88f82;
+BLOCK_COLORS[B.Window] = 0x7195ad;
 BLOCK_COLORS[B.WindowLit] = 0xfff0c6;
-BLOCK_COLORS[B.Glass] = 0xe4f2fb;
-BLOCK_COLORS[B.Roof] = 0xe6e8f0;
-BLOCK_COLORS[B.Trunk] = 0xbb9070;
-BLOCK_COLORS[B.Leaves] = 0x9ad98d;
-BLOCK_COLORS[B.Red] = 0xef8378; // tower red
+BLOCK_COLORS[B.Glass] = 0x8bb9ce;
+BLOCK_COLORS[B.Roof] = 0x9ca5b2;
+BLOCK_COLORS[B.Trunk] = 0x79543f;
+BLOCK_COLORS[B.Leaves] = 0x477f52;
+BLOCK_COLORS[B.Red] = 0xd65348; // tower red
 BLOCK_COLORS[B.White] = 0xffffff;
 BLOCK_COLORS[B.NeonPink] = 0xf6b1d5;
 BLOCK_COLORS[B.NeonCyan] = 0xa9ece6;
-BLOCK_COLORS[B.Sand] = 0xf6ecce;
-BLOCK_COLORS[B.Plaza] = 0xeef0f6;
+BLOCK_COLORS[B.Sand] = 0xd8c792;
+BLOCK_COLORS[B.Plaza] = 0xcfd3d9;
 BLOCK_COLORS[B.RoadLine] = 0xfafafd;
 BLOCK_COLORS[B.Yellow] = 0xf8dfa2;
 BLOCK_COLORS[B.Flower] = 0xf8bcd8;
@@ -86,15 +87,15 @@ BLOCK_COLORS[B.LightRed] = 0xff5a52;
 BLOCK_COLORS[B.LightAmber] = 0xffc44f;
 BLOCK_COLORS[B.LightGreen] = 0x5ce67a;
 BLOCK_COLORS[B.Pole] = 0x5b6070;
-BLOCK_COLORS[B.Stone] = 0x9aa0ab;   // mountain rock
+BLOCK_COLORS[B.Stone] = 0x6f7881;   // mountain rock
 BLOCK_COLORS[B.Snow] = 0xfaFdff;    // summit snow
 BLOCK_COLORS[B.Deck] = 0xc4a882;    // timber pier decking
 BLOCK_COLORS[B.Crate] = 0xe08a6a;   // shipping containers
 BLOCK_COLORS[B.CrateB] = 0x6fa8d0;
-BLOCK_COLORS[B.Steel] = 0xb6bcc8;   // cranes and gantries
-BLOCK_COLORS[B.Puddle] = 0x86c5e8; // shallow water left by the aqua blaster
-BLOCK_COLORS[B.RoofTile] = 0x8e9cb2;  // slate-blue kawara
-BLOCK_COLORS[B.RoofTileB] = 0xc09a86; // warm brown kawara
+BLOCK_COLORS[B.Steel] = 0x7f8996;   // cranes and gantries
+BLOCK_COLORS[B.Puddle] = 0x397ea8; // shallow water left by the aqua blaster
+BLOCK_COLORS[B.RoofTile] = 0x53677d;  // slate-blue kawara
+BLOCK_COLORS[B.RoofTileB] = 0x8b6658; // warm brown kawara
 BLOCK_COLORS[B.BlockWall] = 0xdcd8cf; // pale cast concrete
 BLOCK_COLORS[B.Tarmac] = 0xc9bfae;    // compacted playground dirt
 

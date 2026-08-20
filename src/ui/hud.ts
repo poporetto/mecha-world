@@ -72,11 +72,20 @@ export class Hud {
     this.root = document.getElementById('hud')!;
     this.root.innerHTML = `
       <style>
-        .hud-bar { position:absolute; left:24px; top:20px; width:260px; }
+        :root { --ui-cyan:#66e8f2; --ui-blue:#77bde8; --ui-ink:#050a12;
+                --ui-panel:#07121ee8; --ui-line:#78e9f25c; --ui-warm:#ffd06a; }
+        #hud { color:#eaf7ff; isolation:isolate; }
+        #hud::after { content:''; position:absolute; inset:0; pointer-events:none; z-index:80;
+          background:repeating-linear-gradient(180deg,transparent 0 3px,#bceeff08 4px);
+          mix-blend-mode:soft-light; opacity:.28; }
+        .hud-bar { position:absolute; left:24px; top:20px; width:260px; padding:10px 12px 11px;
+                   background:linear-gradient(110deg,#071522e8,#0715228a 72%,transparent);
+                   border-left:2px solid var(--ui-cyan); clip-path:polygon(0 0,92% 0,100% 35%,100% 100%,0 100%); }
         .hud-label { color:#cfe6ff; font-size:11px; letter-spacing:2px; margin-bottom:4px; text-shadow:0 1px 3px #000a; }
-        .hud-track { height:14px; background:#0008; border:1px solid #7fdcff55; border-radius:7px; overflow:hidden; }
+        .hud-track { height:10px; background:#000b; border:1px solid #7fdcff55; border-radius:2px; overflow:hidden; }
         .hud-fill { height:100%; background:linear-gradient(90deg,#26e0a8,#7fdcff); transition:width .15s; }
-        .boss { position:absolute; top:26px; left:50%; transform:translateX(-50%); width:min(560px,60vw); display:none; text-align:center; }
+        .boss { position:absolute; top:20px; left:50%; transform:translateX(-50%); width:min(590px,58vw); display:none; text-align:center;
+                padding:9px 22px 10px; background:linear-gradient(90deg,transparent,#080b14dd 15%,#080b14dd 85%,transparent); }
         .boss-name { color:#ffd0d0; font-size:14px; letter-spacing:6px; margin-bottom:5px; text-shadow:0 1px 4px #000; }
         .boss-state { min-height:14px; margin-top:5px; color:#ffb4c0; font-size:9px;
                       letter-spacing:3px; text-shadow:0 1px 3px #000; }
@@ -96,14 +105,16 @@ export class Hud {
                      animation:openPulse .5s ease-in-out infinite alternate; }
         .boss.open .boss-open { display:block; }
         @keyframes openPulse { from { opacity:.6; } to { opacity:1; } }
-        .chips { position:absolute; left:24px; bottom:18px; display:flex; gap:7px; flex-wrap:wrap;
+        .chips { position:absolute; left:24px; bottom:18px; display:flex; gap:6px; flex-wrap:wrap;
                  max-width:min(62vw, 760px); }
-        .chip { padding:6px 10px; border-radius:6px; font-size:11px; letter-spacing:1px; color:#eaf6ff;
-                background:#0a1626cc; border:1px solid #3a5a7a; text-shadow:0 1px 2px #000; }
+        .chip { padding:6px 10px; border-radius:2px; font-size:10px; letter-spacing:1.2px; color:#eaf6ff;
+                background:linear-gradient(110deg,#081625e8,#081625a8); border:1px solid #537b9a88;
+                border-left:2px solid #7fdcff; text-shadow:0 1px 2px #000; box-shadow:0 5px 16px #0005; }
         .chip.locked { opacity:.35; filter:grayscale(1); }
         .chip b { color:#7fdcff; }
-        .toast { position:absolute; top:34%; left:50%; transform:translate(-50%,-50%); text-align:center;
-                 opacity:0; transition:opacity .3s; }
+        .toast { position:absolute; top:31%; left:50%; transform:translate(-50%,-50%); text-align:center;
+                 opacity:0; transition:opacity .3s; padding:16px 34px;
+                 background:linear-gradient(90deg,transparent,#07131fdd 18%,#07131fdd 82%,transparent); }
         .toast h1 { color:#fff; font-size:34px; letter-spacing:8px; margin:0; text-shadow:0 0 18px #39e6e0, 0 2px 4px #000; }
         .toast p { color:#bfe9ff; font-size:14px; letter-spacing:3px; margin:8px 0 0; text-shadow:0 1px 3px #000; }
         .cross { position:absolute; left:50%; top:50%; width:6px; height:6px; margin:-3px; border-radius:50%;
@@ -165,12 +176,20 @@ export class Hud {
           14%,72% { opacity:1; transform:scale(1); }
           100% { opacity:0; transform:scale(.98); }
         }
-        .start { position:absolute; inset:0; background:linear-gradient(90deg,#030815d9 0%,#07101abb 47%,#030815d9 100%),
+        .start { position:absolute; inset:0; background:linear-gradient(90deg,#02050bea 0%,#07101a99 49%,#02050bd9 100%),
+                 linear-gradient(180deg,#02050a66,transparent 40%,#02050ad9),
                  url('/title-screen.png') center/cover no-repeat; display:flex; flex-direction:column;
-                 align-items:center; justify-content:center; pointer-events:auto; cursor:pointer; }
-        .start h1 { color:#fff; font-size:52px; letter-spacing:14px; margin:0 0 6px; text-shadow:0 0 30px #39e6e0; }
+                 align-items:center; justify-content:center; pointer-events:auto; cursor:pointer; overflow:hidden; }
+        .start::before { content:''; position:absolute; inset:18px; border:1px solid #7fdcff25; pointer-events:none;
+                         clip-path:polygon(0 0,19% 0,19% 1px,81% 1px,81% 0,100% 0,100% 100%,81% 100%,81% calc(100% - 1px),19% calc(100% - 1px),19% 100%,0 100%); }
+        .start-shell { position:relative; display:flex; flex-direction:column; align-items:center; padding:44px 72px 36px;
+                       background:radial-gradient(ellipse at center,#071521c7,transparent 70%); }
+        .start-eyebrow { color:#7fdcff; font-size:10px; letter-spacing:8px; margin-bottom:13px; }
+        .start h1 { color:#fff; font-size:clamp(44px,6vw,74px); letter-spacing:clamp(10px,1.6vw,22px); margin:0 0 6px;
+                    text-shadow:0 0 30px #39e6e0,0 3px 18px #000; font-weight:700; }
         .start h2 { color:#ff4fa3; font-size:15px; letter-spacing:8px; margin:0 0 34px; font-weight:400; }
-        .start .keys { color:#9fc4e8; font-size:13px; line-height:2.1; letter-spacing:1px; text-align:center; }
+        .start .keys { color:#b6cde0; font-size:12px; line-height:2.05; letter-spacing:1.2px; text-align:center;
+                       padding:12px 22px; border-top:1px solid #7fdcff33; border-bottom:1px solid #7fdcff33; }
         .start .keys b { color:#7fdcff; }
         .start .go.resume { border-color:#ffd86a; color:#ffe9b0; box-shadow:0 0 26px #ffd86a33; margin-top:30px; }
         .start .go.resume:hover { background:#3a3213; }
@@ -178,8 +197,10 @@ export class Hud {
            slightly low click on the resume button started a new run instead,
            which wipes the checkpoint. */
         .start .go + .go { margin-top:42px; font-size:12px; opacity:.75; letter-spacing:3px; }
-        .start .go { margin-top:30px; color:#fff; font-size:14px; letter-spacing:4px; border:1px solid #39e6e0;
-                     padding:10px 26px; border-radius:4px; animation:pulse 1.6s infinite; }
+        .start .go { margin-top:30px; color:#fff; font-size:13px; letter-spacing:5px; border:1px solid #69eff5;
+                     padding:12px 34px; border-radius:2px; background:#071725cc; animation:pulse 1.6s infinite; }
+        .start-footer { position:absolute; left:32px; right:32px; bottom:24px; display:flex; justify-content:space-between;
+                        color:#7393aa; font-size:9px; letter-spacing:3px; }
         @keyframes pulse { 50% { box-shadow:0 0 22px #39e6e088; } }
         .hint { position:absolute; right:24px; bottom:18px; width:250px; color:#8fb4d8cc; font-size:10.5px;
                 letter-spacing:.6px; text-align:right; line-height:1.8; text-shadow:0 1px 2px #000; }
@@ -190,14 +211,14 @@ export class Hud {
                white-space:nowrap; }
         .obj b { color:#ffcf4f; }
         /* radio traffic from Command — speaker tag + typed-out line */
-        .comms { position:absolute; left:50%; bottom:110px; transform:translateX(-50%);
-                 width:min(760px, 80vw); background:#06121fee; border:1px solid #39e6e088;
-                 border-left:4px solid #39e6e0; border-radius:6px; padding:12px 18px 14px;
-                 box-shadow:0 6px 26px #0009; display:none; }
+        .comms { position:absolute; left:50%; bottom:94px; transform:translateX(-50%);
+                 width:min(720px, 76vw); background:linear-gradient(110deg,#06121ff5,#071522df); border:1px solid #39e6e088;
+                 border-left:3px solid #39e6e0; border-radius:2px; padding:10px 16px 12px;
+                 box-shadow:0 10px 34px #000b; display:none; clip-path:polygon(0 0,96% 0,100% 24%,100% 100%,0 100%); }
         .comms.show { display:block; }
         .comms-row { display:flex; align-items:center; gap:16px; }
-        .comms-avatar { width:92px; height:92px; flex:0 0 92px; object-fit:cover; object-position:center;
-                         border:1px solid #7fdcffaa; border-radius:50%; box-shadow:0 0 14px #39e6e066; }
+        .comms-avatar { width:72px; height:72px; flex:0 0 72px; object-fit:cover; object-position:center;
+                         border:1px solid #7fdcffaa; border-radius:2px; box-shadow:0 0 14px #39e6e044; }
         .comms-copy { min-width:0; flex:1; }
         .comms-who { color:#39e6e0; font-size:11px; letter-spacing:3px; margin-bottom:6px; }
         /* the pilot's own replies read back warm, so the exchange is legible */
@@ -290,10 +311,15 @@ export class Hud {
           .comms-avatar { width:44px; height:44px; flex-basis:44px; } .comms-text { font-size:13px; }
           .comms-who { font-size:9px; letter-spacing:2px; } }
         /* full-screen story card for the prologue / chapter titles / ending */
-        .card { position:absolute; inset:0; background:#04070d; display:none;
+        .card { position:absolute; inset:0; background:
+                linear-gradient(90deg,#02050bf2,#06101be8 50%,#02050bf2),
+                radial-gradient(circle at 50% 45%,#12304755,transparent 48%); display:none;
                 flex-direction:column; align-items:center; justify-content:center;
                 pointer-events:auto; z-index:40; text-align:center; padding:0 8vw; }
         .card.show { display:flex; }
+        .card::before,.card::after { content:''; position:absolute; left:7vw; right:7vw; height:1px;
+                                     background:linear-gradient(90deg,transparent,#65e9f277,transparent); }
+        .card::before { top:18%; } .card::after { bottom:18%; }
         .card .ch { color:#39e6e0; font-size:13px; letter-spacing:8px; margin-bottom:10px; }
         /* a loss should not read like a chapter break */
         .card.over { background:#120608; }
@@ -311,6 +337,11 @@ export class Hud {
                    text-shadow:0 0 26px #39e6e0aa; }
         .card .body { color:#cfe3f5; font-size:15px; line-height:2; letter-spacing:1px;
                       max-width:640px; }
+        .card.epilogue { background:linear-gradient(180deg,#071426ee,#102333e8 58%,#d68b5255),
+                         url('/title-screen.png') center/cover no-repeat; }
+        .card.epilogue .ch { color:#ffd582; }
+        .card.epilogue h1 { text-shadow:0 0 30px #ffd58288; }
+        .card.epilogue .body { color:#f3eadc; }
         /* the continue prompt should glow enough to read as the way out */
         .card .go { margin-top:36px; color:#d6f7ff; font-size:13px; letter-spacing:5px;
                     padding:10px 26px; border:1px solid #39e6e0aa; border-radius:4px;
@@ -325,9 +356,9 @@ export class Hud {
                      box-shadow:0 0 34px #39e6e099, 0 0 62px #39e6e044, inset 0 0 18px #39e6e033;
                      border-color:#7ffcffcc; }
         }
-        .minimap { position:absolute; right:24px; top:150px; width:168px; height:168px;
-                   border-radius:50%; background:#08111ecc; border:2px solid #7fdcff55;
-                   overflow:hidden; box-shadow:0 2px 14px #0007; }
+        .minimap { position:absolute; right:24px; top:142px; width:154px; height:154px;
+                   border-radius:50%; background:radial-gradient(circle,#071624e8,#030912e8); border:1px solid #7fdcff77;
+                   overflow:hidden; box-shadow:0 8px 26px #0009,0 0 0 6px #07111b88; }
         .mm-dot { position:absolute; border-radius:50%; transform:translate(-50%,-50%); }
         .mm-me { width:9px; height:9px; background:#7fdcff; box-shadow:0 0 8px #39e6e0;
                  left:50%; top:50%; }
@@ -355,20 +386,20 @@ export class Hud {
         .bossdist { position:absolute; color:#ff9bb0; font-size:12px; font-weight:700;
                     letter-spacing:1px; text-shadow:0 1px 4px #000; display:none;
                     transform:translate(-50%,-50%); }
-        .pause { position:absolute; inset:0; background:#060a14ee; display:none; flex-direction:column;
+        .pause { position:absolute; inset:0; background:radial-gradient(circle at center,#102238ed,#03060bf5 65%); display:none; flex-direction:column;
                  align-items:center; justify-content:center; pointer-events:auto; z-index:30; }
         .pause.open { display:flex; }
         .pause h1 { color:#fff; font-size:40px; letter-spacing:12px; margin:0 0 4px; text-shadow:0 0 26px #39e6e0; }
         .pause .stats { color:#9fc4e8; font-size:13px; letter-spacing:3px; margin-bottom:26px; }
         .pause .stats b { color:#7fdcff; }
-        .pbtn { color:#fff; font-size:14px; letter-spacing:4px; border:1px solid #39e6e0; background:#0a1626;
-                padding:11px 34px; border-radius:4px; margin:6px; cursor:pointer; min-width:220px; text-align:center; }
+        .pbtn { color:#fff; font-size:13px; letter-spacing:4px; border:1px solid #39e6e0; background:#0a1626;
+                padding:11px 34px; border-radius:2px; margin:5px; cursor:pointer; min-width:240px; text-align:center; }
         .pbtn:hover { background:#12283f; box-shadow:0 0 18px #39e6e055; }
         .pkeys { margin-top:24px; color:#8fb4d8; font-size:11.5px; letter-spacing:1px; line-height:2;
                  text-align:center; max-width:520px; }
         .pkeys b { color:#7fdcff; }
-        .settings { width:min(620px,88vw); margin:12px 0 4px; padding:14px 18px;
-                    border:1px solid #31516d; border-radius:6px; background:#08111dcc; }
+        .settings { width:min(660px,88vw); margin:12px 0 4px; padding:16px 20px;
+                    border:1px solid #456d8a; border-radius:2px; background:linear-gradient(135deg,#081522ee,#07101acc); }
         .settings-title { color:#7fdcff; font-size:10px; letter-spacing:4px; margin-bottom:10px; text-align:center; }
         .settings-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px 20px; }
         .difficulty { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:14px; }
@@ -404,7 +435,7 @@ export class Hud {
                 text-shadow:0 1px 3px #000; letter-spacing:.5px; }
         .perf.on { display:block; }
         .perf b { color:#ffd06a; font-weight:400; }
-        .scorebox { position:absolute; left:24px; top:60px; }
+        .scorebox { position:absolute; left:36px; top:84px; }
         .score-wave { color:#ffd0a0; font-size:12px; letter-spacing:3px; text-shadow:0 1px 3px #000; }
         .score-val { color:#fff; font-size:32px; font-weight:700; letter-spacing:2px; line-height:1.1;
                      text-shadow:0 0 12px #39e6e0aa, 0 2px 4px #000; font-variant-numeric:tabular-nums; }
@@ -439,6 +470,14 @@ export class Hud {
         .debug-ch { cursor:pointer; color:#eaf6ff; background:#111d2c; border:1px solid #3a5a7a;
                     border-radius:3px; padding:7px 5px; font-size:9px; letter-spacing:1px; }
         .debug-ch:hover { border-color:#ffd86a; color:#ffd86a; }
+        .hint { opacity:.58; transition:opacity .2s; }
+        .hint:hover { opacity:1; }
+        @media(max-width:720px) {
+          .start-shell { padding:28px 18px; width:calc(100% - 36px); }
+          .start h2 { font-size:10px; letter-spacing:4px; text-align:center; }
+          .start-footer { display:none; }
+          .card h1 { letter-spacing:5px; }
+        }
                        color:#bfe9ff; font-size:13px; letter-spacing:4px; text-shadow:0 1px 3px #000; }
       </style>
       <div class="hud-bar">
@@ -839,6 +878,7 @@ export class Hud {
    */
   showGameOver(heading: string, title: string, body: string): Promise<void> {
     const card = document.getElementById('card')!;
+    card.classList.remove('epilogue');
     document.getElementById('card-ch')!.textContent = heading;
     document.getElementById('card-title')!.textContent = title;
     document.getElementById('card-body')!.innerHTML =
@@ -869,6 +909,7 @@ export class Hud {
   /** Full-screen story card. Resolves once the player clicks through. */
   showCard(chapter: string, title: string, body: string): Promise<void> {
     const card = document.getElementById('card')!;
+    card.classList.toggle('epilogue', chapter.toUpperCase().includes('EPILOGUE'));
     document.getElementById('card-ch')!.textContent = chapter;
     document.getElementById('card-title')!.textContent = title;
     document.getElementById('card-body')!.innerHTML = body;
@@ -883,7 +924,7 @@ export class Hud {
       const done = () => {
         card.removeEventListener('click', done);
         window.removeEventListener('keydown', onKey, true);
-        card.classList.remove('show');
+        card.classList.remove('show', 'epilogue');
         this.cardOpen = false;
         resolve();
       };
@@ -1098,15 +1139,19 @@ export class Hud {
       : `<b>ARROW KEYS / WASD</b> move &nbsp; <b>SHIFT</b> boost &nbsp; <b>SPACE</b> jump<br/>
          <b>A / LEFT CLICK</b> attack &nbsp; <b>E (hold)</b> charge the rifle<br/>`;
     el.innerHTML = `
-      <h1>MECHA CITY</h1>
-      <h2>NEO TOKYO · TERRA-ARMOR DEPLOYMENT</h2>
-      <div class="keys">
-        ${keys}
-        Everything breaks. Citizens can't be hurt — but they will run.<br/>
-        Hunt the monsters. Every boss you defeat teaches you a new power.
+      <div class="start-shell">
+        <div class="start-eyebrow">N.T.D.F. PRIORITY DEPLOYMENT</div>
+        <h1>MECHA CITY</h1>
+        <h2>NEO TOKYO · TERRA-ARMOR DEPLOYMENT</h2>
+        <div class="keys">
+          ${keys}
+          Everything breaks. Civilians cannot be hurt — but they will run.<br/>
+          Hunt the monsters. Every victory evolves Terra-Armor.
+        </div>
+        ${resume ? `<div class="go resume" id="go-resume">CONTINUE · CHAPTER ${resume.chapter} — ${resume.title}</div>` : ''}
+        <div class="go" id="go-new">${resume ? 'START A NEW RUN' : `${isTouch ? 'TAP' : 'CLICK'} TO DEPLOY`}</div>
       </div>
-      ${resume ? `<div class="go resume" id="go-resume">CONTINUE · CHAPTER ${resume.chapter} — ${resume.title}</div>` : ''}
-      <div class="go" id="go-new">${resume ? 'START A NEW RUN' : `${isTouch ? 'TAP' : 'CLICK'} TO DEPLOY`}</div>
+      <div class="start-footer"><span>TA-01 · SYSTEM READY</span><span>NEO TOKYO DEFENCE FORCE</span></div>
     `;
     const begin = (fn: () => void) => { el.remove(); fn(); };
     if (resume) {

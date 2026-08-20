@@ -23,10 +23,19 @@ export interface MonsterCtx {
 }
 
 function box(w: number, h: number, d: number, color: number, emissive = 0): THREE.Mesh {
-  return new THREE.Mesh(
+  const mesh = new THREE.Mesh(
     new THREE.BoxGeometry(w, h, d),
-    new THREE.MeshLambertMaterial({ color, emissive, emissiveIntensity: emissive ? 1 : 0 })
+    new THREE.MeshStandardMaterial({
+      color, emissive,
+      emissiveIntensity: emissive ? 1.15 : 0,
+      roughness: emissive ? 0.34 : 0.7,
+      metalness: emissive ? 0.22 : 0.08,
+      flatShading: true,
+    })
   );
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  return mesh;
 }
 
 /** 1 = opening, 2 = pressured, 3 = cornered and enraged. */
@@ -213,15 +222,19 @@ export abstract class Monster {
   protected addCore(localY: number, localZ = -1.5): void {
     this.weakCore = new THREE.Mesh(
       new THREE.BoxGeometry(2.6, 2.6, 2.6),
-      new THREE.MeshLambertMaterial({ color: 0xffe45c, emissive: 0xffc61a, emissiveIntensity: 1 })
+      new THREE.MeshStandardMaterial({
+        color: 0xffe45c, emissive: 0xffc61a, emissiveIntensity: 1.55,
+        roughness: 0.24, metalness: 0.24, flatShading: true,
+      })
     );
+    this.weakCore.castShadow = true;
     this.weakCore.position.set(0, localY, localZ);
     this.group.add(this.weakCore);
 
     // Shared predator language across the roster: an uneven dorsal crown and
     // outward shoulder spikes. Every boss keeps its authored anatomy, but no
     // silhouette ends in a clean toy-like rectangle anymore.
-    const spikeMat = new THREE.MeshLambertMaterial({ color: 0x241d29, emissive: 0x22060b, emissiveIntensity: 0.28 });
+    const spikeMat = new THREE.MeshStandardMaterial({ color: 0x241d29, emissive: 0x22060b, emissiveIntensity: 0.28, roughness: 0.58, metalness: 0.12, flatShading: true });
     for (let i = 0; i < 5; i++) {
       const h = 1.5 + i * 0.32;
       const spike = new THREE.Mesh(new THREE.BoxGeometry(0.7, h, 0.7), spikeMat.clone());
@@ -251,14 +264,16 @@ export abstract class Monster {
    * same decorative kit.
    */
   private addCreatureDetail(localY: number): void {
-    const bone = new THREE.MeshLambertMaterial({ color: 0xd8d0b9 });
-    const hide = new THREE.MeshLambertMaterial({ color: 0x25242a });
-    const wound = new THREE.MeshLambertMaterial({
-      color: 0x721e22, emissive: 0x250306, emissiveIntensity: 0.35,
+    const bone = new THREE.MeshStandardMaterial({ color: 0xd8d0b9, roughness: 0.82, flatShading: true });
+    const hide = new THREE.MeshStandardMaterial({ color: 0x25242a, roughness: 0.62, metalness: 0.08, flatShading: true });
+    const wound = new THREE.MeshStandardMaterial({
+      color: 0x721e22, emissive: 0x250306, emissiveIntensity: 0.35, roughness: 0.42, flatShading: true,
     });
     const add = (w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number) => {
       const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat.clone());
       m.position.set(x, y, z);
+      m.castShadow = true;
+      m.receiveShadow = true;
       this.group.add(m);
       return m;
     };
