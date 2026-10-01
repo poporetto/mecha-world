@@ -115,6 +115,18 @@ export class PostFX {
       samples: 4,
     });
     const composer = new EffectComposer(this.renderer, target);
+    // Memory and fill at real desktop resolutions. A Retina 1080p window is
+    // ~8MP, and the composer clones its target, so two 4x-multisampled
+    // half-float buffers at full size. Only one needs MSAA: RenderPass draws
+    // the scene into readBuffer, which is renderTarget2 at the start of every
+    // frame (two swapping passes per frame keep the parity fixed — checked
+    // live). renderTarget1 only ever receives the finish pass.
+    composer.renderTarget1.dispose();
+    composer.renderTarget1 = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType });
+    composer.writeBuffer = composer.renderTarget1;
+    // and cap the post resolution: MSAA already handles the edges, so past
+    // 1.5x the extra pixels buy little and cost the most
+    composer.setPixelRatio(Math.min(this.renderer.getPixelRatio(), 1.5));
     composer.addPass(new RenderPass(this.scene, this.camera));
     const css = this.renderer.getSize(new THREE.Vector2());
     this.bloom = new UnrealBloomPass(new THREE.Vector2(css.x, css.y), 0.5, 0.38, 1.0);
@@ -139,7 +151,15 @@ export class PostFX {
     if (this.composer) {
       this.kick = Math.max(0, this.kick - dt * 3.2);
       if (this.finish) this.finish.uniforms.uAberration.value = this.kick * this.kick * 0.012;
+      // renderer.info resets on every internal render call, so after a
+      // composer frame it described only the last full-screen pass (1 draw,
+      // 0 triangles) and the F3 overlay was useless on High. Count the frame.
+      const info = this.renderer.info;
+      const auto = info.autoReset;
+      info.autoReset = false;
+      info.reset();
       this.composer.render();
+      info.autoReset = auto;
     } else {
       this.renderer.render(this.scene, this.camera);
     }
