@@ -4,7 +4,7 @@
 
 import * as THREE from 'three';
 import {
-  blade, chain, cone, ellipsoid, fin, mirrorX, roundBox, noise3, onLattice, Prim, SculptSpec, sculpted, sphere, squash, surfaceHit, surfaceY, V3,
+  blade, chain, cone, ellipsoid, fin, inShell, mirrorX, rough, roundBox, noise3, onLattice, Prim, SculptSpec, sculpted, sphere, squash, surfaceHit, surfaceY, V3,
 } from '../render/voxelSculpt';
 
 /** Roughly the city's voxel grain once MONSTER_SCALE (2.2) is applied. */
@@ -973,6 +973,185 @@ export function mantisLeg(hind: boolean): THREE.BufferGeometry {
   });
 }
 
+// ============================================================== MAGMA GOLEM
+// A craggy basalt brute: lumpy boulder masses for a body, a small head with
+// a glowing throat under a crag of brow, shards of rock along its back and
+// fists like boulders. Lava shows through cracks in the crust, which are
+// carved a little way into the surface and filled with light; the rock
+// around each crack is heat-reddened.
+
+const MG = {
+  ROCK: 0x4f423d, CRUST: 0x75524a, HOT: 0x8a3a22, LAVA: 0xff7a2f, LAVA_CORE: 0xffd060, EYE: 0xffb020,
+};
+enum MGS { ROCK, CRUST, SHARD }
+
+export const GOLEM_SHOULDER: V3 = [4.2, 11.0, 0];
+export const GOLEM_HIP: V3 = [1.8, 6.0, 0];
+export const GOLEM_FIST: V3 = [-0.2, -7.2, 1.7];
+
+/** A crack along a path over a surface facing `out`, as thin plates. */
+function crack(path: V3[], out: V3): Prim[] {
+  const prims: Prim[] = [];
+  for (let i = 0; i < path.length - 1; i++) {
+    const a = path[i], b = path[i + 1];
+    const d: V3 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    // the plate stands across the surface, along the crack
+    const nrm: V3 = [d[1] * out[2] - d[2] * out[1], d[2] * out[0] - d[0] * out[2], d[0] * out[1] - d[1] * out[0]];
+    prims.push(fin(a, b, 1.0, 1.0, 0.42, nrm, 0));
+  }
+  return prims;
+}
+
+const GOLEM_BODY_CRACKS: Prim[] = [
+  // a forked crack across the chest
+  ...crack([[-1.9, 11.2, 2.8], [-0.8, 9.9, 3.1], [-1.3, 8.6, 3.0], [-0.4, 7.2, 2.6]], [0, 0, 1]),
+  ...crack([[-0.8, 9.9, 3.1], [0.9, 9.3, 3.1], [1.9, 10.6, 2.7]], [0, 0, 1]),
+  ...crack([[1.2, 8.6, 3.0], [1.8, 7.3, 2.6]], [0, 0, 1]),
+  // and down the back
+  ...crack([[-1.4, 11.6, -2.6], [0.3, 10.2, -2.9], [-0.5, 8.4, -2.6], [0.8, 7.0, -2.0]], [0, 0, -1]),
+  // over each shoulder
+  ...mirrorX(crack([[3.0, 12.6, -0.8], [3.9, 12.9, 0.4], [3.4, 12.4, 1.4]], [0, 1, 0])),
+];
+const GOLEM_ARM_CRACKS: Prim[] = crack([[-1.0, -2.0, 0.9], [-1.25, -3.6, 1.3], [-1.15, -5.0, 1.7]], [-1, 0, 0.3]);
+
+function golemPaint(slot: number, p: V3, n: V3): number {
+  if (slot === MGS.SHARD) return hide(MG.ROCK, MG.CRUST, p, n, 151);
+  // crust plates over basalt, broken up by noise
+  const crust = noise3(p[0] * 0.9, p[1] * 0.9, p[2] * 0.9, 153) > 0.55;
+  let c = hide(crust ? MG.CRUST : MG.ROCK, scale(MG.CRUST, 1.15), p, n, 155);
+  // heat-reddened rock along the cracks
+  let near = Infinity;
+  for (const k of [...GOLEM_BODY_CRACKS, ...GOLEM_ARM_CRACKS]) near = Math.min(near, k.d(p[0], p[1], p[2]));
+  if (near < 0.7) c = mix(c, MG.HOT, (0.7 - near) / 0.7 * 0.85);
+  return c;
+}
+
+let golemBodyMemo: SculptSpec | null = null;
+function golemBodyBase(): SculptSpec {
+  if (golemBodyMemo) return golemBodyMemo;
+  const add: Prim[] = [
+    rough(ellipsoid([0, 6.3, 0], [2.4, 1.5, 1.8], MGS.ROCK), 0.25, 0.9, 161),
+    rough(ellipsoid([0, 9.2, 0.5], [3.2, 2.9, 2.75], MGS.ROCK), 0.3, 0.8, 163),
+    rough(ellipsoid([0, 11.2, -0.9], [2.9, 2.0, 2.4], MGS.ROCK), 0.3, 0.8, 165),
+    rough(ellipsoid([0, 12.6, 1.0], [1.2, 1.05, 1.15], MGS.ROCK), 0.18, 1.2, 167),
+    ...mirrorX([rough(ellipsoid([3.6, 11.3, 0], [1.9, 1.75, 1.9], MGS.ROCK), 0.3, 0.9, 169)]),
+  ];
+  const hard: Prim[] = [
+    // a crag of brow over the eyes, a heavy jaw under the throat
+    rough(roundBox([0, 13.25, 1.75], [1.0, 0.3, 0.5], 0.15, MGS.CRUST), 0.12, 1.6, 171),
+    roundBox([0, 11.85, 1.55], [0.8, 0.35, 0.6], 0.2, MGS.CRUST),
+  ];
+  // shards of rock along the upper back
+  for (let i = 0; i < 5; i++) {
+    const x = -1.6 + i * 0.8;
+    hard.push(cone([x, 12.2, -1.3], [x * 1.4, 14.6 - Math.abs(i - 2) * 0.5, -2.2], 0.42, 0.08, MGS.SHARD));
+  }
+  golemBodyMemo = { cell: CELL, blend: 0.8, add, hard, paint: golemPaint, seed: 173 };
+  return golemBodyMemo;
+}
+
+let golemLightsMemo: { eyes: V3; heart: Prim; throat: Prim } | null = null;
+function golemLights(): { eyes: V3; heart: Prim; throat: Prim } {
+  if (golemLightsMemo) return golemLightsMemo;
+  const base = golemBodyBase();
+  const ey = L(12.85), ez = L(1.9);
+  const eye = surfaceHit(base, [L(0.55), ey, L(5)], [0, 0, -1], 5, CELL);
+  const hy = L(9.6);
+  const heart = surfaceHit(base, [L(0.2), hy, L(6)], [0, 0, -1], 6, CELL);
+  golemLightsMemo = {
+    eyes: eye ?? [L(0.55), ey, ez],
+    // the molten heart in the chest, where the cracks meet
+    heart: ellipsoid([0, hy, heart ? heart[2] : 2.6], [0.75, 0.75, 0.42], 1),
+    throat: ellipsoid([0, L(12.2), L(2.0)], [0.55, 0.2, 0.5], 1),
+  };
+  return golemLightsMemo;
+}
+
+export function golemCore(): V3 {
+  const z = -1.6;
+  return [0, surfaceY(golemBodyBase(), 0, z) - 0.25, z];
+}
+
+export function golemBody(): THREE.BufferGeometry {
+  return sculpted('golem.body', () => {
+    const base = golemBodyBase();
+    const l = golemLights();
+    return {
+      ...base,
+      cut: [
+        ...GOLEM_BODY_CRACKS.map((k) => inShell(base, k, 0.75, false)),
+        sphere(l.eyes, 0.2, 0), sphere([-l.eyes[0], l.eyes[1], l.eyes[2]], 0.2, 0),
+        l.heart, l.throat,
+      ],
+    };
+  });
+}
+
+/** Lava in the cracks, the eyes and the throat. */
+export function golemLava(): THREE.BufferGeometry {
+  return sculpted('golem.lava', () => {
+    const base = golemBodyBase();
+    const l = golemLights();
+    return {
+      cell: CELL, blend: 0, seed: 175,
+      add: [
+        ...GOLEM_BODY_CRACKS.map((k) => inShell(base, k, 0.75, true)),
+        sphere(l.eyes, 0.2, 2), sphere([-l.eyes[0], l.eyes[1], l.eyes[2]], 0.2, 2),
+        l.throat,
+      ],
+      // lava runs hotter (yellower) toward the middle of each crack
+      paint: (slot, p) => (slot === 2 ? MG.EYE : mix(MG.LAVA, MG.LAVA_CORE, noise3(p[0] * 2, p[1] * 2, p[2] * 2, 177) * 0.6)),
+    };
+  });
+}
+
+/** The molten heart on its own, so it can pulse. */
+export function golemHeart(): THREE.BufferGeometry {
+  return sculpted('golem.heart', () => ({
+    cell: CELL, blend: 0, seed: 179, add: [golemLights().heart], paint: () => MG.LAVA_CORE,
+  }));
+}
+
+function golemArmBase(): SculptSpec {
+  return {
+    cell: CELL, blend: 0.7, paint: golemPaint, seed: 181,
+    add: [
+      rough(cone([0, 0, 0], [-0.4, -3.3, 0.9], 1.25, 1.0, MGS.ROCK), 0.22, 1.0, 183),
+      rough(cone([-0.4, -3.3, 0.9], [-0.25, -6.1, 1.6], 1.05, 1.2, MGS.ROCK), 0.22, 1.0, 185),
+    ],
+    hard: [rough(ellipsoid(GOLEM_FIST, [1.5, 1.3, 1.5], MGS.CRUST), 0.25, 1.1, 187)],
+  };
+}
+
+/** Left arm in shoulder space, boulder fist and all. */
+export function golemArm(): THREE.BufferGeometry {
+  return sculpted('golem.arm', () => {
+    const base = golemArmBase();
+    return { ...base, cut: GOLEM_ARM_CRACKS.map((k) => inShell(base, k, 0.75, false)) };
+  });
+}
+
+export function golemArmLava(): THREE.BufferGeometry {
+  return sculpted('golem.armlava', () => {
+    const base = golemArmBase();
+    return {
+      cell: CELL, blend: 0, seed: 189, add: GOLEM_ARM_CRACKS.map((k) => inShell(base, k, 0.75, true)),
+      paint: (_s, p) => mix(MG.LAVA, MG.LAVA_CORE, noise3(p[0] * 2, p[1] * 2, p[2] * 2, 191) * 0.6),
+    };
+  });
+}
+
+export function golemLeg(): THREE.BufferGeometry {
+  return sculpted('golem.leg', () => ({
+    cell: CELL, blend: 0.7, paint: golemPaint, seed: 193,
+    add: [
+      rough(cone([0, 0, 0], [-0.15, -3.0, 0.3], 1.35, 1.15, MGS.ROCK), 0.22, 1.0, 195),
+      rough(cone([-0.15, -3.0, 0.3], [-0.15, -5.0, 0.2], 1.15, 1.1, MGS.ROCK), 0.22, 1.0, 197),
+    ],
+    hard: [rough(roundBox([-0.15, -5.55, 0.55], [1.15, 0.45, 1.5], 0.3, MGS.CRUST), 0.15, 1.2, 199)],
+  }));
+}
+
 // ================================================================ PREWARM
 
 /**
@@ -989,6 +1168,7 @@ const PARTS: (() => THREE.BufferGeometry)[] = [
   colossusBody, colossusGlow, colossusArm, colossusLeg, () => colossusPlates()[0].geo,
   reaverBody, reaverGlow, reaverWing,
   mantisBody, mantisGlow, mantisScythe, () => mantisLeg(false), () => mantisLeg(true),
+  golemBody, golemLava, golemHeart, golemArm, golemArmLava, golemLeg,
 ];
 
 /** Build the sculpts one per idle slot (the cache keeps them). */

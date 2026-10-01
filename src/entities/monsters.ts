@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import {
   MAW_MUZZLES, mawBody, mawCore, mawGlow, mawMuzzleGlow,
   COLOSSUS_FIST, COLOSSUS_HIP, COLOSSUS_SHOULDER, colossusArm, colossusBody, colossusCore, colossusGlow, colossusLeg, colossusPlates,
+  GOLEM_FIST, GOLEM_HIP, GOLEM_SHOULDER, golemArm, golemArmLava, golemBody, golemCore, golemHeart, golemLava, golemLeg,
   MANTIS_HIPS, MANTIS_SCYTHE, mantisBody, mantisCore, mantisGlow, mantisLeg, mantisScythe,
   REAVER_WING_ROOT, reaverBody, reaverCore, reaverGlow, reaverWing,
   SERPENT_SEGMENTS, serpentCore, serpentHead, serpentHeadGlow, serpentSegment, serpentSegmentGlow,
@@ -1370,10 +1371,11 @@ export class MagmaGolem extends Monster {
   name = 'MAGMA GOLEM';
   reward: Reward = 'quake';
   hitRadius = 16;
-  private armL: THREE.Mesh;
-  private armR: THREE.Mesh;
-  private legL: THREE.Mesh;
-  private legR: THREE.Mesh;
+  private armL: THREE.Group;
+  private armR: THREE.Group;
+  private legL: THREE.Group;
+  private legR: THREE.Group;
+  /** The molten heart in the chest; it pulses. */
   private core: THREE.Mesh;
   private slamT = 3;
   private throwT = 5;
@@ -1381,75 +1383,39 @@ export class MagmaGolem extends Monster {
 
   constructor(x: number, z: number) {
     super(240);
-    const ROCK = 0x5a4a44; // dark basalt
-    const CRUST = 0x7a5348;
-    const LAVA = 0xff7a2f;
-
-    const torso = box(6, 5.5, 4, ROCK);
-    torso.position.y = 9;
-    // molten cracks (emissive plates) across the chest
-    const crackL = box(1.2, 3.2, 0.4, LAVA, LAVA);
-    crackL.position.set(-1.4, 9, 2.1);
-    crackL.rotation.z = 0.3;
-    const crackR = box(0.9, 2.4, 0.4, LAVA, LAVA);
-    crackR.position.set(1.5, 8.4, 2.1);
-    crackR.rotation.z = -0.2;
-    this.core = box(1.8, 1.8, 0.6, 0xffd060, 0xffb020);
-    this.core.position.set(0, 9.6, 2.2);
-    const head = box(2.4, 2.0, 2.4, CRUST);
-    head.position.set(0, 12.8, 0.4);
-    const eyeL = box(0.6, 0.5, 0.3, LAVA, LAVA);
-    eyeL.position.set(-0.6, 13, 1.6);
-    const eyeR = eyeL.clone();
-    eyeR.position.x = 0.6;
-    const shoulderL = box(2.6, 2.6, 3.2, CRUST);
-    shoulderL.position.set(-4.2, 11.5, 0);
-    const shoulderR = shoulderL.clone();
-    shoulderR.position.x = 4.2;
-    this.armL = box(2.2, 6.5, 2.4, ROCK);
-    this.armL.position.set(-4.4, 7.5, 0);
-    this.armR = this.armL.clone();
-    this.armR.position.x = 4.4;
-    const fistL = box(3, 2.6, 3, CRUST);
-    fistL.position.set(-4.4, 3.6, 0);
-    const fistR = fistL.clone();
-    fistR.position.x = 4.4;
-    this.legL = box(2.6, 6, 3, ROCK);
-    this.legL.position.set(-1.8, 3, 0);
-    this.legR = this.legL.clone();
-    this.legR.position.x = 1.8;
-    this.group.add(torso, crackL, crackR, this.core, head, eyeL, eyeR, shoulderL, shoulderR,
-      this.armL, this.armR, fistL, fistR, this.legL, this.legR);
-    // Broken crust: slabs lifting off the shoulders and back with lava in the
-    // seams between them, so the body reads as cooling rock under tension.
-    for (const side of [-1, 1]) {
-      for (let i = 0; i < 3; i++) {
-        const slab = box(1.6, 0.7, 2.0 - i * 0.35, CRUST);
-        slab.position.set(side * (3.0 + i * 0.35), 12.4 - i * 1.5, -0.6);
-        slab.rotation.z = side * (0.25 + i * 0.12);
-        this.group.add(slab);
+    // Sculpted voxel anatomy (bossModels.ts): craggy basalt with lava in the
+    // cracks of its crust. Arms pivot at the shoulder with the boulder fists
+    // attached, legs at the hip.
+    this.group.add(hidePart(golemBody()), glowPart(golemLava()));
+    this.core = glowPart(golemHeart());
+    this.group.add(this.core);
+    const limb = (parts: THREE.Mesh[], pivot: V3, side: number): THREE.Group => {
+      const g = new THREE.Group();
+      g.position.set(side * pivot[0], pivot[1], pivot[2]);
+      for (const mesh of parts) {
+        if (side > 0) mesh.scale.x = -1; // built as the left limb
+        g.add(mesh);
       }
-      const seam = box(0.3, 3.0, 0.3, LAVA, 0xff5a1f);
-      seam.position.set(side * 2.4, 9.4, -1.9);
-      const knuckle = box(1.4, 0.8, 1.4, CRUST);
-      knuckle.position.set(side * 4.4, 4.6, 0.6);
-      this.group.add(seam, knuckle);
-    }
-    for (let i = 0; i < 4; i++) {
-      const shard = box(0.6, 1.4 - i * 0.2, 0.6, ROCK);
-      shard.position.set(-1.2 + i * 0.8, 14.2, -1.0);
-      shard.rotation.z = (i - 1.5) * 0.25;
-      this.group.add(shard);
-    }
-    const jawG = box(1.6, 0.7, 1.2, ROCK);
-    jawG.position.set(0, 12.1, 1.2);
-    const throatGlow = box(1.0, 0.4, 0.5, LAVA, 0xff5a1f);
-    throatGlow.position.set(0, 12.3, 1.6);
-    this.group.add(jawG, throatGlow);
+      this.group.add(g);
+      return g;
+    };
+    this.armL = limb([hidePart(golemArm()), glowPart(golemArmLava())], GOLEM_SHOULDER, -1);
+    this.armR = limb([hidePart(golemArm()), glowPart(golemArmLava())], GOLEM_SHOULDER, 1);
+    this.legL = limb([hidePart(golemLeg())], GOLEM_HIP, -1);
+    this.legR = limb([hidePart(golemLeg())], GOLEM_HIP, 1);
     this.group.scale.setScalar(MONSTER_SCALE);
     this.group.position.set(x, 0, z);
-    this.addCore(12.0);
+    const core = golemCore();
+    this.addCore(core[1], core[2], false);
+    this.coreScale = 0.7;
+    this.weakCore.scale.setScalar(this.coreScale);
     this.rememberEmissives();
+  }
+
+  /** World position of the right fist, for throws. */
+  private fistR(): THREE.Vector3 {
+    this.group.updateMatrixWorld(true);
+    return this.armR.localToWorld(new THREE.Vector3(-GOLEM_FIST[0], GOLEM_FIST[1], GOLEM_FIST[2]));
   }
 
   update(dt: number, t: number, ctx: MonsterCtx): void {
@@ -1477,17 +1443,28 @@ export class MagmaGolem extends Monster {
     this.group.position.y += ((gy > 14 ? 0 : gy) - this.group.position.y) * Math.min(1, dt * 2.5);
     // core pulses
     const pulse = 0.7 + Math.sin(t * 4) * 0.3;
-    (this.core.material as THREE.MeshLambertMaterial).emissiveIntensity = pulse;
+    (this.core.material as THREE.MeshBasicMaterial).color.setScalar(0.6 + pulse * 0.7);
 
     // ground slam: both fists down, ring of destruction around the feet
     // combined with the throw's tell below rather than overwritten by it
-    const slamTell = this.slamT < 0.7 && this.slamT > 0;
-    if (slamTell) this.markAoe(30, 1 - this.slamT / 0.7);
+    const slamTell = this.slamT < 0.7 && this.slamT > 0 && dist < 40 && !this.vulnerable;
+    if (slamTell) {
+      this.markAoe(30, 1 - this.slamT / 0.7);
+      // both fists haul up overhead through the tell...
+      const lift = -2.5 * Math.min(1, (0.7 - this.slamT) / 0.45);
+      this.armL.rotation.x = lift;
+      this.armR.rotation.x = lift;
+    }
     this.slamT -= dt;
-    if (this.slamT <= 0 && dist < 40 && !this.vulnerable) {
+    // Out of reach when the timer runs out, it waits with the tell re-armed.
+    // It used to wait at zero, so stepping into range meant an instant slam
+    // with no wind-up at all.
+    if (this.slamT <= 0 && (dist >= 40 || this.vulnerable)) this.slamT = 0.7;
+    if (this.slamT <= 0) {
       this.slamT = 3.5 / this.tempo;
-      this.armL.rotation.x = 1.4;
-      this.armR.rotation.x = 1.4;
+      // ...and come down into the road in front of it
+      this.armL.rotation.x = -0.35;
+      this.armR.rotation.x = -0.35;
       const c = this.group.position.clone();
       c.y += 2;
       ctx.destroyAt(c, 8, 0.5);
@@ -1505,17 +1482,19 @@ export class MagmaGolem extends Monster {
       // fists buried to the wrist in the road
       this.openWindow(1.8);
     }
-    this.armL.rotation.x *= 1 - Math.min(1, dt * 2.5);
-    this.armR.rotation.x *= 1 - Math.min(1, dt * 2.5);
+    if (!slamTell) {
+      this.armL.rotation.x *= 1 - Math.min(1, dt * 2.5);
+      this.armR.rotation.x *= 1 - Math.min(1, dt * 2.5);
+    }
 
     // lob a molten boulder at range
     this.telegraph = slamTell || (this.throwT < 0.8 && this.throwT > 0);
     this.throwT -= dt;
     if (this.throwT <= 0 && ctx.throwBoulder && dist > 24 && dist < 95 && !this.vulnerable) {
       this.throwT = 4.5 / this.tempo;
-      const from = this.group.position.clone();
-      from.y += 26;
-      ctx.throwBoulder(from, ctx.playerPos.clone());
+      // an overarm lob: the boulder leaves from the raised right fist
+      this.armR.rotation.x = -2.3;
+      ctx.throwBoulder(this.fistR(), ctx.playerPos.clone());
     }
   }
 }

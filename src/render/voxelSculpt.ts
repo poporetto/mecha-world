@@ -166,6 +166,16 @@ export function fin(base: V3, tip: V3, rBase: number, rTip: number, thick: numbe
   };
 }
 
+/** Craggy rock: the surface pushed in and out by smooth noise. */
+export function rough(p: Prim, amp: number, freq: number, seed: number): Prim {
+  return {
+    paint: p.paint,
+    min: [p.min[0] - amp, p.min[1] - amp, p.min[2] - amp],
+    max: [p.max[0] + amp, p.max[1] + amp, p.max[2] + amp],
+    d: (x, y, z) => p.d(x, y, z) + (noise3(x * freq, y * freq, z * freq, seed) - 0.5) * amp * 2,
+  };
+}
+
 /** Left/right pairs: returns the primitive and its mirror across x = 0. */
 export function mirrorX(prims: Prim[]): Prim[] {
   const out = [...prims];
@@ -310,6 +320,23 @@ export function surfaceHit(spec: SculptSpec, from: V3, dir: V3, range = 120, ste
 export function surfaceY(spec: SculptSpec, x: number, z: number, top = 60): number {
   const hit = surfaceHit(spec, [x, top, z], [0, -1, 0], top * 2);
   return hit ? hit[1] : NaN;
+}
+
+/**
+ * The part of `p` that lies within `depth` under a sculpt's surface: cracks,
+ * veins and inlays. As a cut it opens a channel in the hide only that deep;
+ * with `inside` it is the matching fill, flush with the surface, to light.
+ */
+export function inShell(spec: SculptSpec, p: Prim, depth: number, inside: boolean, paint = p.paint): Prim {
+  const f = fieldOf(spec);
+  return {
+    paint, min: p.min, max: p.max,
+    d(x, y, z) {
+      const s = evalField(f, x, y, z);
+      const d = Math.max(p.d(x, y, z), -s - depth);
+      return inside ? Math.max(d, s) : d;
+    },
+  };
 }
 
 // face table shared with the chunk mesher's conventions
