@@ -855,6 +855,124 @@ export function reaverWing(): THREE.BufferGeometry {
   });
 }
 
+// =========================================================== CRIMSON MANTIS
+// A praying mantis at kaiju scale: a long prothorax rising to a triangular
+// head with bulging, glowing compound eyes and antennae; raptorial forelegs
+// that fold like a jackknife, with spined femurs and hooked blades; leaf-like
+// wing cases over a banded abdomen; four jointed walking legs.
+
+const MT = {
+  SHELL: 0xc0433f, SHELL_LOW: 0xe68a72, PLATE: 0xf0c9b2, TEGMINA: 0x9e2f2f, VEIN: 0xf0a58a,
+  SPINE: 0xfff1e6, EYE: 0x8effc0,
+};
+enum MTS { SHELL, PLATE, TEGMINA, SPINE }
+
+/** Scythe arm pivot (left side) and the walking-leg hips (left side). */
+export const MANTIS_SCYTHE: V3 = [1.4, 8, 2];
+export const MANTIS_HIPS: { at: V3; hind: boolean }[] = [
+  { at: [0.85, 6.8, 0.5], hind: false },
+  { at: [0.85, 6.7, -0.9], hind: true },
+];
+
+function mantisPaint(slot: number, p: V3, n: V3): number {
+  switch (slot) {
+    case MTS.PLATE: {
+      // abdomen segments in bands
+      const band = Math.abs((((p[2] + 9) * 1.05) % 1) - 0.5) < 0.12;
+      return scale(hide(MT.PLATE, scale(MT.PLATE, 1.06), p, n, 131), band ? 0.8 : 1);
+    }
+    case MTS.TEGMINA: {
+      // a pale midrib down each wing case, like a leaf
+      const rib = Math.abs(Math.abs(p[0]) - 0.4) < 0.1 && n[1] > 0.3;
+      return rib ? MT.VEIN : hide(MT.TEGMINA, MT.SHELL, p, n, 133);
+    }
+    case MTS.SPINE: return MT.SPINE;
+    default: return hide(MT.SHELL, MT.SHELL_LOW, p, n, 135, -0.1);
+  }
+}
+
+const MANTIS_EYE: V3 = [L(0.95), L(9.3), L(3.65)];
+
+let mantisBodyMemo: SculptSpec | null = null;
+function mantisBodyBase(): SculptSpec {
+  if (mantisBodyMemo) return mantisBodyMemo;
+  const add: Prim[] = [
+    ellipsoid([0, 7.0, -0.2], [1.1, 1.0, 2.0], MTS.SHELL),
+    // the long prothorax, rising to the head
+    cone([0, 7.4, 1.3], [0, 8.6, 3.0], 0.75, 0.55, MTS.SHELL),
+    ellipsoid([0, 9.1, 3.6], [1.05, 0.7, 0.55], MTS.SHELL),
+    cone([0, 8.9, 3.8], [0, 8.2, 4.2], 0.45, 0.2, MTS.PLATE),
+    ...chain([[0, 6.9, -1.6], [0, 6.6, -3.9], [0, 6.0, -5.8]], [1.15, 1.05, 0.5], MTS.PLATE),
+  ];
+  const hard: Prim[] = [
+    // wing cases folded flat over the abdomen
+    ...mirrorX([fin([0.4, 7.75, -0.5], [0.35, 7.25, -5.2], 0.9, 0.3, 0.4, [0, 1, 0], MTS.TEGMINA)]),
+    // antennae
+    ...mirrorX([cone([0.3, 9.6, 3.8], [1.25, 11.5, 4.7], 0.25, 0.17, MTS.SHELL)]),
+  ];
+  mantisBodyMemo = { cell: CELL, blend: 0.6, add, hard, paint: mantisPaint, seed: 137 };
+  return mantisBodyMemo;
+}
+
+export function mantisCore(): V3 {
+  const z = -0.4;
+  return [0, surfaceY(mantisBodyBase(), 0, z) - 0.15, z];
+}
+
+export function mantisBody(): THREE.BufferGeometry {
+  return sculpted('mantis.body', () => ({
+    ...mantisBodyBase(),
+    cut: mirrorX([sphere(MANTIS_EYE, 0.42, MTS.SHELL)]),
+  }));
+}
+
+/** The compound eyes bulge out of the head and glow. */
+export function mantisGlow(): THREE.BufferGeometry {
+  return sculpted('mantis.glow', () => ({
+    cell: CELL, blend: 0, add: mirrorX([sphere(MANTIS_EYE, 0.42, 0)]), paint: () => MT.EYE, seed: 139,
+  }));
+}
+
+/** Left raptorial foreleg in its pivot space: coxa, spined femur, folding blade. */
+export function mantisScythe(): THREE.BufferGeometry {
+  return sculpted('mantis.scythe', () => {
+    const knee: V3 = [-0.15, -1.9, 3.2], hook: V3 = [-0.15, -3.6, 1.6];
+    const hard: Prim[] = [
+      fin(knee, hook, 0.42, 0.1, 0.42, [1, 0, 0], MTS.PLATE),
+      cone(hook, [-0.15, -3.25, 1.0], 0.22, 0.06, MTS.SPINE),
+    ];
+    // spines down the femur's inner edge
+    for (let i = 0; i < 4; i++) {
+      const z = 1.0 + i * 0.6, y = -1.55 - i * 0.1;
+      hard.push(cone([-0.15, y - 0.25, z], [-0.15, y - 0.8, z + 0.15], 0.15, 0.05, MTS.SPINE));
+    }
+    return {
+      cell: CELL, blend: 0.4, paint: mantisPaint, seed: 141, hard,
+      add: [
+        cone([0, 0, 0], [-0.15, -1.5, 0.5], 0.42, 0.36, MTS.SHELL),
+        cone([-0.15, -1.5, 0.5], knee, 0.42, 0.3, MTS.SHELL),
+      ],
+    };
+  });
+}
+
+/** Left walking leg in hip space: a femur up and out, a tibia down to the street. */
+export function mantisLeg(hind: boolean): THREE.BufferGeometry {
+  return sculpted(hind ? 'mantis.leg.hind' : 'mantis.leg.mid', () => {
+    const dz = hind ? -1.4 : 0.9;
+    const knee: V3 = [-1.9, 1.0, dz * 0.4];
+    const foot: V3 = [-2.7, -6.4, dz];
+    return {
+      cell: CELL, blend: 0.3, paint: mantisPaint, seed: hind ? 143 : 145,
+      add: [
+        cone([0, 0, 0], knee, 0.36, 0.28, MTS.SHELL),
+        cone(knee, foot, 0.28, 0.2, MTS.SHELL),
+      ],
+      hard: [cone(foot, [foot[0] - 0.2, foot[1] - 0.15, foot[2] + 0.5], 0.2, 0.08, MTS.SPINE)],
+    };
+  });
+}
+
 // ================================================================ PREWARM
 
 /**
@@ -870,6 +988,7 @@ const PARTS: (() => THREE.BufferGeometry)[] = [
   ...Array.from({ length: SERPENT_SEGMENTS }, (_, i) => () => serpentSegmentGlow(i)),
   colossusBody, colossusGlow, colossusArm, colossusLeg, () => colossusPlates()[0].geo,
   reaverBody, reaverGlow, reaverWing,
+  mantisBody, mantisGlow, mantisScythe, () => mantisLeg(false), () => mantisLeg(true),
 ];
 
 /** Build the sculpts one per idle slot (the cache keeps them). */

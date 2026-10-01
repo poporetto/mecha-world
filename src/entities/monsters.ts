@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import {
   MAW_MUZZLES, mawBody, mawCore, mawGlow, mawMuzzleGlow,
   COLOSSUS_FIST, COLOSSUS_HIP, COLOSSUS_SHOULDER, colossusArm, colossusBody, colossusCore, colossusGlow, colossusLeg, colossusPlates,
+  MANTIS_HIPS, MANTIS_SCYTHE, mantisBody, mantisCore, mantisGlow, mantisLeg, mantisScythe,
   REAVER_WING_ROOT, reaverBody, reaverCore, reaverGlow, reaverWing,
   SERPENT_SEGMENTS, serpentCore, serpentHead, serpentHeadGlow, serpentSegment, serpentSegmentGlow,
   GORGOSAUR_CORE, GORGOSAUR_HIP, GORGOSAUR_JAW_HINGE, GORGOSAUR_MOUTH, GORGOSAUR_TAIL_ROOT,
@@ -1195,6 +1196,8 @@ export class CrimsonMantis extends Monster {
   private scytheL: THREE.Group;
   private scytheR: THREE.Group;
   private legPhase = 0;
+  /** Walking legs, left mid, right mid, left hind, right hind. */
+  private legs: THREE.Group[] = [];
   private lungeT = 3;
   private slashT = -1; // 0..1 while slashing
   private combo = 0;   // swings left in the current flurry
@@ -1209,82 +1212,29 @@ export class CrimsonMantis extends Monster {
 
   constructor(x: number, z: number) {
     super(170);
-    const SHELL = 0xc0433f; // crimson
-    const PLATE = 0xf0c9b2;
-
-    const thorax = box(2.4, 2.2, 4.5, SHELL);
-    thorax.position.y = 7;
-    const abdomen = box(2, 1.8, 3.5, PLATE);
-    abdomen.position.set(0, 6.6, -3.5);
-    abdomen.rotation.x = -0.25;
-    const neck = box(1.2, 1.2, 1.6, SHELL);
-    neck.position.set(0, 8.2, 2.6);
-    const head = box(1.8, 1.4, 1.6, SHELL);
-    head.position.set(0, 9, 3.6);
-    const eyeL = box(0.55, 0.55, 0.4, 0x8effc0, 0x8effc0);
-    eyeL.position.set(-0.65, 9.2, 4.3);
-    const eyeR = eyeL.clone();
-    eyeR.position.x = 0.65;
-    const antL = box(0.15, 1.6, 0.15, PLATE);
-    antL.position.set(-0.5, 10.2, 3.9);
-    antL.rotation.z = 0.4;
-    const antR = antL.clone();
-    antR.position.x = 0.5;
-    antR.rotation.z = -0.4;
-
-    // scythe arms: upper arm + long curved blade
-    const makeScythe = (side: number): THREE.Group => {
-      const arm = new THREE.Group();
-      arm.position.set(side * 1.4, 8, 2);
-      const upper = box(0.6, 2.2, 0.6, SHELL);
-      upper.position.y = -1;
-      const blade = box(0.35, 3.6, 0.7, PLATE);
-      blade.position.set(0, -2.2, 1);
-      blade.rotation.x = 0.5;
-      const tip = box(0.25, 1.2, 0.4, 0xffffff, 0x662222);
-      tip.position.set(0, -3.8, 2);
-      tip.rotation.x = 0.8;
-      arm.add(upper, blade, tip);
-      return arm;
+    // Sculpted voxel anatomy (bossModels.ts): a praying mantis. The scythes
+    // and the four walking legs each pivot where they meet the body.
+    this.group.add(hidePart(mantisBody()), glowPart(mantisGlow()));
+    const limb = (geo: THREE.BufferGeometry, at: V3, side: number): THREE.Group => {
+      const g = new THREE.Group();
+      g.position.set(side * at[0], at[1], at[2]);
+      const mesh = hidePart(geo);
+      if (side > 0) mesh.scale.x = -1; // built as the left limb
+      g.add(mesh);
+      this.group.add(g);
+      return g;
     };
-    this.scytheL = makeScythe(-1);
-    this.scytheR = makeScythe(1);
-
-    // four stilt legs
-    for (let i = 0; i < 4; i++) {
-      const leg = box(0.4, 6.5, 0.4, SHELL);
-      leg.position.set(i % 2 === 0 ? -1.2 : 1.2, 3.4, i < 2 ? 1 : -2);
-      leg.rotation.z = (i % 2 === 0 ? 1 : -1) * 0.25;
-      this.group.add(leg);
-    }
-    this.group.add(thorax, abdomen, neck, head, eyeL, eyeR, antL, antR, this.scytheL, this.scytheR);
-    // Insect structure: a segmented abdomen, compound eye facets, folded wing
-    // cases over the back and serrations along the inner edge of each scythe.
-    for (let i = 0; i < 4; i++) {
-      const band = box(1.9 - i * 0.22, 0.5, 0.8, PLATE);
-      band.position.set(0, 6.5 - i * 0.12, -2.4 - i * 0.95);
-      this.group.add(band);
-    }
-    for (const side of [-1, 1]) {
-      const wingCase = box(1.1, 0.35, 3.6, SHELL);
-      wingCase.position.set(side * 0.85, 8.0, -1.6);
-      wingCase.rotation.z = side * 0.18;
-      const facet = box(0.5, 0.5, 0.4, 0x2b1412);
-      facet.position.set(side * 0.72, 9.35, 4.15);
-      const palp = box(0.25, 0.7, 0.5, PLATE);
-      palp.position.set(side * 0.4, 8.5, 4.2);
-      palp.rotation.x = 0.4;
-      this.group.add(wingCase, facet, palp);
-      // serrations along the scythe's inner edge
-      for (let i = 0; i < 4; i++) {
-        const tooth = box(0.16, 0.42, 0.16, PLATE);
-        tooth.position.set(side * 1.4 - side * 0.28, 6.6 - i * 0.75, 2.7 + i * 0.28);
-        this.group.add(tooth);
-      }
+    this.scytheL = limb(mantisScythe(), MANTIS_SCYTHE, -1);
+    this.scytheR = limb(mantisScythe(), MANTIS_SCYTHE, 1);
+    for (const { at, hind } of MANTIS_HIPS) {
+      for (const side of [-1, 1]) this.legs.push(limb(mantisLeg(hind), at, side));
     }
     this.group.scale.setScalar(MONSTER_SCALE);
     this.group.position.set(x, 0, z);
-    this.addCore(9.0);
+    const core = mantisCore();
+    this.addCore(core[1], core[2], false);
+    this.coreScale = 0.5;
+    this.weakCore.scale.setScalar(this.coreScale);
     this.rememberEmissives();
   }
 
@@ -1364,6 +1314,14 @@ export class CrimsonMantis extends Monster {
     // idle sway + raised scythes
     const sway = Math.sin(t * 3) * 0.1;
     this.group.rotation.z = sway * 0.3;
+    // an alternating gait while it runs: diagonal pairs step together, each
+    // leg swinging fore and aft about its hip and lifting on the way forward
+    this.legs.forEach((leg, i) => {
+      const side = i % 2 ? 1 : -1;
+      const ph = this.legPhase + (i === 0 || i === 3 ? 0 : Math.PI);
+      leg.rotation.y = Math.sin(ph) * 0.32;
+      leg.rotation.z = side * Math.max(0, Math.cos(ph)) * 0.12;
+    });
 
     // slash attack when close
     if (this.slashT >= 0) {
