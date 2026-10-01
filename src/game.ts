@@ -7,7 +7,7 @@ import { corruptionAt, RIFT_SITE } from './core/worldgen';
 import { Revenant } from './entities/revenant';
 import { ChunkManager } from './render/chunkManager';
 import { PostFX } from './render/post';
-import { installHdrMaterials } from './render/hdr';
+import { installHdrMaterials, RIM_COLOR, rimLight } from './render/hdr';
 import { castShadows, SunShadow } from './render/sunShadow';
 import { DASH_DURATION, Player } from './entities/player';
 import { NpcManager } from './entities/npcs';
@@ -56,6 +56,7 @@ interface SaveData {
 }
 
 const _v = new THREE.Vector3();
+const _white = new THREE.Color(0xffffff);
 /** Global outgoing balance modifiers, kept at the collision boundary so new
  * weapons and support shots inherit the intended campaign difficulty. */
 const PLAYER_ATTACK_DAMAGE = 0.7;
@@ -3326,6 +3327,7 @@ export class Game {
     const skyState = this.sky.update(dt, this.time, this.player.pos, this.camera, this.corruption);
     (this.scene.background as THREE.Color).copy(skyState.skyColor);
     (this.scene.fog as THREE.Fog).color.copy(skyState.fogColor);
+    RIM_COLOR.value.copy(skyState.skyColor).lerp(_white, 0.35);
     this.sun.intensity = skyState.sunIntensity;
     this.hemi.intensity = skyState.hemiIntensity;
     // Key/fill balance. The sky's numbers were tuned with no shadows, and on
@@ -3354,6 +3356,8 @@ export class Game {
       this.shadowSweepT = 1.5;
       castShadows(this.player.model.group);
       if (this.monster) castShadows(this.monster.group);
+      rimLight(this.player.model.group);
+      if (this.monster) rimLight(this.monster.group);
       for (const g of [this.planes.group, this.defenseWing.group, this.ally.group, this.tank.group, this.digger.group]) {
         castShadows(g, false);
       }

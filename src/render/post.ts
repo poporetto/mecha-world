@@ -16,7 +16,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { CITY_GLOW_GAIN, EMISSIVE_GAIN, EMITTER_GAIN } from './hdr';
+import { CITY_GLOW_GAIN, EMISSIVE_GAIN, EMITTER_GAIN, RIM_STRENGTH } from './hdr';
 
 export type GraphicsQuality = 'high' | 'low';
 
@@ -86,6 +86,7 @@ export class PostFX {
       EMITTER_GAIN.value = 1;
       EMISSIVE_GAIN.value = 1;
       CITY_GLOW_GAIN.value = 1;
+      RIM_STRENGTH.value = 0;
       return;
     }
     // Emitters go HDR so bloom can find them. Measured: nothing lit in the
@@ -93,6 +94,7 @@ export class PostFX {
     // only light sources clear it.
     EMITTER_GAIN.value = 2.6;
     EMISSIVE_GAIN.value = 2.4;
+    RIM_STRENGTH.value = 0.42;
     // Windows stay just under the bloom threshold (measured ~0.88 at night).
     // They cover ~7% of a night frame; any gain that lifts them over it turns
     // the skyline into fog however the bloom is tuned.

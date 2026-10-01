@@ -26,6 +26,14 @@ export const EMISSIVE_GAIN = { value: 1 };
  * a faint halo and the beams and eyes keep the real glow.
  */
 export const CITY_GLOW_GAIN = { value: 1 };
+/**
+ * Character rim light: a fresnel term on the mecha and the bosses that
+ * brightens surfaces turning away from the camera, tinted by the sky. A boss
+ * that faces you with the sun behind it otherwise reads as a black shape
+ * with no form, and the eye loses it against the city. Strength 0 on Low.
+ */
+export const RIM_STRENGTH = { value: 0 };
+export const RIM_COLOR = { value: new THREE.Color(0xcfe6ff) };
 
 /**
  * An unlit material is a light source if it is additive, explicitly flagged,
@@ -63,17 +71,41 @@ export function installHdrMaterials(): void {
 
   for (const proto of [THREE.MeshLambertMaterial.prototype, THREE.MeshStandardMaterial.prototype]) {
     const p = proto as THREE.Material;
-    p.onBeforeCompile = function (shader) {
+    p.onBeforeCompile = function (this: THREE.Material, shader) {
       shader.uniforms.uEmissiveGain = EMISSIVE_GAIN;
-      shader.fragmentShader = 'uniform float uEmissiveGain;\n' + shader.fragmentShader.replace(
-        '#include <emissivemap_fragment>',
-        '#include <emissivemap_fragment>\ntotalEmissiveRadiance *= uEmissiveGain;',
-      );
+      // rim is added after the gain so it never scales into bloom territory
+      const rim = this.userData.rim === true;
+      if (rim) {
+        shader.uniforms.uRimStrength = RIM_STRENGTH;
+        shader.uniforms.uRimColor = RIM_COLOR;
+      }
+      shader.fragmentShader =
+        'uniform float uEmissiveGain;\n' +
+        (rim ? 'uniform float uRimStrength;\nuniform vec3 uRimColor;\n' : '') +
+        shader.fragmentShader.replace(
+          '#include <emissivemap_fragment>',
+          '#include <emissivemap_fragment>\ntotalEmissiveRadiance *= uEmissiveGain;' +
+          (rim
+            ? '\n{ float rimF = 1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0);' +
+              '\n  totalEmissiveRadiance += uRimColor * (pow(rimF, 2.2) * uRimStrength); }'
+            : ''),
+        );
     };
     p.customProgramCacheKey = function (this: THREE.Material) {
-      return 'hdr-emissive|' + this.onBeforeCompile.toString();
+      return 'hdr-emissive|' + (this.userData.rim === true ? 'rim|' : '') + this.onBeforeCompile.toString();
     };
   }
+}
+
+/** Give every lit material under a character the rim term (once each). */
+export function rimLight(root: THREE.Object3D): void {
+  root.traverse((o) => {
+    const m = (o as THREE.Mesh).material as THREE.Material | undefined;
+    if (!m || (m as THREE.MeshBasicMaterial).isMeshBasicMaterial || m.userData.rim) return;
+    if (!(m as THREE.MeshStandardMaterial).isMeshStandardMaterial && !(m as THREE.MeshLambertMaterial).isMeshLambertMaterial) return;
+    m.userData.rim = true;
+    m.needsUpdate = true;
+  });
 }
 
 /** Flag a non-additive unlit material as a light source so it can bloom. */
