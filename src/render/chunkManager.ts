@@ -168,6 +168,9 @@ export class ChunkManager {
     const mesh = new THREE.Mesh(geo, this.material);
     mesh.position.set(cx * CS, 0, cz * CS);
     mesh.frustumCulled = true;
+    // the city both casts and catches the sun (a no-op when shadows are off)
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
     this.scene.add(mesh);
     this.meshes.set(key, mesh);
   }

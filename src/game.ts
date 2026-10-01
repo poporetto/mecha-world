@@ -7,6 +7,7 @@ import { corruptionAt, RIFT_SITE } from './core/worldgen';
 import { Revenant } from './entities/revenant';
 import { ChunkManager } from './render/chunkManager';
 import { PostFX } from './render/post';
+import { castShadows, SunShadow } from './render/sunShadow';
 import { DASH_DURATION, Player } from './entities/player';
 import { NpcManager } from './entities/npcs';
 import { CinderWyrm, CrimsonMantis, DeepMaw, IronColossus, Kaiju, MagmaGolem, Monster, MonsterCtx, Phase, Reward, RocketBeast, SkyReaver, TideLeviathan, VoltSerpent } from './entities/monsters';
@@ -254,6 +255,11 @@ export class Game {
   private footstepT = 0;
   private servoT = 0;
   private post!: PostFX;
+  private sunShadow!: SunShadow;
+  private shadowSweepT = 0;
+  /** High-quality key and fill gains over the sky's raw intensities. */
+  lightKey = 1.8;
+  lightFill = 0.6;
   private settings: GameSettings = {
     difficulty: 'normal',
     // Phones get the plain renderer: the post chain and shadow pass are
@@ -287,6 +293,8 @@ export class Game {
     this.sun = new THREE.DirectionalLight(0xfff4dd, 1.35);
     this.sun.position.set(0.6, 1, 0.35);
     this.scene.add(this.hemi, this.sun);
+    this.sunShadow = new SunShadow(this.renderer, this.scene, this.sun);
+    this.sunShadow.setEnabled(this.settings.graphics === 'high');
     this.sky = new Sky();
     this.scene.add(this.sky.group);
 
@@ -352,6 +360,7 @@ export class Game {
     this.hud.bindSettings(this.settings, (settings) => {
       this.settings = settings;
       this.post?.setQuality(settings.graphics);
+      this.sunShadow?.setEnabled(settings.graphics === 'high');
       sfx.setVolumes(settings.music, settings.effects);
       try { localStorage.setItem('mecha-city.settings.v1', JSON.stringify(settings)); } catch { /* optional */ }
     });
@@ -3268,8 +3277,37 @@ export class Game {
     (this.scene.background as THREE.Color).copy(skyState.skyColor);
     (this.scene.fog as THREE.Fog).color.copy(skyState.fogColor);
     this.sun.intensity = skyState.sunIntensity;
-    this.sun.position.copy(skyState.sunDir);
     this.hemi.intensity = skyState.hemiIntensity;
+    // Key/fill balance. The sky's numbers were tuned with no shadows, and on
+    // a horizontal surface the sun delivered less light than the hemisphere
+    // fill did — which is the flat look: nothing is in shadow because the sun
+    // is not the main light. With shadows on, the sun becomes the key and the
+    // sky drops to fill. Low keeps the original balance untouched.
+    if (this.sunShadow.enabled) {
+      this.sun.intensity *= this.lightKey;
+      // only the daylight share of the sky fill drops; the night floor the
+      // sky sets (0.38) stays, or the mecha is crushed to black after dusk
+      const daylight = Math.max(0, this.hemi.intensity - 0.38);
+      this.hemi.intensity -= daylight * (1 - this.lightFill);
+    }
+    if (this.sunShadow.enabled) {
+      this.sunShadow.update(this.player.pos, skyState.sunDir);
+    } else {
+      this.sun.target.position.set(0, 0, 0);
+      this.sun.position.copy(skyState.sunDir);
+    }
+    // Actors spawn and despawn all fight long (bosses, airliners, the wing,
+    // support frames). Flagging them as shadow casters is a flag write, so a
+    // sweep every second and a half is cheaper than hooking every spawn site.
+    this.shadowSweepT -= dt;
+    if (this.sunShadow.enabled && this.shadowSweepT <= 0) {
+      this.shadowSweepT = 1.5;
+      castShadows(this.player.model.group);
+      if (this.monster) castShadows(this.monster.group);
+      for (const g of [this.planes.group, this.defenseWing.group, this.ally.group, this.tank.group, this.digger.group]) {
+        castShadows(g, false);
+      }
+    }
     // switch the city lights on as the sun goes down
     this.chunks.nightAmount.value = Math.max(0, Math.min(1, 1 - skyState.sunIntensity / 0.75));
     this.updateChatter(dt);
