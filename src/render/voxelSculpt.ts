@@ -139,6 +139,33 @@ export function blade(base: V3, tip: V3, rBase: number, rTip: number, thick: num
   };
 }
 
+/**
+ * A fin in any orientation: the profile of a round cone from `base` to `tip`
+ * in the plane through that axis, extruded to a constant thickness along
+ * `normal` (made perpendicular to the axis). Side fins, frills, sails.
+ */
+export function fin(base: V3, tip: V3, rBase: number, rTip: number, thick: number, normal: V3, paint: number): Prim {
+  const profile = cone(base, tip, rBase, rTip, paint);
+  const ax = tip[0] - base[0], ay = tip[1] - base[1], az = tip[2] - base[2];
+  const al = Math.hypot(ax, ay, az) || 1;
+  const ux = ax / al, uy = ay / al, uz = az / al;
+  // Gram-Schmidt the normal against the axis
+  const dn = normal[0] * ux + normal[1] * uy + normal[2] * uz;
+  let nx = normal[0] - dn * ux, ny = normal[1] - dn * uy, nz = normal[2] - dn * uz;
+  const nl = Math.hypot(nx, ny, nz) || 1;
+  nx /= nl; ny /= nl; nz /= nl;
+  const h = thick / 2;
+  return {
+    paint,
+    min: [profile.min[0] - h, profile.min[1] - h, profile.min[2] - h],
+    max: [profile.max[0] + h, profile.max[1] + h, profile.max[2] + h],
+    d(x, y, z) {
+      const off = (x - base[0]) * nx + (y - base[1]) * ny + (z - base[2]) * nz;
+      return Math.max(profile.d(x - off * nx, y - off * ny, z - off * nz), Math.abs(off) - h);
+    },
+  };
+}
+
 /** Left/right pairs: returns the primitive and its mirror across x = 0. */
 export function mirrorX(prims: Prim[]): Prim[] {
   const out = [...prims];

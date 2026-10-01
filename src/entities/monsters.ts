@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import {
   MAW_MUZZLES, mawBody, mawCore, mawGlow, mawMuzzleGlow,
+  SERPENT_SEGMENTS, serpentCore, serpentHead, serpentHeadGlow, serpentSegment, serpentSegmentGlow,
   GORGOSAUR_CORE, GORGOSAUR_HIP, GORGOSAUR_JAW_HINGE, GORGOSAUR_MOUTH, GORGOSAUR_TAIL_ROOT,
   gorgosaurBody, gorgosaurEye, gorgosaurJaw, gorgosaurLeg, gorgosaurPlates, gorgosaurTail, gorgosaurTailPlates,
 } from './bossModels';
@@ -247,7 +248,7 @@ export abstract class Monster {
     const roar = !flash && this.roarT > 0;
     const open = !flash && !roar && this.vulnerable;
     const warn = !flash && !roar && !open && this.telegraph;
-    this.group.traverse((o) => {
+    for (const root of this.roots()) root.traverse((o) => {
       const m = o as THREE.Mesh;
       if (m.isMesh) {
         const mat = m.material as THREE.MeshLambertMaterial;
@@ -433,8 +434,17 @@ export abstract class Monster {
     }
   }
 
+  /**
+   * Every scene root that belongs to this boss. Usually just the group; the
+   * Volt Serpent's body segments live in the scene beside it, and tints,
+   * corruption, shadows and rim light all have to reach them too.
+   */
+  roots(): THREE.Object3D[] {
+    return [this.group];
+  }
+
   protected rememberEmissives(): void {
-    this.group.traverse((o) => {
+    for (const root of this.roots()) root.traverse((o) => {
       const m = o as THREE.Mesh;
       if (m.isMesh) {
         const mat = m.material as THREE.MeshLambertMaterial;
@@ -797,109 +807,35 @@ export class VoltSerpent extends Monster {
   private zapT = 5;
   private heading = 0;
 
+  /** Charge nodes: the head's (with the eyes), then one per segment. */
+  private headGlow: THREE.Mesh;
+  private segGlow: THREE.Mesh[] = [];
+
   constructor(x: number, z: number) {
     super(200);
-    const SCALE1 = 0x8a6fd8; // violet
-    const SCALE2 = 0xf8dfa2; // pale gold
-
-    // Head: a long armoured skull rather than a box. Brow ridges over the
-    // eyes, a frill of spines sweeping back off the crown, and a jaw that
-    // actually has teeth in it — at kaiju scale the silhouette is read from
-    // its outline, so the profile carries the character.
-    const head = new THREE.Group();
-    const skull = box(3.2, 2.6, 4, SCALE1);
-    skull.position.y = 3;
-    const snout = box(2.4, 1.8, 2.2, SCALE1);
-    snout.position.set(0, 2.9, 2.6);
-    const snoutTip = box(1.8, 1.2, 1.1, SCALE2);
-    snoutTip.position.set(0, 2.8, 3.9);
-    for (const side of [-1, 1]) {
-      const brow = box(1.1, 0.7, 2.2, SCALE2);
-      brow.position.set(side * 1.1, 4.2, 1.4);
-      brow.rotation.z = side * -0.12;
-      const cheek = box(0.5, 1.4, 1.6, SCALE2);
-      cheek.position.set(side * 1.7, 2.6, 0.9);
-      // swept cheek fin
-      const fin = box(0.25, 1.9, 2.4, 0x39e6e0, 0x1c6f78);
-      fin.position.set(side * 1.9, 3.4, -1.1);
-      fin.rotation.z = side * -0.45;
-      head.add(brow, cheek, fin);
-      // a small secondary horn behind the main pair
-      const horn2 = box(0.35, 1.1, 0.35, 0xfff2b0, 0xfff2b0);
-      horn2.position.set(side * 1.9, 4.4, -1.9);
-      horn2.rotation.z = side * 0.5;
-      head.add(horn2);
-    }
-    const jaw = box(2.6, 0.8, 3.2, SCALE2);
-    jaw.position.set(0, 1.8, 0.6);
-    const chin = box(1.6, 0.7, 1.2, SCALE2);
-    chin.position.set(0, 1.7, 2.6);
-    // interlocking teeth along both jaws
-    for (let i = 0; i < 5; i++) {
-      const tx = -1.0 + i * 0.5;
-      const upper = box(0.22, 0.6, 0.22, 0xfffdf2);
-      upper.position.set(tx, 2.0, 3.1);
-      const lower = box(0.2, 0.5, 0.2, 0xfffdf2);
-      lower.position.set(tx, 2.4, 2.9);
-      head.add(upper, lower);
-    }
-    const eyeL = box(0.5, 0.5, 0.5, 0x39e6ff, 0x39e6ff);
-    eyeL.position.set(-1.2, 3.6, 1.8);
-    const eyeR = eyeL.clone();
-    eyeR.position.x = 1.2;
-    const hornL = box(0.5, 1.8, 0.5, 0xfff2b0, 0xfff2b0);
-    hornL.position.set(-1.1, 5, -0.8);
-    hornL.rotation.z = 0.3;
-    const hornR = hornL.clone();
-    hornR.position.x = 1.1;
-    hornR.rotation.z = -0.3;
-    // crown frill: a fan of spines that reads even in silhouette
-    for (let i = 0; i < 5; i++) {
-      const a = (i / 4 - 0.5) * 1.5;
-      const spine = box(0.3, 1.5 - Math.abs(a) * 0.5, 0.3, SCALE2);
-      spine.position.set(Math.sin(a) * 1.5, 4.6, -2.4 - Math.cos(a) * 0.4);
-      spine.rotation.z = -a * 0.7;
-      spine.rotation.x = -0.5;
-      head.add(spine);
-    }
-    // charge node behind the skull — the thing the lightning comes from
-    const node = box(1.2, 1.2, 1.2, 0x9fe8ff, 0x39e6ff);
-    node.position.set(0, 4.0, -2.9);
-    head.add(skull, snout, snoutTip, jaw, chin, eyeL, eyeR, hornL, hornR, node);
-    this.group.add(head);
-
-    // Body segments: each is a plated ring rather than a cube — belly scute
-    // underneath, swept fins either side, and an arc node on every other one
-    // so the charge visibly travels down the body.
-    for (let i = 0; i < 8; i++) {
+    // Sculpted voxel anatomy (bossModels.ts): an armoured eel-dragon head
+    // and a chain of tapering, finned body segments.
+    this.group.add(hidePart(serpentHead()));
+    this.headGlow = glowPart(serpentHeadGlow());
+    this.group.add(this.headGlow);
+    for (let i = 0; i < SERPENT_SEGMENTS; i++) {
       const seg = new THREE.Group();
-      const s = 2.6 - i * 0.22;
-      const core = box(s, s, s + 0.8, i % 2 === 0 ? SCALE1 : SCALE2);
-      core.position.y = s / 2 + 0.5;
-      const scute = box(s * 0.7, 0.35, s + 0.6, SCALE2);
-      scute.position.y = 0.5;
-      const ridge = box(s * 0.5, 0.3, s + 0.4, SCALE1);
-      ridge.position.y = s + 0.45;
-      const spike = box(0.4, 1.2, 0.4, 0x39e6e0, 0x39e6e0);
-      spike.position.y = s + 1;
-      seg.add(core, scute, ridge, spike);
-      for (const side of [-1, 1]) {
-        const fin = box(0.22, 0.9, s * 0.8, 0x39e6e0, 0x1c6f78);
-        fin.position.set(side * (s * 0.5 + 0.1), s * 0.55, 0);
-        fin.rotation.z = side * -0.6;
-        seg.add(fin);
-      }
-      if (i % 2 === 0) {
-        const arc = box(0.5, 0.5, 0.5, 0xbff4ff, 0x39e6ff);
-        arc.position.set(0, s * 0.5 + 0.5, -(s * 0.5 + 0.3));
-        seg.add(arc);
-      }
+      const glowMesh = glowPart(serpentSegmentGlow(i));
+      seg.add(hidePart(serpentSegment(i)), glowMesh);
+      this.segGlow.push(glowMesh);
       this.segments.push(seg);
     }
     this.group.scale.setScalar(MONSTER_SCALE);
     this.group.position.set(x, 0, z);
-    this.addCore(5.0);
+    const core = serpentCore();
+    this.addCore(core[1], core[2], false);
+    this.coreScale = 0.62;
+    this.weakCore.scale.setScalar(this.coreScale);
     this.rememberEmissives();
+  }
+
+  roots(): THREE.Object3D[] {
+    return [this.group, ...this.segments];
   }
 
   // segments are children of group but positioned in group-local space
@@ -958,6 +894,13 @@ export class VoltSerpent extends Monster {
 
     // lightning strike at the player's position
     this.telegraph = this.zapT < 0.7 && this.zapT > 0;
+    // the wind-up: charge runs up the body node by node into the crown
+    const charge = this.telegraph ? 1 - this.zapT / 0.7 : 0;
+    (this.headGlow.material as THREE.MeshBasicMaterial).color.setScalar(1 + charge * 1.4);
+    this.segGlow.forEach((m, i) => {
+      const wave = this.telegraph ? Math.max(0, Math.sin(t * 16 + i * 0.95)) : 0;
+      (m.material as THREE.MeshBasicMaterial).color.setScalar(1 + wave * 1.8);
+    });
     this.zapT -= dt;
     if (this.zapT <= 0 && dist < 70 && !this.vulnerable) {
       this.zapT = 4 / this.tempo;

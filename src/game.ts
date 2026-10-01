@@ -2330,7 +2330,7 @@ export class Game {
   private corruptMonster(m: Monster, amount: number): void {
     m.maxHp = m.hp = Math.round(m.maxHp * (1.35 + amount * 0.6));
     m.phase = 2; // it is past the stage where it was measuring you
-    m.group.traverse((o) => {
+    for (const root of m.roots()) root.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
       const mat = mesh.material as THREE.MeshLambertMaterial;
@@ -3372,9 +3372,11 @@ export class Game {
     if (this.sunShadow.enabled && this.shadowSweepT <= 0) {
       this.shadowSweepT = 1.5;
       castShadows(this.player.model.group);
-      if (this.monster) castShadows(this.monster.group);
       rimLight(this.player.model.group);
-      if (this.monster) rimLight(this.monster.group);
+      for (const root of this.monster?.roots() ?? []) {
+        castShadows(root);
+        rimLight(root);
+      }
       for (const g of [this.planes.group, this.defenseWing.group, this.ally.group, this.tank.group, this.digger.group]) {
         castShadows(g, false);
       }

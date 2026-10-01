@@ -4,7 +4,7 @@
 
 import * as THREE from 'three';
 import {
-  blade, chain, cone, ellipsoid, mirrorX, noise3, onLattice, Prim, SculptSpec, sculpted, sphere, squash, surfaceHit, surfaceY, V3,
+  blade, chain, cone, ellipsoid, fin, mirrorX, noise3, onLattice, Prim, SculptSpec, sculpted, sphere, squash, surfaceHit, surfaceY, V3,
 } from '../render/voxelSculpt';
 
 /** Roughly the city's voxel grain once MONSTER_SCALE (2.2) is applied. */
@@ -424,6 +424,164 @@ export function mawMuzzleGlow(): THREE.BufferGeometry {
   }));
 }
 
+// ============================================================= VOLT SERPENT
+// An armoured eel-dragon: a long skull with gold brow ridges and cheeks,
+// swept horns, a fan-shaped cyan frill and a charge node behind the crown.
+// The body is a chain of separate segments (they follow the head's trail
+// through the scene), each a tapering ring with a swept dorsal sail, side
+// fins and a charge node of its own.
+
+const V = {
+  BACK: 0x5a44b0, BACK_LOW: 0x9886e0, BELLY: 0xf1d898, GOLD: 0xf8dfa2, HORN: 0xfff2b0, FIN: 0x39e6e0, FIN_EDGE: 0x9ff6f0,
+  TOOTH: 0xfffdf2, MOUTH: 0x2a1640, EYE: 0x39e6ff, NODE: 0x9fe8ff,
+};
+enum VS { HIDE, GOLD, HORN, FIN, TOOTH }
+
+/** Number of body segments and the size of each (largest first). */
+export const SERPENT_SEGMENTS = 8;
+export const serpentSegmentSize = (i: number): number => 2.6 - i * 0.22;
+
+const SERPENT_MOUTH = { c: [0, 2.42, 2.5] as V3, r: [0.95, 0.24, 1.7] as V3 };
+
+function serpentPaint(slot: number, p: V3, n: V3): number {
+  switch (slot) {
+    case VS.GOLD: return hide(V.GOLD, scale(V.GOLD, 1.08), p, n, 51);
+    case VS.HORN: return scale(V.HORN, 0.9 + 0.1 * noise3(p[0] * 3, p[1] * 3, p[2] * 3, 53));
+    case VS.TOOTH: return V.TOOTH;
+    case VS.FIN: {
+      // membranes pale toward their trailing edges
+      const edge = smooth(0.3, 1.0, noise3(p[0] * 2.2, p[1] * 2.2, p[2] * 2.2, 55));
+      return mix(V.FIN, V.FIN_EDGE, edge * 0.6);
+    }
+    default: {
+      const mq = Math.hypot((p[0] - SERPENT_MOUTH.c[0]) / SERPENT_MOUTH.r[0], (p[1] - SERPENT_MOUTH.c[1]) / SERPENT_MOUTH.r[1], (p[2] - SERPENT_MOUTH.c[2]) / SERPENT_MOUTH.r[2]);
+      if (mq < 1.5 && p[2] > 1.0) return V.MOUTH;
+      // gold belly scutes in bands; the flanks stay violet, paler low down
+      if (n[1] < -0.45) return scale(V.BELLY, Math.abs(((p[2] + 9) * 1.4) % 1 - 0.5) < 0.13 ? 0.82 : 1);
+      return hide(V.BACK, V.BACK_LOW, p, n, 57);
+    }
+  }
+}
+
+let serpentHeadMemo: SculptSpec | null = null;
+function serpentHeadBase(): SculptSpec {
+  if (serpentHeadMemo) return serpentHeadMemo;
+  const add: Prim[] = [
+    ellipsoid([0, 3.1, 0.0], [1.6, 1.35, 2.0], VS.HIDE),
+    cone([0, 3.0, 1.2], [0, 2.8, 3.9], 1.2, 0.72, VS.HIDE),
+    cone([0, 2.0, -0.6], [0, 1.9, 3.5], 0.85, 0.55, VS.GOLD),
+    // the neck runs back to meet the first body segment
+    cone([0, 2.8, -1.2], [0, 2.0, -3.8], 1.4, 1.3, VS.HIDE),
+    ...mirrorX([
+      ellipsoid([1.3, 2.6, 0.5], [0.6, 0.75, 1.1], VS.HIDE),
+      cone([0.95, 4.05, 0.2], [0.8, 3.85, 2.0], 0.36, 0.24, VS.GOLD),
+    ]),
+  ];
+  const hard: Prim[] = [
+    ...mirrorX([
+      cone([1.0, 4.1, -0.7], [1.55, 5.7, -2.3], 0.42, 0.08, VS.HORN),
+      cone([1.55, 3.9, -1.3], [2.25, 4.6, -2.45], 0.28, 0.06, VS.HORN),
+    ]),
+  ];
+  // the frill: a fan of membranes spreading back off the crown
+  for (let k = 0; k < 5; k++) {
+    const a = (k / 4 - 0.5) * 1.6;
+    hard.push(fin([Math.sin(a) * 0.8, 3.7, -1.5], [Math.sin(a) * 2.4, 3.9 + Math.cos(a) * 1.4, -3.1], 0.6, 0.1, 0.42, [0, 0.35, 1], VS.FIN));
+  }
+  // interlocking teeth along both jaws, on lattice columns
+  for (let k = 0; k < 4; k++) {
+    for (const x of [L(0.6), L(-0.6)]) {
+      hard.push(cone([x, 2.62, L(1.6 + k * 0.72)], [x, 2.22, L(1.6 + k * 0.72)], 0.14, 0.04, VS.TOOTH));
+      hard.push(cone([x, 2.16, L(1.96 + k * 0.72)], [x, 2.56, L(1.96 + k * 0.72)], 0.13, 0.04, VS.TOOTH));
+    }
+  }
+  serpentHeadMemo = { cell: CELL, blend: 0.8, add, hard, paint: serpentPaint, seed: 59 };
+  return serpentHeadMemo;
+}
+
+let serpentEyeMemo: V3 | null = null;
+function serpentEye(): V3 {
+  if (!serpentEyeMemo) {
+    const y = L(3.55), z = L(1.55);
+    const hit = surfaceHit(serpentHeadBase(), [L(4), y, z], [-1, 0, 0], 4, CELL);
+    serpentEyeMemo = hit ?? [L(1.4), y, z];
+  }
+  return serpentEyeMemo;
+}
+const SERPENT_NODE: V3 = [0, L(4.0), L(-3.0)];
+
+/** Weak core on the crown, between the horns. */
+export function serpentCore(): V3 {
+  const z = -0.5;
+  return [0, surfaceY(serpentHeadBase(), 0, z) + 0.05, z];
+}
+
+export function serpentHead(): THREE.BufferGeometry {
+  return sculpted('serpent.head', () => {
+    const base = serpentHeadBase();
+    const e = serpentEye();
+    return {
+      ...base,
+      cut: [
+        ellipsoid(SERPENT_MOUTH.c, SERPENT_MOUTH.r, VS.HIDE),
+        sphere(e, 0.2, VS.HIDE), sphere([-e[0], e[1], e[2]], 0.2, VS.HIDE),
+        ellipsoid(SERPENT_NODE, [0.5, 0.45, 0.5], VS.HIDE),
+      ],
+    };
+  });
+}
+
+/** Eyes and the charge node behind the crown. */
+export function serpentHeadGlow(): THREE.BufferGeometry {
+  return sculpted('serpent.headglow', () => {
+    const e = serpentEye();
+    return {
+      cell: CELL, blend: 0,
+      add: [sphere(e, 0.2, 0), sphere([-e[0], e[1], e[2]], 0.2, 0), ellipsoid(SERPENT_NODE, [0.5, 0.45, 0.5], 1)],
+      paint: (slot) => (slot === 0 ? V.EYE : V.NODE),
+      seed: 61,
+    };
+  });
+}
+
+/** Segment i, in its own space: +z faces the next segment toward the head. */
+function serpentSegmentBase(i: number): SculptSpec {
+  const sz = serpentSegmentSize(i);
+  const c = sz / 2 + 0.5;
+  const add: Prim[] = [ellipsoid([0, c + sz * 0.08, 0], [sz * 0.55, sz * 0.6, (sz + 0.8) * 0.62], VS.HIDE)];
+  const hard: Prim[] = [
+    // a swept dorsal sail
+    fin([0, c + sz * 0.36, sz * 0.3], [0, c + sz * 0.62 + 0.9, -sz * 0.5], sz * 0.32, 0.08, 0.4, [1, 0, 0], VS.FIN),
+    // and side fins, raked back and canted up
+    ...mirrorX([fin([sz * 0.42, c - sz * 0.05, 0.25], [sz * 0.42 + 0.6 + sz * 0.25, c + 0.35, -0.6 - sz * 0.15], sz * 0.25, 0.07, 0.4, [0.45, -0.85, 0], VS.FIN)]),
+  ];
+  // every other segment carries a gold saddle
+  const paint: (slot: number, p: V3, n: V3) => number = i % 2
+    ? (slot, p, n) => (slot === VS.HIDE && n[1] > -0.2 && Math.abs(p[2]) < sz * 0.16 ? hide(V.GOLD, V.BELLY, p, n, 63) : serpentPaint(slot, p, n))
+    : serpentPaint;
+  return { cell: CELL, blend: 0.6, add, hard, paint, seed: 67 + i };
+}
+
+function serpentSegmentNode(i: number): V3 {
+  const sz = serpentSegmentSize(i);
+  const z = L(sz * 0.62);
+  return [0, L(surfaceY(serpentSegmentBase(i), 0.18, z)), z];
+}
+
+export function serpentSegment(i: number): THREE.BufferGeometry {
+  return sculpted(`serpent.seg${i}`, () => {
+    const node = serpentSegmentNode(i);
+    return { ...serpentSegmentBase(i), cut: [ellipsoid(node, [0.4, 0.2, 0.2], VS.HIDE)] };
+  });
+}
+
+/** The segment's charge node, one voxel pair in a notch in its spine. */
+export function serpentSegmentGlow(i: number): THREE.BufferGeometry {
+  return sculpted(`serpent.segglow${i}`, () => ({
+    cell: CELL, blend: 0, add: [ellipsoid(serpentSegmentNode(i), [0.4, 0.2, 0.2], 0)], paint: () => V.NODE, seed: 71,
+  }));
+}
+
 // ================================================================ PREWARM
 
 /**
@@ -434,6 +592,9 @@ export function mawMuzzleGlow(): THREE.BufferGeometry {
 const PARTS: (() => THREE.BufferGeometry)[] = [
   gorgosaurBody, gorgosaurJaw, gorgosaurLeg, gorgosaurTail, gorgosaurPlates, gorgosaurTailPlates,
   mawBody, mawGlow, mawMuzzleGlow,
+  serpentHead, serpentHeadGlow,
+  ...Array.from({ length: SERPENT_SEGMENTS }, (_, i) => () => serpentSegment(i)),
+  ...Array.from({ length: SERPENT_SEGMENTS }, (_, i) => () => serpentSegmentGlow(i)),
 ];
 
 /** Build the sculpts one per idle slot (the cache keeps them). */

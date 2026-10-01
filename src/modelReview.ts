@@ -15,15 +15,28 @@ const model = new MechaModel();
 let target: THREE.Object3D = model.group;
 let frameR = 23, frameY = 5.3;
 const frameSize = new THREE.Vector3();
+const frameCenter = new THREE.Vector3();
 if (bossName) {
-  const B = (Monsters as unknown as Record<string, new (x: number, z: number) => { group: THREE.Group }>)[bossName];
+  const B = (Monsters as unknown as Record<string, new (x: number, z: number) => Monsters.Monster>)[bossName];
   const boss = new B(0, 0);
   boss.group.position.set(0, 0, 0);
   target = boss.group;
   const box = new THREE.Box3().setFromObject(boss.group);
+  // parts that live beside the group in the scene (the serpent's body)
+  // are laid out along a straight trail behind it, as the head leaves them
+  let prev = new THREE.Vector3();
+  boss.roots().slice(1).forEach((r, i) => {
+    r.scale.setScalar(Monsters.MONSTER_SCALE);
+    r.position.set(Math.sin((i + 1) * 0.55) * 4, 0, -(i + 1) * 4.05);
+    r.lookAt(prev);
+    prev = r.position.clone();
+    scene.add(r);
+    box.expandByObject(r);
+  });
   box.getSize(frameSize);
+  box.getCenter(frameCenter);
   frameR = 0; // fitted to the panel in render()
-  frameY = (box.min.y + box.max.y) / 2;
+  frameY = frameCenter.y;
 }
 scene.add(target);
 scene.add(new THREE.HemisphereLight(0xffffff, 0x727886, 2.7));
@@ -38,7 +51,7 @@ const views = one === null ? allViews : [allViews[Number(one)] ?? 0];
 if (!bossName) frameR /= zoom;
 // ?at=0,26,10 looks at a world point (e.g. a boss's head) instead of the middle
 const at = new URLSearchParams(location.search).get('at')?.split(',').map(Number);
-const look = new THREE.Vector3(0, frameY, 0);
+const look = new THREE.Vector3(frameCenter.x, frameY, frameCenter.z);
 if (at && at.length === 3) look.set(at[0], at[1], at[2]);
 function render(){
   const w=innerWidth,h=innerHeight;renderer.setSize(w,h,true);renderer.setScissorTest(true);
