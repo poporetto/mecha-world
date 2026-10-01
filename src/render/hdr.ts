@@ -85,6 +85,13 @@ export function installHdrMaterials(): void {
         shader.fragmentShader.replace(
           '#include <emissivemap_fragment>',
           '#include <emissivemap_fragment>\ntotalEmissiveRadiance *= uEmissiveGain;' +
+          // Sculpted hide carries its colour, AO and countershading in the
+          // vertex colour. A state tint added flat on top floods all of it
+          // to one colour; scaled by the hide's own value it follows the
+          // form, brighter on the pale belly and dark in the creases.
+          (this.userData.hide === true && (this as THREE.MeshStandardMaterial).vertexColors
+            ? '\ntotalEmissiveRadiance *= 0.3 + 1.3 * dot(vColor.rgb, vec3(0.2126, 0.7152, 0.0722));'
+            : '') +
           (rim
             ? '\n{ float rimF = 1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0);' +
               '\n  totalEmissiveRadiance += uRimColor * (pow(rimF, 2.2) * uRimStrength); }'
@@ -92,7 +99,7 @@ export function installHdrMaterials(): void {
         );
     };
     p.customProgramCacheKey = function (this: THREE.Material) {
-      return 'hdr-emissive|' + (this.userData.rim === true ? 'rim|' : '') + this.onBeforeCompile.toString();
+      return 'hdr-emissive|' + (this.userData.rim === true ? 'rim|' : '') + (this.userData.hide === true ? 'hide|' : '') + this.onBeforeCompile.toString();
     };
   }
 }

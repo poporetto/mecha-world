@@ -2336,7 +2336,24 @@ export class Game {
       const mat = mesh.material as THREE.MeshLambertMaterial;
       // desaturate toward the seam rather than simply tinting purple, so the
       // silhouette still reads as the kaiju you already know
-      mat.color.lerp(_riftTint, 0.3 + amount * 0.34);
+      const f = 0.3 + amount * 0.34;
+      const col = mesh.geometry.getAttribute('color') as THREE.BufferAttribute | undefined;
+      if (mat.vertexColors && col) {
+        // Sculpted parts carry their colour per vertex and share one cached
+        // geometry between spawns. Lerping the material colour would multiply
+        // the hide rather than blend it, so blend the vertices of a copy.
+        mesh.geometry = mesh.geometry.clone();
+        const c = mesh.geometry.getAttribute('color') as THREE.BufferAttribute;
+        for (let i = 0; i < c.count; i++) {
+          c.setXYZ(i,
+            c.getX(i) + (_riftTint.r - c.getX(i)) * f,
+            c.getY(i) + (_riftTint.g - c.getY(i)) * f,
+            c.getZ(i) + (_riftTint.b - c.getZ(i)) * f);
+        }
+        c.needsUpdate = true;
+      } else {
+        mat.color.lerp(_riftTint, f);
+      }
     });
   }
 

@@ -1,6 +1,11 @@
 // Boss monsters. Defeating each one grants the player an upgrade.
 
 import * as THREE from 'three';
+import {
+  GORGOSAUR_CORE, GORGOSAUR_HIP, GORGOSAUR_JAW_HINGE, GORGOSAUR_MOUTH, GORGOSAUR_TAIL_ROOT,
+  gorgosaurBody, gorgosaurEye, gorgosaurJaw, gorgosaurLeg, gorgosaurPlates, gorgosaurTail, gorgosaurTailPlates,
+} from './bossModels';
+import { hideMaterial } from '../render/voxelSculpt';
 import { World } from '../core/world';
 
 // Every boss teaches something distinct: a wheel weapon or a passive/ability.
@@ -123,6 +128,8 @@ export abstract class Monster {
   /** Glowing dorsal core: the visible weak point. Local y is chosen so it
    *  sits high on the back once MONSTER_SCALE is applied. */
   weakCore!: THREE.Mesh;
+  /** Size of the core's pulse, so a boss can nest a smaller core in its anatomy. */
+  protected coreScale = 1;
   abstract name: string;
   abstract reward: Reward;
   hitRadius = 8;
@@ -249,14 +256,21 @@ export abstract class Monster {
         } else {
           mat.emissive.setHex(mat.userData.baseEmissive ?? 0);
           mat.emissiveIntensity = mat.userData.baseEmissive ? 1 : 0;
+          return;
         }
+        // Sculpted hide takes the state colours as a strong tint rather than
+        // a flood: at full strength (x2.4 on High) every state turned the
+        // whole boss into one flat coloured cut-out and the anatomy, which
+        // is what tells you where to hit, disappeared. The shader also
+        // scales the tint by the hide's own colour (hdr.ts).
+        if (mat.userData.hide) mat.emissiveIntensity *= 0.6;
       }
     });
   }
 
   /** Attach the glowing weak-point core. Call at the end of a boss ctor,
    *  before rememberEmissives() so its glow is preserved. */
-  protected addCore(localY: number, localZ = -1.5): void {
+  protected addCore(localY: number, localZ = -1.5, decorate = true): void {
     this.weakCore = new THREE.Mesh(
       new THREE.BoxGeometry(2.6, 2.6, 2.6),
       new THREE.MeshStandardMaterial({
@@ -267,6 +281,9 @@ export abstract class Monster {
     this.weakCore.castShadow = true;
     this.weakCore.position.set(0, localY, localZ);
     this.group.add(this.weakCore);
+    // Sculpted bosses carry their own spines and horns; the generic kit of
+    // box spikes below would bolt crates straight back onto them.
+    if (!decorate) return;
 
     // Shared predator language across the roster: an uneven dorsal crown and
     // outward shoulder spikes. Every boss keeps its authored anatomy, but no
@@ -391,11 +408,11 @@ export abstract class Monster {
     const mat = this.weakCore.material as THREE.MeshLambertMaterial;
     if (this.vulnerable) {
       // wide open: the core swells and flares cyan so it is unmissable
-      this.weakCore.scale.setScalar(1.5 + Math.sin(t * 20) * 0.3);
+      this.weakCore.scale.setScalar(this.coreScale * (1.5 + Math.sin(t * 20) * 0.3));
       mat.color.setHex(0xbdf4ff);
       mat.emissive.setHex(0x4de2ff);
     } else {
-      this.weakCore.scale.setScalar(0.85 + Math.sin(t * 6) * 0.15);
+      this.weakCore.scale.setScalar(this.coreScale * (0.85 + Math.sin(t * 6) * 0.15));
       mat.color.setHex(0xffe45c);
       mat.emissive.setHex(0xffc61a);
     }
@@ -455,122 +472,72 @@ export class Kaiju extends Monster {
   private beamFire = 0;
   private beamCharge = 0;
 
+  /** Dorsal plates — a separate mesh so they can light up before the beam. */
+  private plates: THREE.Mesh[] = [];
+
   constructor(x: number, z: number) {
     super(140);
-    const BODY = 0x49534a; // charcoal green hide
-    const BELLY = 0xb3ae95; // pale segmented underside
-    const PLATE = 0xdfe9f0; // bone dorsal plates
-    const CLAW = 0xe8e4d6;
+    // Sculpted voxel anatomy (bossModels.ts) in place of the old crate
+    // assembly. Pivots, hip positions, the jaw hinge, the beam origin and
+    // the dorsal core all keep their meaning; only the meshes changed.
+    const part = (geo: THREE.BufferGeometry): THREE.Mesh => {
+      const m = new THREE.Mesh(geo, hideMaterial());
+      m.castShadow = true;
+      m.receiveShadow = true;
+      return m;
+    };
 
-    // torso: broad chest over a heavier gut, leaning slightly forward
-    const chest = box(4.8, 4.2, 5.2, BODY);
-    chest.position.set(0, 8.6, 0.8);
-    const gut = box(4.4, 3.6, 4.8, BODY);
-    gut.position.set(0, 6.2, -0.4);
-    // stacked belly plates climbing the front
-    for (let i = 0; i < 5; i++) {
-      const seg = box(3.1 - i * 0.2, 0.8, 0.6, BELLY);
-      seg.position.set(0, 5.2 + i * 1.05, 1.8 + i * 0.35);
-      this.group.add(seg);
-    }
+    const body = part(gorgosaurBody());
+    this.group.add(body);
 
-    // neck, skull with heavy brow, snout, hinged jaw
-    const neck = box(2.3, 2.4, 2.4, BODY);
-    neck.position.set(0, 11.2, 2.6);
-    const skull = box(2.7, 2.2, 3.4, BODY);
-    skull.position.set(0, 12.4, 4.4);
-    const brow = box(2.9, 0.7, 1.5, BODY);
-    brow.position.set(0, 13.4, 4.7);
-    const snout = box(1.9, 1.1, 2.4, BODY);
-    snout.position.set(0, 12.0, 6.4);
-    const jaw = box(1.7, 0.8, 2.8, BELLY);
-    jaw.position.set(0, 11.0, 5.9);
-    jaw.rotation.x = 0.22;
-    this.jaw = jaw;
-    const eyeL = box(0.45, 0.4, 0.4, 0xffa020, 0xffa020);
-    eyeL.position.set(-1.05, 12.9, 5.5);
-    const eyeR = eyeL.clone();
-    eyeR.position.x = 1.05;
-    this.group.add(neck, skull, brow, snout, jaw, eyeL, eyeR);
-    // teeth along the snout edge
-    for (let i = 0; i < 4; i++) {
-      const tooth = box(0.24, 0.45, 0.24, CLAW);
-      tooth.position.set(-0.62 + i * 0.41, 11.35, 7.35);
-      this.group.add(tooth);
-    }
+    // jaw hangs from a hinge at its back, so it opens like a jaw rather than
+    // spinning about its own middle
+    this.jaw = part(gorgosaurJaw());
+    this.jaw.position.set(...GORGOSAUR_JAW_HINGE);
+    this.jaw.rotation.x = 0.22;
+    this.group.add(this.jaw);
 
-    // three jagged rows of dorsal plates running down the spine
-    for (let i = 0; i < 7; i++) {
-      const h = 1.2 + Math.sin(i * 1.7) * 0.5 + (i === 3 ? 1.1 : 0);
-      const mid = box(0.5, h, 1.1, PLATE);
-      mid.position.set(0, 11.4 - i * 0.55 + h * 0.4, 2.6 - i * 1.7);
-      mid.rotation.x = 0.35;
-      this.group.add(mid);
-      if (i < 6) {
-        const sideL = box(0.4, h * 0.55, 0.8, PLATE);
-        sideL.position.set(-1.25, 10.9 - i * 0.55, 1.8 - i * 1.7);
-        sideL.rotation.x = 0.35;
-        const sideR = sideL.clone();
-        sideR.position.x = 1.25;
-        this.group.add(sideL, sideR);
-      }
-    }
-
-    // small clawed arms held in front of the chest
+    // glowing eyes, set into the hide under the brow ridge
+    const eyeAt = gorgosaurEye();
     for (const side of [-1, 1]) {
-      const upper = box(1.0, 2.2, 1.0, BODY);
-      upper.position.set(side * 2.7, 8.6, 2.2);
-      upper.rotation.x = -0.5;
-      const fore = box(0.85, 1.6, 0.85, BODY);
-      fore.position.set(side * 2.7, 7.3, 3.1);
-      this.group.add(upper, fore);
-      for (let c = 0; c < 3; c++) {
-        const claw = box(0.2, 0.55, 0.2, CLAW);
-        claw.position.set(side * 2.7 - 0.25 + c * 0.25, 6.4, 3.3);
-        this.group.add(claw);
-      }
+      const eye = box(0.24, 0.3, 0.5, 0xffa020, 0xffa020);
+      eye.position.set(side * eyeAt[0], eyeAt[1], eyeAt[2]);
+      this.group.add(eye);
     }
 
-    // legs: hip-pivoted groups with thigh, shin, foot, toe claws
+    const plates = part(gorgosaurPlates());
+    this.group.add(plates);
+    this.plates.push(plates);
+
+    // legs swing from the same hip pivots as before; the right leg is the
+    // left one mirrored
     const makeLeg = (side: number): THREE.Group => {
       const leg = new THREE.Group();
-      leg.position.set(side * 2.2, 6.4, -0.8);
-      const thigh = box(2.3, 3.2, 3.0, BODY);
-      thigh.position.y = -1.2;
-      const shin = box(1.8, 2.8, 2.3, BODY);
-      shin.position.set(0, -3.4, 0.2);
-      const foot = box(2.2, 1.1, 3.1, BODY);
-      foot.position.set(0, -5.0, 0.7);
-      leg.add(thigh, shin, foot);
-      for (let c = 0; c < 3; c++) {
-        const claw = box(0.4, 0.5, 0.8, CLAW);
-        claw.position.set(-0.7 + c * 0.7, -5.2, 2.4);
-        leg.add(claw);
-      }
+      leg.position.set(side * GORGOSAUR_HIP[0], GORGOSAUR_HIP[1], GORGOSAUR_HIP[2]);
+      const mesh = part(gorgosaurLeg());
+      if (side > 0) mesh.scale.x = -1;
+      leg.add(mesh);
       return leg;
     };
     this.legL = makeLeg(-1);
     this.legR = makeLeg(1);
 
-    // long thick tail with bone spikes on top, drooping toward the tip
+    // The tail now pivots at its root. It used to be a group at the model
+    // origin, so its sway swung the whole tail sideways from the middle of
+    // the body instead of from the hips.
     this.tail = new THREE.Group();
-    for (let i = 0; i < 6; i++) {
-      const s = 2.4 - i * 0.33;
-      const seg = box(s, s, 3, BODY);
-      seg.position.set(0, 6.0 - i * 0.85, -4.8 - i * 2.5);
-      this.tail.add(seg);
-      if (i < 5) {
-        const spike = box(0.4, 0.9 - i * 0.12, 0.7, PLATE);
-        spike.position.set(0, 6.0 - i * 0.85 + s * 0.62, -4.8 - i * 2.5);
-        spike.rotation.x = 0.4;
-        this.tail.add(spike);
-      }
-    }
+    this.tail.position.set(...GORGOSAUR_TAIL_ROOT);
+    const tailPlates = part(gorgosaurTailPlates());
+    this.tail.add(part(gorgosaurTail()), tailPlates);
+    this.plates.push(tailPlates);
 
-    this.group.add(chest, gut, this.legL, this.legR, this.tail);
+    this.group.add(this.legL, this.legR, this.tail);
     this.group.scale.setScalar(MONSTER_SCALE);
     this.group.position.set(x, 0, z);
-    this.addCore(12.0);
+    this.addCore(GORGOSAUR_CORE[1], GORGOSAUR_CORE[2], false);
+    // nested between the plate rows rather than a crate on the back
+    this.coreScale = 0.72;
+    this.weakCore.scale.setScalar(this.coreScale);
     this.rememberEmissives();
   }
 
@@ -643,6 +610,20 @@ export class Kaiju extends Monster {
    * and the throat glowing, because a hitscan-ish beam with no warning is not
    * a fight, it is a tax. Firing roots it, and it is wide open afterwards.
    */
+  /**
+   * Blue charge glow on the dorsal plates, 0..1, running from the tail up to
+   * the neck. Overrides the frame's tint.
+   */
+  private glowPlates(v: number): void {
+    // plates[0] is the back and neck, plates[1] the tail
+    const ramp = [Math.max(0, Math.min(1, v * 1.6 - 0.6)), Math.min(1, v * 1.6)];
+    this.plates.forEach((p, i) => {
+      const mat = p.material as THREE.MeshStandardMaterial;
+      mat.emissive.setHex(0x3fb8ff);
+      mat.emissiveIntensity = ramp[i] * 1.3;
+    });
+  }
+
   /** Turn the body toward the pilot at a fixed rate. Returns how far off it
    *  still is, in radians, so the caller can tell whether it has lined up. */
   private aimAt(target: THREE.Vector3, dt: number, rate: number): number {
@@ -656,7 +637,7 @@ export class Kaiju extends Monster {
   }
 
   private updateMouthBeam(dt: number, ctx: MonsterCtx, _dist: number): void {
-    const mouth = new THREE.Vector3(0, 11, 7.4)
+    const mouth = new THREE.Vector3(...GORGOSAUR_MOUTH)
       .applyAxisAngle(_UP, this.heading)
       .multiplyScalar(MONSTER_SCALE)
       .add(this.group.position);
@@ -664,6 +645,7 @@ export class Kaiju extends Monster {
     if (this.beamFire > 0) {
       this.beamFire -= dt;
       this.jaw.rotation.x = 0.85;
+      this.glowPlates(1);
       // The beam only ever leaves the mouth, straight ahead. It used to be
       // aimed at the pilot regardless of which way the head was pointing,
       // so it could fire sideways or out of the back of the skull. Now the
@@ -689,6 +671,9 @@ export class Kaiju extends Monster {
     if (this.beamCharge > 0) {
       this.beamCharge -= dt;
       this.telegraph = true;
+      // the dorsal plates light up from the tail forward as it charges —
+      // readable from behind and at distance, where the jaw is not
+      this.glowPlates(1 - Math.max(0, this.beamCharge) / 1.1);
       // squares up on you while the throat lights, so the tell is also the aim
       this.aimAt(ctx.playerPos, dt, 1.7 * this.pace);
       this.jaw.rotation.x = 0.22 + (1 - Math.max(0, this.beamCharge) / 1.1) * 0.6;
