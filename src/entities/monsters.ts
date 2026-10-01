@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import {
   MAW_MUZZLES, mawBody, mawCore, mawGlow, mawMuzzleGlow,
   COLOSSUS_FIST, COLOSSUS_HIP, COLOSSUS_SHOULDER, colossusArm, colossusBody, colossusCore, colossusGlow, colossusLeg, colossusPlates,
+  MAW_SEGMENTS, deepMawGullet, deepMawHead, deepMawSegment,
   GOLEM_FIST, GOLEM_HIP, GOLEM_SHOULDER, golemArm, golemArmLava, golemBody, golemCore, golemHeart, golemLava, golemLeg,
   MANTIS_HIPS, MANTIS_SCYTHE, mantisBody, mantisCore, mantisGlow, mantisLeg, mantisScythe,
   REAVER_WING_ROOT, reaverBody, reaverCore, reaverGlow, reaverWing,
@@ -1508,6 +1509,8 @@ export class DeepMaw extends Monster {
   reward: Reward = 'vulcan';
   hitRadius = 12;
   private segs: THREE.Mesh[] = [];
+  /** The maw, which rides the top segment as it writhes. */
+  private head: THREE.Group;
   private mouth: THREE.Group;
   private submerged = true;
   private phaseT = 2.5;
@@ -1516,58 +1519,26 @@ export class DeepMaw extends Monster {
 
   constructor(x: number, z: number) {
     super(180);
-    const HIDE = 0x6a7a5a; // mottled green-brown
-    const RING = 0xcbd8b0;
-    const MAW = 0xd8564e;
-
+    // Sculpted voxel anatomy (bossModels.ts): a lamprey-mouthed sandworm.
+    // Each segment is its own mesh so the body can writhe, and the head
+    // rides the top segment so the maw never tears away from the neck.
     this.mouth = new THREE.Group();
-    // segmented body stacked upward from the mouth base
-    for (let i = 0; i < 6; i++) {
-      const s = 3.2 - i * 0.3;
-      const seg = box(s, 2.2, s, i % 2 === 0 ? HIDE : RING);
-      seg.position.y = 3 + i * 2.1;
+    for (let i = 0; i < MAW_SEGMENTS; i++) {
+      const seg = hidePart(deepMawSegment(i));
       this.mouth.add(seg);
       this.segs.push(seg);
     }
-    // maw: a ring of teeth around a red gullet at the top
-    const gullet = box(2.4, 1.2, 2.4, MAW, 0x551111);
-    gullet.position.y = 16;
-    this.mouth.add(gullet);
-    for (let i = 0; i < 8; i++) {
-      const a = (i / 8) * Math.PI * 2;
-      const tooth = box(0.5, 1.6, 0.5, 0xf4f0e0);
-      tooth.position.set(Math.sin(a) * 1.7, 16.6, Math.cos(a) * 1.7);
-      this.mouth.add(tooth);
-    }
+    this.head = new THREE.Group();
+    this.head.add(hidePart(deepMawHead()), glowPart(deepMawGullet()));
+    this.mouth.add(this.head);
     this.group.add(this.mouth);
-    // Concentric rasping teeth and a gullet that reads as an actual throat,
-    // plus mandibles either side of the maw and segment plating down the body.
-    for (let ring = 0; ring < 3; ring++) {
-      const r = 2.2 - ring * 0.45, y = 16.2 - ring * 1.0;
-      for (let i = 0; i < 9; i++) {
-        const a = (i / 9) * Math.PI * 2 + ring * 0.3;
-        const t = box(0.35, 0.9 - ring * 0.15, 0.35, RING);
-        t.position.set(Math.sin(a) * r, y, Math.cos(a) * r);
-        t.rotation.x = Math.cos(a) * 0.4;
-        t.rotation.z = -Math.sin(a) * 0.4;
-        this.group.add(t);
-      }
-    }
-    for (const side of [-1, 1]) {
-      const mand = box(0.7, 3.0, 0.9, HIDE);
-      mand.position.set(side * 2.6, 15.2, 0.4);
-      mand.rotation.z = side * 0.35;
-      const mandTip = box(0.5, 1.2, 0.6, RING);
-      mandTip.position.set(side * 3.3, 16.8, 0.4);
-      mandTip.rotation.z = side * 0.7;
-      this.group.add(mand, mandTip);
-    }
-    const throat = box(2.0, 1.6, 2.0, MAW, 0x5a1c18);
-    throat.position.y = 14.6;
-    this.group.add(throat);
     this.group.scale.setScalar(MONSTER_SCALE);
     this.group.position.set(x, 0, z);
-    this.addCore(7.0);
+    this.addCore(7.0, -1.25, false);
+    // the core rides its segment through the writhe
+    this.segs[2].add(this.weakCore);
+    this.coreScale = 0.6;
+    this.weakCore.scale.setScalar(this.coreScale);
     this.rememberEmissives();
   }
 
@@ -1627,6 +1598,8 @@ export class DeepMaw extends Monster {
         this.segs[i].position.x = Math.sin(t * 4 + i * 0.6) * 0.6;
         this.segs[i].position.z = Math.cos(t * 4 + i * 0.6) * 0.6;
       }
+      this.head.position.x = Math.sin(t * 4 + this.segs.length * 0.6) * 0.6;
+      this.head.position.z = Math.cos(t * 4 + this.segs.length * 0.6) * 0.6;
       if (this.phaseT <= 0) {
         this.submerged = true;
         // it stays under for less and less time as the fight turns

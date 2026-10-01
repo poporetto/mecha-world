@@ -1152,6 +1152,94 @@ export function golemLeg(): THREE.BufferGeometry {
   }));
 }
 
+// ================================================================= DEEP MAW
+// A lamprey-mouthed sandworm: armoured ring segments, each with a pale ridge
+// band and bristles, rising to a head that is all mouth — a round maw opening
+// upward, three concentric rings of teeth raking inward, a glowing red gullet
+// at the bottom, and curved mandibles either side.
+
+const DM = {
+  HIDE: 0x5f6e50, HIDE_LOW: 0x8a9772, RING: 0xcbd8b0, LIP: 0xb0484a, TEETH: 0xf4f0e0, GULLET: 0xff5a3c,
+};
+enum DMS { HIDE, RING, LIP, TEETH }
+
+export const MAW_SEGMENTS = 6;
+const mawSegWidth = (i: number) => 3.2 - i * 0.3;
+const mawSegY = (i: number) => 3 + i * 2.1;
+
+function deepMawPaint(slot: number, p: V3, n: V3): number {
+  switch (slot) {
+    case DMS.RING: return hide(DM.RING, scale(DM.RING, 1.05), p, n, 201);
+    case DMS.LIP: return hide(DM.LIP, scale(DM.LIP, 1.2), p, n, 203);
+    case DMS.TEETH: return DM.TEETH;
+    default: {
+      const mottle = noise3(p[0] * 1.3, p[1] * 0.7, p[2] * 1.3, 205);
+      return mix(hide(DM.HIDE, DM.HIDE_LOW, p, n, 207), scale(DM.HIDE, 0.7), smooth(0.55, 0.8, mottle));
+    }
+  }
+}
+
+/** One body segment, at its height in the worm (the writhe moves it in x/z). */
+export function deepMawSegment(i: number): THREE.BufferGeometry {
+  return sculpted(`deepmaw.seg${i}`, () => {
+    const w = mawSegWidth(i), y = mawSegY(i);
+    const hard: Prim[] = [ellipsoid([0, y + 0.55, 0], [w * 0.6, 0.32, w * 0.6], DMS.RING)];
+    // bristles raking down off the ridge
+    for (let k = 0; k < 7; k++) {
+      const a = (k / 7) * Math.PI * 2 + i * 0.45;
+      const r = w * 0.58;
+      hard.push(cone([Math.sin(a) * r, y + 0.5, Math.cos(a) * r], [Math.sin(a) * (r + 0.7), y - 0.2, Math.cos(a) * (r + 0.7)], 0.24, 0.06, DMS.RING));
+    }
+    const add: Prim[] = [ellipsoid([0, y, 0], [w * 0.55, 1.4, w * 0.55], DMS.HIDE)];
+    // the lowest segment runs on down into the hole it came out of
+    if (i === 0) add.push(cone([0, y, 0], [0, -2, 0], w * 0.55, w * 0.6, DMS.HIDE));
+    return { cell: CELL, blend: 0.4, paint: deepMawPaint, seed: 209 + i, hard, add };
+  });
+}
+
+/** The maw: a funnel opening upward. */
+const DEEPMAW_FUNNEL: Prim = cone([0, 15.4, 0], [0, 18.5, 0], 1.0, 1.5, 0);
+/** The gullet: exactly the bottom two voxel layers of the funnel, lit. */
+const DEEPMAW_GULLET: Prim = {
+  paint: 0, min: DEEPMAW_FUNNEL.min, max: [DEEPMAW_FUNNEL.max[0], 15.3, DEEPMAW_FUNNEL.max[2]],
+  d: (x, y, z) => Math.max(DEEPMAW_FUNNEL.d(x, y, z), Math.abs(y - (L(14.45) + CELL / 2)) - CELL),
+};
+
+/** The head: all mouth. It rides on the top segment. */
+export function deepMawHead(): THREE.BufferGeometry {
+  return sculpted('deepmaw.head', () => {
+    const hard: Prim[] = [
+      // the lip around the maw
+      ellipsoid([0, 16.5, 0], [2.0, 0.42, 2.0], DMS.LIP),
+      // mandibles curving up either side
+      ...mirrorX(chain([[1.6, 15.0, 0.3], [2.6, 16.6, 0.45], [2.85, 17.8, 0.2]], [0.48, 0.32, 0.08], DMS.RING)),
+    ];
+    // three rings of teeth, raking inward and down the throat, each rooted
+    // on a lattice centre so none of them falls between voxels
+    for (let ring = 0; ring < 3; ring++) {
+      const r = 1.3 - ring * 0.22, y = L(16.45 - ring * 0.6);
+      for (let k = 0; k < 8; k++) {
+        const a = (k / 8) * Math.PI * 2 + ring * 0.4;
+        const root: V3 = [L(Math.sin(a) * r), y, L(Math.cos(a) * r)];
+        hard.push(cone(root, [root[0] * 0.62, y - 0.45, root[2] * 0.62], 0.27, 0.08, DMS.TEETH));
+      }
+    }
+    return {
+      cell: CELL, blend: 0.5, paint: deepMawPaint, seed: 221, hard,
+      add: [ellipsoid([0, 15.3, 0], [1.8, 1.5, 1.8], DMS.HIDE)],
+      // the open maw, a funnel down to the gullet
+      cut: [DEEPMAW_FUNNEL],
+    };
+  });
+}
+
+/** The glowing gullet at the bottom of the maw. */
+export function deepMawGullet(): THREE.BufferGeometry {
+  return sculpted('deepmaw.gullet', () => ({
+    cell: CELL, blend: 0, seed: 223, add: [DEEPMAW_GULLET], paint: () => DM.GULLET,
+  }));
+}
+
 // ================================================================ PREWARM
 
 /**
@@ -1169,6 +1257,7 @@ const PARTS: (() => THREE.BufferGeometry)[] = [
   reaverBody, reaverGlow, reaverWing,
   mantisBody, mantisGlow, mantisScythe, () => mantisLeg(false), () => mantisLeg(true),
   golemBody, golemLava, golemHeart, golemArm, golemArmLava, golemLeg,
+  deepMawHead, deepMawGullet, ...Array.from({ length: MAW_SEGMENTS }, (_, i) => () => deepMawSegment(i)),
 ];
 
 /** Build the sculpts one per idle slot (the cache keeps them). */
