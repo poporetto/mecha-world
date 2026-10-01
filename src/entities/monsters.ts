@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import {
   MAW_MUZZLES, mawBody, mawCore, mawGlow, mawMuzzleGlow,
   COLOSSUS_FIST, COLOSSUS_HIP, COLOSSUS_SHOULDER, colossusArm, colossusBody, colossusCore, colossusGlow, colossusLeg, colossusPlates,
+  LEVIATHAN_FIN, LEVIATHAN_HIP, leviathanBody, leviathanCannonCore, leviathanCore, leviathanFin, leviathanGlow, leviathanLeg,
   WYRM_MOUTH, WYRM_WING_ROOT, wyrmBody, wyrmCore, wyrmEyes, wyrmThroat, wyrmWing,
   MAW_SEGMENTS, deepMawGullet, deepMawHead, deepMawSegment,
   GOLEM_FIST, GOLEM_HIP, GOLEM_SHOULDER, golemArm, golemArmLava, golemBody, golemCore, golemHeart, golemLava, golemLeg,
@@ -1722,8 +1723,11 @@ export class TideLeviathan extends Monster {
   name = 'TIDE LEVIATHAN';
   reward: Reward = 'aqua';
   hitRadius = 16;
-  private finL: THREE.Mesh;
-  private finR: THREE.Mesh;
+  private finL: THREE.Group;
+  private finR: THREE.Group;
+  private legL: THREE.Group;
+  private legR: THREE.Group;
+  /** The glowing water at the bottom of the cannon's bore. */
   private cannon: THREE.Mesh;
   private heading = 0;
   private fireT = 2.5;
@@ -1732,70 +1736,31 @@ export class TideLeviathan extends Monster {
 
   constructor(x: number, z: number) {
     super(230);
-    const HIDE = 0x2f6f8c; // deep teal
-    const BELLY = 0xbfe6ee;
-    const FIN = 0x4fa8c4;
-
-    const torso = box(5, 5.5, 5, HIDE);
-    torso.position.y = 9;
-    const belly = box(3.6, 3.6, 4, BELLY);
-    belly.position.set(0, 7.5, 1.4);
-    const head = box(3, 2.6, 3, HIDE);
-    head.position.set(0, 13, 1.2);
-    const jaw = box(2.6, 0.9, 2.6, BELLY);
-    jaw.position.set(0, 11.6, 1.8);
-    const eyeL = box(0.5, 0.5, 0.4, 0x9ffcff, 0x9ffcff);
-    eyeL.position.set(-0.9, 13.4, 2.5);
-    const eyeR = eyeL.clone();
-    eyeR.position.x = 0.9;
-    const crest = box(0.4, 2.2, 2.6, FIN);
-    crest.position.set(0, 14.6, 0.6);
-    this.finL = box(0.5, 3.5, 3, FIN);
-    this.finL.position.set(-2.8, 9.5, 0);
-    this.finL.rotation.z = 0.4;
-    this.finR = this.finL.clone();
-    this.finR.position.x = 2.8;
-    this.finR.rotation.z = -0.4;
-    // aqua cannon mounted on the right arm
-    const arm = box(1.8, 4.5, 1.8, HIDE);
-    arm.position.set(3.2, 8, 1.5);
-    this.cannon = box(1.6, 1.6, 3.2, 0x9ffcff, 0x2f9fd0);
-    this.cannon.position.set(3.2, 6.5, 3.4);
-    const legL = box(2, 5.5, 2.4, HIDE);
-    legL.position.set(-1.6, 4, 0);
-    const legR = legL.clone();
-    legR.position.x = 1.6;
-    this.group.add(torso, belly, head, jaw, eyeL, eyeR, crest, this.finL, this.finR, arm, this.cannon, legL, legR);
-    // Gill slits, dorsal spines and webbing between the fins — the details
-    // that separate a sea titan from a blue humanoid.
-    for (const side of [-1, 1]) {
-      for (let i = 0; i < 3; i++) {
-        const gill = box(0.25, 1.4 - i * 0.2, 0.8, 0x123a4a);
-        gill.position.set(side * 2.15, 11.6, 0.4 - i * 0.9);
-        this.group.add(gill);
-      }
-      const web = box(0.2, 1.8, 2.6, FIN);
-      web.position.set(side * 3.4, 9.5, -1.2);
-      web.rotation.z = side * -0.4;
-      const claw = box(0.6, 0.5, 1.2, BELLY);
-      claw.position.set(side * 2.0, 4.0, 1.8);
-      this.group.add(web, claw);
-    }
-    for (let i = 0; i < 5; i++) {
-      const spine = box(0.4, 1.6 - i * 0.2, 0.5, FIN);
-      spine.position.set(0, 12.4 - i * 1.1, -2.0 - i * 0.25);
-      spine.rotation.x = 0.35;
-      this.group.add(spine);
-    }
-    const barbel = box(0.3, 1.6, 0.3, BELLY);
-    barbel.position.set(-0.9, 11.2, 2.3);
-    barbel.rotation.x = 0.5;
-    const barbel2 = barbel.clone();
-    barbel2.position.x = 0.9;
-    this.group.add(barbel, barbel2);
+    // Sculpted voxel anatomy (bossModels.ts): an amphibious sea titan with
+    // a water cannon grown from its right forearm. Fins pivot where they
+    // meet the body, legs at the hip.
+    this.group.add(hidePart(leviathanBody()), glowPart(leviathanGlow()));
+    this.cannon = glowPart(leviathanCannonCore());
+    this.group.add(this.cannon);
+    const limb = (geo: THREE.BufferGeometry, pivot: V3, side: number): THREE.Group => {
+      const g = new THREE.Group();
+      g.position.set(side * pivot[0], pivot[1], pivot[2]);
+      const mesh = hidePart(geo);
+      if (side > 0) mesh.scale.x = -1; // built as the left limb
+      g.add(mesh);
+      this.group.add(g);
+      return g;
+    };
+    this.finL = limb(leviathanFin(), LEVIATHAN_FIN, -1);
+    this.finR = limb(leviathanFin(), LEVIATHAN_FIN, 1);
+    this.legL = limb(leviathanLeg(), LEVIATHAN_HIP, -1);
+    this.legR = limb(leviathanLeg(), LEVIATHAN_HIP, 1);
     this.group.scale.setScalar(MONSTER_SCALE);
     this.group.position.set(x, 0, z);
-    this.addCore(9.0);
+    const core = leviathanCore();
+    this.addCore(core[1], core[2], false);
+    this.coreScale = 0.65;
+    this.weakCore.scale.setScalar(this.coreScale);
     this.rememberEmissives();
   }
 
@@ -1817,6 +1782,13 @@ export class TideLeviathan extends Monster {
       const speed = 4 * this.pace;
       this.group.position.x += Math.sin(this.heading) * speed * dt;
       this.group.position.z += Math.cos(this.heading) * speed * dt;
+      // a heavy wading stride
+      const stride = Math.sin(t * 2.4 * this.pace);
+      this.legL.rotation.x = stride * 0.32;
+      this.legR.rotation.x = -stride * 0.32;
+    } else {
+      this.legL.rotation.x *= 1 - Math.min(1, dt * 3);
+      this.legR.rotation.x *= 1 - Math.min(1, dt * 3);
     }
     const gy = ctx.world.groundHeight(this.group.position.x, this.group.position.z, 20);
     this.group.position.y += ((gy > 14 ? 0 : gy) - this.group.position.y) * Math.min(1, dt * 2.5);
@@ -1831,7 +1803,10 @@ export class TideLeviathan extends Monster {
       this.shotT = 0;
       this.fireT = 4.5 / this.tempo;
     }
-    (this.cannon.material as THREE.MeshLambertMaterial).emissiveIntensity = this.burst > 0 ? 1.5 : 1;
+    // the bore brightens as it pressurises and blazes through the burst
+    const bore = this.burst > 0 ? 2.2 + Math.sin(t * 26) * 0.4
+      : this.telegraph ? 1 + (1 - this.fireT / 0.7) * 1.4 : 1;
+    (this.cannon.material as THREE.MeshBasicMaterial).color.setScalar(bore);
     if (this.burst > 0) {
       const wasBurst = this.burst;
       this.burst -= dt;

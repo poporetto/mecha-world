@@ -1371,6 +1371,170 @@ export function wyrmWing(): THREE.BufferGeometry {
   });
 }
 
+// =========================================================== TIDE LEVIATHAN
+// An amphibious sea titan: a wide fish head with a toothed slot of a mouth
+// and hanging barbels, glowing eyes, a dorsal sail, gill slits, a line of
+// bioluminescent photophores down each flank, webbed pectoral fins on fin
+// rays, a thick tail with a tail fin, webbed feet, and a right forearm grown
+// into an organic water cannon with a glowing bore.
+
+const T = {
+  HIDE: 0x2f6f8c, HIDE_LOW: 0x4f93ad, BELLY: 0xbfe6ee, FIN: 0x4fa8c4, FIN_EDGE: 0x9fe0f0,
+  CLAW: 0x1d3440, TEETH: 0xeaf6f6, MOUTH: 0x0f2a36, GILL: 0x123a4a, GLOW: 0x9ffcff, CORE: 0x7ff0ff,
+};
+enum TS { HIDE, BELLY, FIN, CLAW, TEETH }
+
+export const LEVIATHAN_FIN: V3 = [2.8, 9.5, 0];
+export const LEVIATHAN_HIP: V3 = [1.6, 6.4, 0];
+const LEVIATHAN_MOUTH = { c: [0, 12.1, 3.2] as V3, r: [1.3, 0.26, 0.9] as V3 };
+const LEVIATHAN_BORE: V3 = [3.2, L(6.6), 0];
+
+function leviathanPaint(slot: number, p: V3, n: V3): number {
+  switch (slot) {
+    case TS.BELLY: return hide(T.BELLY, scale(T.BELLY, 1.04), p, n, 251);
+    case TS.FIN: return mix(T.FIN, T.FIN_EDGE, smooth(0.4, 0.85, noise3(p[0] * 1.8, p[1] * 1.8, p[2] * 1.8, 253)) * 0.6);
+    case TS.CLAW: return T.CLAW;
+    case TS.TEETH: return T.TEETH;
+    default: {
+      const mq = Math.hypot((p[0] - LEVIATHAN_MOUTH.c[0]) / LEVIATHAN_MOUTH.r[0], (p[1] - LEVIATHAN_MOUTH.c[1]) / LEVIATHAN_MOUTH.r[1], (p[2] - LEVIATHAN_MOUTH.c[2]) / LEVIATHAN_MOUTH.r[2]);
+      if (mq < 1.6 && p[2] > 2.4) return T.MOUTH;
+      // three gill slits on each side of the neck
+      if (Math.abs(p[0]) > 1.5 && p[1] > 10.9 && p[1] < 12.3 && Math.abs((((p[2] + 4) / 0.75) % 1) - 0.5) < 0.16 && p[2] < 1.2 && p[2] > -1.2) return T.GILL;
+      // pale throat and belly, dappled teal back
+      const base = hide(T.HIDE, T.BELLY, p, n, 255, 0.05);
+      return noise3(p[0] * 1.2, p[1] * 1.2, p[2] * 1.2, 257) > 0.68 ? scale(base, 0.78) : base;
+    }
+  }
+}
+
+let leviathanBodyMemo: SculptSpec | null = null;
+function leviathanBodyBase(): SculptSpec {
+  if (leviathanBodyMemo) return leviathanBodyMemo;
+  const add: Prim[] = [
+    ellipsoid([0, 9.0, 0.3], [2.6, 2.8, 2.3], TS.HIDE),
+    ellipsoid([0, 7.9, 1.3], [2.0, 2.1, 1.6], TS.HIDE),
+    ellipsoid([0, 6.6, 0.0], [2.2, 1.4, 1.8], TS.HIDE),
+    // a wide flat fish head on a thick neck
+    ellipsoid([0, 12.6, 1.6], [1.75, 1.25, 1.75], TS.HIDE),
+    ellipsoid([0, 11.65, 2.3], [1.6, 0.62, 1.5], TS.BELLY),
+    // a thick tail behind it, for balance in the surf
+    ...chain([[0, 7.2, -1.6], [0, 5.6, -4.4], [0, 3.6, -6.4], [0, 2.2, -8.0]], [1.45, 1.0, 0.6, 0.28], TS.HIDE),
+    ...mirrorX([
+      // the left arm hangs with a claw; the right one is the cannon
+      cone([2.4, 9.9, 0.8], [3.0, 7.6, 1.4], 0.85, 0.7, TS.HIDE),
+    ]),
+    cone([-3.0, 7.6, 1.4], [-2.7, 5.6, 2.3], 0.7, 0.55, TS.HIDE),
+    ellipsoid([-2.6, 5.3, 2.55], [0.6, 0.45, 0.6], TS.HIDE),
+    // the cannon: the right forearm swollen into a barrel
+    cone([3.0, 7.6, 1.4], [LEVIATHAN_BORE[0], LEVIATHAN_BORE[1], 3.6], 1.0, 0.85, TS.HIDE),
+  ];
+  const hard: Prim[] = [
+    // a dorsal sail down the neck and back, clear of the core
+    fin([0, 13.5, 1.6], [0, 15.4, -0.4], 0.9, 0.12, 0.42, [1, 0, 0], TS.FIN),
+    fin([0, 10.4, -2.2], [0, 11.9, -3.6], 0.75, 0.1, 0.42, [1, 0, 0], TS.FIN),
+    // a tail fin
+    fin([0, 2.6, -7.6], [0, 3.6, -9.6], 0.9, 0.2, 0.42, [1, 0, 0], TS.FIN),
+    // barbels hanging off the jaw
+    ...mirrorX([cone([1.0, 11.5, 3.1], [1.45, 9.7, 3.7], 0.25, 0.12, TS.BELLY)]),
+    // a ridged collar of coral round the cannon's muzzle
+    ellipsoid([LEVIATHAN_BORE[0], LEVIATHAN_BORE[1], 3.75], [0.95, 0.95, 0.35], TS.FIN),
+  ];
+  // the claw hand
+  for (let c = 0; c < 3; c++) {
+    const dx = (c - 1) * 0.3;
+    hard.push(cone([-2.6 + dx, 5.0, 2.9], [-2.6 + dx * 1.2, 4.5, 3.3], 0.17, 0.05, TS.CLAW));
+  }
+  // teeth along the mouth, on lattice columns
+  for (let k = 0; k < 7; k++) {
+    const x = L(-1.08 + k * 0.36), z = L(3.8 - Math.abs(k - 3) * 0.18);
+    hard.push(cone([x, 12.3, z], [x, 11.95, z], 0.15, 0.05, TS.TEETH));
+  }
+  leviathanBodyMemo = { cell: CELL, blend: 0.8, add, hard, paint: leviathanPaint, seed: 259 };
+  return leviathanBodyMemo;
+}
+
+let leviathanLightsMemo: V3[] | null = null;
+/** Eyes first (left, right), then the photophores down both flanks. */
+function leviathanLights(): V3[] {
+  if (leviathanLightsMemo) return leviathanLightsMemo;
+  const base = leviathanBodyBase();
+  const out: V3[] = [];
+  const side = (y: number, z: number) => {
+    const hit = surfaceHit(base, [L(-5), L(y), L(z)], [1, 0, 0], 5, CELL);
+    if (hit) out.push(hit, [-hit[0], hit[1], hit[2]]);
+  };
+  side(13.0, 2.4);
+  for (const [y, z] of [[10.2, 1.6], [9.8, 0.6], [9.5, -0.4], [9.0, -1.3]] as [number, number][]) side(y, z);
+  leviathanLightsMemo = out;
+  return out;
+}
+
+export function leviathanCore(): V3 {
+  const z = -1.2;
+  return [0, surfaceY(leviathanBodyBase(), 0, z) - 0.3, z];
+}
+
+export function leviathanBody(): THREE.BufferGeometry {
+  return sculpted('leviathan.body', () => {
+    const base = leviathanBodyBase();
+    return {
+      ...base,
+      cut: [
+        ellipsoid(LEVIATHAN_MOUTH.c, LEVIATHAN_MOUTH.r, TS.HIDE),
+        ...leviathanLights().map((l) => sphere(l, 0.2, TS.HIDE)),
+        // the cannon's bore
+        cone([LEVIATHAN_BORE[0], LEVIATHAN_BORE[1], 2.9], [LEVIATHAN_BORE[0], LEVIATHAN_BORE[1], 5], 0.42, 0.42, TS.HIDE),
+      ],
+    };
+  });
+}
+
+export function leviathanGlow(): THREE.BufferGeometry {
+  return sculpted('leviathan.glow', () => ({
+    cell: CELL, blend: 0, seed: 261, paint: () => T.GLOW,
+    add: leviathanLights().map((l) => sphere(l, 0.2, 0)),
+  }));
+}
+
+/** The glowing water at the bottom of the cannon's bore. */
+export function leviathanCannonCore(): THREE.BufferGeometry {
+  return sculpted('leviathan.cannon', () => ({
+    cell: CELL, blend: 0, seed: 263, paint: () => T.CORE,
+    add: [ellipsoid([LEVIATHAN_BORE[0], LEVIATHAN_BORE[1], L(2.75)], [0.45, 0.45, 0.2], 0)],
+  }));
+}
+
+/** Left pectoral fin in its pivot space: webbing over spread fin rays. */
+export function leviathanFin(): THREE.BufferGeometry {
+  return sculpted('leviathan.fin', () => {
+    const hard: Prim[] = [fin([0, 0.2, 0.4], [-1.3, -2.2, -1.6], 1.35, 0.35, 0.42, [1, 0.4, 0], TS.FIN)];
+    for (let k = 0; k < 4; k++) {
+      const a = -0.4 + k * 0.35;
+      hard.push(cone([0, 0.1, 0.2], [-1.0 - Math.cos(a) * 0.4, -2.4 + Math.sin(a) * 0.9, -0.4 - k * 0.55], 0.2, 0.06, TS.CLAW));
+    }
+    return { cell: CELL, blend: 0, add: [], hard, paint: leviathanPaint, seed: 265 };
+  });
+}
+
+/** Left leg in hip space, down to a webbed, clawed foot on the ground. */
+export function leviathanLeg(): THREE.BufferGeometry {
+  return sculpted('leviathan.leg', () => {
+    const hard: Prim[] = [fin([-0.1, -6.15, 0.3], [-0.1, -6.25, 2.0], 0.9, 0.55, 0.42, [0, 1, 0], TS.FIN)];
+    for (let c = 0; c < 3; c++) {
+      const dx = (c - 1) * 0.55;
+      hard.push(cone([-0.1 + dx, -6.1, 1.9], [-0.1 + dx * 1.3, -6.3, 2.5], 0.18, 0.06, TS.CLAW));
+    }
+    return {
+      cell: CELL, blend: 0.6, paint: leviathanPaint, seed: 267, hard,
+      add: [
+        ellipsoid([-0.1, -0.9, -0.1], [1.15, 1.6, 1.4], TS.HIDE),
+        cone([-0.1, -2.2, 0.1], [-0.1, -5.6, 0.4], 0.95, 0.75, TS.HIDE),
+        ellipsoid([-0.1, -5.9, 0.7], [0.85, 0.4, 1.0], TS.HIDE),
+      ],
+    };
+  });
+}
+
 // ================================================================ PREWARM
 
 /**
@@ -1390,6 +1554,7 @@ const PARTS: (() => THREE.BufferGeometry)[] = [
   golemBody, golemLava, golemHeart, golemArm, golemArmLava, golemLeg,
   deepMawHead, deepMawGullet, ...Array.from({ length: MAW_SEGMENTS }, (_, i) => () => deepMawSegment(i)),
   wyrmBody, wyrmEyes, wyrmThroat, wyrmWing,
+  leviathanBody, leviathanGlow, leviathanCannonCore, leviathanFin, leviathanLeg,
 ];
 
 /** Build the sculpts one per idle slot (the cache keeps them). */
