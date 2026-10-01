@@ -4399,8 +4399,13 @@ varying float vGlow;
         .toast { position:absolute; top:31%; left:50%; transform:translate(-50%,-50%); text-align:center;
                  opacity:0; transition:opacity .3s; padding:16px 34px;
                  background:linear-gradient(90deg,transparent,#07131fdd 18%,#07131fdd 82%,transparent); }
-        .toast h1 { color:#fff; font-size:34px; letter-spacing:8px; margin:0; text-shadow:0 0 18px #39e6e0, 0 2px 4px #000; }
-        .toast p { color:#bfe9ff; font-size:14px; letter-spacing:3px; margin:8px 0 0; text-shadow:0 1px 3px #000; }
+        /* Fluid: at a fixed 34px with 8px tracking a 23-character title needs
+           ~740px, so below ~800px wide it wrapped to four lines across the
+           middle of the fight. */
+        .toast { max-width:92vw; box-sizing:border-box; }
+        .toast h1 { color:#fff; font-size:clamp(17px, 3.1vw, 34px); letter-spacing:clamp(2px, 0.62vw, 8px);
+                    margin:0; white-space:nowrap; text-shadow:0 0 18px #39e6e0, 0 2px 4px #000; }
+        .toast p { color:#bfe9ff; font-size:clamp(11px, 1.3vw, 14px); letter-spacing:clamp(1px, 0.25vw, 3px); margin:8px 0 0; text-shadow:0 1px 3px #000; }
         .cross { position:absolute; left:50%; top:50%; width:6px; height:6px; margin:-3px; border-radius:50%;
                  background:#7fdcffcc; box-shadow:0 0 6px #39e6e0; }
         .target-lock { position:absolute; width:68px; height:68px; margin:-34px; display:none;
