@@ -399,7 +399,7 @@ export class Game {
       ).then(() => {
         sfx.setMusicMode('explore');
         this.started = true;
-        if (!this.touch) this.renderer.domElement.requestPointerLock();
+        if (!this.touch) this.lockPointer();
         this.hud.say(PROLOGUE);
         this.hud.setObjective('Hold Neo Tokyo');
         this.beginTutorial();
@@ -512,10 +512,21 @@ export class Game {
     this.deploySupportFromEarlierChapters(d.chapter);
     this.hud.setWave(d.chapter);
     this.hud.setScore(this.score, 1);
-    if (!this.touch) this.renderer.domElement.requestPointerLock();
+    if (!this.touch) this.lockPointer();
     const ch = CHAPTERS[d.chapter];
     this.hud.toast('RESUMING', `Chapter ${ch.no} · ${ch.title}`, 3.5);
     this.hud.setObjective('Reacquire systems — next contact inbound');
+  }
+
+  /**
+   * Ask for pointer lock. Browsers now return a promise that rejects whenever
+   * the lock is refused — an embedded frame, ESC pressed during the request,
+   * a tab that lost focus — and every call site let that rejection go
+   * unhandled. Refusal is normal; the next click asks again.
+   */
+  private lockPointer(): void {
+    const req = this.renderer.domElement.requestPointerLock() as unknown as Promise<void> | undefined;
+    req?.catch?.(() => { /* refused; the next click retries */ });
   }
 
   // ------------------------------------------------------------------ input
@@ -586,7 +597,7 @@ export class Game {
       if (this.drag && e.button === this.drag.button) {
         if (!this.drag.moved && this.started) {
           // plain click: attack and (re)acquire pointer lock for mouse-look
-          this.renderer.domElement.requestPointerLock();
+          this.lockPointer();
           if (e.button === 0) { this.attackDown(); this.attackUp(); }
           if (e.button === 2) this.fireLaser();
         }
@@ -1992,7 +2003,7 @@ export class Game {
       this.keys.clear(); // don't resume with keys stuck down
       if (document.pointerLockElement) document.exitPointerLock();
     } else if (!this.touch) {
-      this.renderer.domElement.requestPointerLock();
+      this.lockPointer();
     }
   }
 
@@ -2995,7 +3006,7 @@ export class Game {
           this.redeploying = false;
           this.started = true;
           this.hud.toast('REDEPLOYED', 'Emergency invulnerability active', 2.5);
-          if (!this.touch) this.renderer.domElement.requestPointerLock();
+          if (!this.touch) this.lockPointer();
         });
       }, 700);
     }

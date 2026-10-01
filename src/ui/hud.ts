@@ -413,6 +413,7 @@ export class Hud {
         .settings-title { color:#7fdcff; font-size:10px; letter-spacing:4px; margin-bottom:10px; text-align:center; }
         .settings-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px 20px; }
         .difficulty { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:14px; }
+        .difficulty.gfx { grid-template-columns:repeat(2,1fr); }
         .diff { display:flex; flex-direction:column; gap:3px; padding:8px 6px; cursor:pointer;
                 border:1px solid #31516d; border-radius:8px; background:#0a1622; font:inherit; text-align:center; }
         .diff-name { color:#b9d6ed; font-size:11px; letter-spacing:3px; }
@@ -581,6 +582,16 @@ export class Hud {
                  <span class="diff-blurb">${DIFFICULTY[d].blurb}</span>
                </button>`).join('')}
           </div>
+          <div class="difficulty gfx" id="set-graphics">
+            <button type="button" class="diff" data-gfx="high">
+              <span class="diff-name">GRAPHICS · HIGH</span>
+              <span class="diff-blurb">Shadows, bloom, tone mapping</span>
+            </button>
+            <button type="button" class="diff" data-gfx="low">
+              <span class="diff-name">GRAPHICS · LOW</span>
+              <span class="diff-blurb">For phones and older GPUs</span>
+            </button>
+          </div>
           <div class="settings-grid">
             <label class="setting">MUSIC <input id="set-music" type="range" min="0" max="100"/><output id="out-music"></output></label>
             <label class="setting">EFFECTS <input id="set-effects" type="range" min="0" max="100"/><output id="out-effects"></output></label>
@@ -730,6 +741,21 @@ export class Hud {
       });
     }
     paintDifficulty();
+    const gfxButtons = Array.from(
+      document.querySelectorAll<HTMLButtonElement>('#set-graphics .diff')
+    );
+    const paintGraphics = (): void => {
+      for (const b of gfxButtons) b.classList.toggle('on', b.dataset.gfx === settings.graphics);
+    };
+    for (const b of gfxButtons) {
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        settings.graphics = b.dataset.gfx as GameSettings['graphics'];
+        paintGraphics();
+        emit();
+      });
+    }
+    paintGraphics();
     emit();
   }
 
