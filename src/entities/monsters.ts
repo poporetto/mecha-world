@@ -3,11 +3,12 @@
 import * as THREE from 'three';
 import {
   MAW_MUZZLES, mawBody, mawCore, mawGlow, mawMuzzleGlow,
+  COLOSSUS_FIST, COLOSSUS_HIP, COLOSSUS_SHOULDER, colossusArm, colossusBody, colossusCore, colossusGlow, colossusLeg, colossusPlates,
   SERPENT_SEGMENTS, serpentCore, serpentHead, serpentHeadGlow, serpentSegment, serpentSegmentGlow,
   GORGOSAUR_CORE, GORGOSAUR_HIP, GORGOSAUR_JAW_HINGE, GORGOSAUR_MOUTH, GORGOSAUR_TAIL_ROOT,
   gorgosaurBody, gorgosaurEye, gorgosaurJaw, gorgosaurLeg, gorgosaurPlates, gorgosaurTail, gorgosaurTailPlates,
 } from './bossModels';
-import { hideMaterial } from '../render/voxelSculpt';
+import { hideMaterial, V3 } from '../render/voxelSculpt';
 import { glow } from '../render/hdr';
 import { World } from '../core/world';
 
@@ -928,10 +929,10 @@ export class IronColossus extends Monster {
   name = 'IRON COLOSSUS';
   reward: Reward = 'shield';
   hitRadius = 17;
-  private armL: THREE.Mesh;
-  private armR: THREE.Mesh;
-  private legL: THREE.Mesh;
-  private legR: THREE.Mesh;
+  private armL: THREE.Group;
+  private armR: THREE.Group;
+  private legL: THREE.Group;
+  private legR: THREE.Group;
   private throwT = 4;
   private stompT = 0;
   private heading = 0;
@@ -954,70 +955,36 @@ export class IronColossus extends Monster {
 
   constructor(x: number, z: number) {
     super(340);
-    const IRON = 0x8d939e;
-    const RUST = 0xb87e5e;
-    const DARK = 0x3c4048;
-
-    const torso = box(7, 6, 4.5, IRON);
-    torso.position.y = 9;
-    const plate = box(5.5, 4, 0.8, RUST);
-    plate.position.set(0, 9, 2.4);
-    const core = box(1.6, 1.6, 0.5, 0xffb054, 0xff8a2f);
-    core.position.set(0, 9.5, 2.7);
-    const head = box(2.2, 1.8, 2.2, DARK);
-    head.position.set(0, 13, 0.8);
-    const eye = box(1.6, 0.4, 0.3, 0xff3355, 0xff3355);
-    eye.position.set(0, 13.2, 2);
-    const shoulderL = box(3, 2.5, 3, RUST);
-    shoulderL.position.set(-5, 11.5, 0);
-    const shoulderR = shoulderL.clone();
-    shoulderR.position.x = 5;
-    this.armL = box(2.2, 6.5, 2.4, IRON);
-    this.armL.position.set(-5.2, 7, 0);
-    this.armR = this.armL.clone();
-    this.armR.position.x = 5.2;
-    const fistL = box(2.6, 2, 2.6, DARK);
-    fistL.position.set(-5.2, 3.4, 0);
-    const fistR = fistL.clone();
-    fistR.position.x = 5.2;
-    this.legL = box(2.6, 6, 3, DARK);
-    this.legL.position.set(-2, 3, 0);
-    this.legR = this.legL.clone();
-    this.legR.position.x = 2;
-    this.group.add(torso, plate, core, head, eye, shoulderL, shoulderR, this.armL, this.armR, fistL, fistR, this.legL, this.legR);
-    this.plates.push(plate, shoulderL, shoulderR);
-    // Riveted plate over the frame: shoulder pauldrons, chest bolts, hip
-    // armour and exposed hydraulics so the bulk reads as built, not poured.
-    for (const side of [-1, 1]) {
-      const pauldron = box(3.4, 1.6, 3.6, RUST);
-      pauldron.position.set(side * 5, 12.6, 0);
-      const rimPl = box(3.6, 0.5, 3.8, DARK);
-      rimPl.position.set(side * 5, 11.6, 0);
-      const hip = box(2.2, 1.8, 2.4, RUST);
-      hip.position.set(side * 2.2, 5.4, 0);
-      const piston = box(0.5, 3.2, 0.5, DARK);
-      piston.position.set(side * 3.4, 8.0, -0.9);
-      this.group.add(pauldron, rimPl, hip, piston);
-      this.plates.push(pauldron, hip);
-      for (let i = 0; i < 3; i++) {
-        const rivet = box(0.35, 0.35, 0.35, DARK);
-        rivet.position.set(side * 5, 13.5, -1.2 + i * 1.2);
-        this.group.add(rivet);
-      }
+    // Sculpted voxel anatomy (bossModels.ts): a welded-iron construct with a
+    // furnace heart. Arms swing from the shoulder and legs from the hip, and
+    // each fist is part of its arm, so a wind-up lifts the whole limb.
+    this.group.add(hidePart(colossusBody()), glowPart(colossusGlow()));
+    const limb = (geo: THREE.BufferGeometry, pivot: V3, side: number): THREE.Group => {
+      const g = new THREE.Group();
+      g.position.set(side * pivot[0], pivot[1], pivot[2]);
+      const mesh = hidePart(geo);
+      if (side > 0) mesh.scale.x = -1; // built as the left limb
+      g.add(mesh);
+      this.group.add(g);
+      return g;
+    };
+    this.armL = limb(colossusArm(), COLOSSUS_SHOULDER, -1);
+    this.armR = limb(colossusArm(), COLOSSUS_SHOULDER, 1);
+    this.legL = limb(colossusLeg(), COLOSSUS_HIP, -1);
+    this.legR = limb(colossusLeg(), COLOSSUS_HIP, 1);
+    // rust plates bolted over the hide, each its own mesh so it can come off
+    for (const { geo, mirror } of colossusPlates()) {
+      const plate = hidePart(geo);
+      if (mirror) plate.scale.x = -1;
+      this.group.add(plate);
+      this.plates.push(plate);
     }
-    for (let i = 0; i < 4; i++) {
-      const bolt = box(0.4, 0.4, 0.4, DARK);
-      bolt.position.set(-1.5 + (i % 2) * 3, 10.6 - Math.floor(i / 2) * 2.4, 2.7);
-      this.group.add(bolt);
-    }
-    const jaw = box(1.8, 0.7, 1.4, DARK);
-    jaw.position.set(0, 12.1, 1.4);
-    const vent = box(2.6, 0.6, 0.6, DARK);
-    vent.position.set(0, 14.2, 0.4);
-    this.group.add(jaw, vent);
     this.group.scale.setScalar(MONSTER_SCALE);
     this.group.position.set(x, 0, z);
-    this.addCore(13.0);
+    const core = colossusCore();
+    this.addCore(core[1], core[2], false);
+    this.coreScale = 0.75;
+    this.weakCore.scale.setScalar(this.coreScale);
     this.rememberEmissives();
   }
 
@@ -1073,8 +1040,11 @@ export class IronColossus extends Monster {
     this.group.position.y += ((gy > 14 ? 0 : gy) - this.group.position.y) * Math.min(1, dt * 2.5);
 
     const gait = 2.2 * this.pace;
-    this.legL.rotation.x = Math.sin(t * gait) * 0.3;
-    this.legR.rotation.x = -Math.sin(t * gait) * 0.3;
+    const stride = Math.sin(t * gait);
+    this.legL.rotation.x = stride * 0.3;
+    this.legR.rotation.x = -stride * 0.3;
+    // arms swing against the legs, heavy and short
+    this.armL.rotation.x = -stride * 0.14;
 
     // slow devastating stomps
     // Both tells are combined below. This used to assign the stomp's tell
@@ -1097,15 +1067,17 @@ export class IronColossus extends Monster {
     if (this.throwT <= 0 && ctx.throwBoulder && dist < 90 && !this.vulnerable) {
       this.throwT = 5 / this.tempo;
       this.armR.rotation.x = -2.2; // wind-up pose, relaxes over time
-      const from = this.group.position.clone();
-      from.y += 13 * MONSTER_SCALE / 2.2 * 2.2;
+      // the boulder leaves from the raised fist
+      this.group.updateMatrixWorld(true);
+      const from = this.armR.localToWorld(new THREE.Vector3(-COLOSSUS_FIST[0], COLOSSUS_FIST[1], COLOSSUS_FIST[2]));
       ctx.throwBoulder(from, ctx.playerPos.clone());
       // All that mass goes into the throw. The window is generous because it
       // is the only place real damage gets through the plate — the fight is
       // won by being there for every one of them.
       this.openWindow(3.4);
     }
-    this.armR.rotation.x *= 1 - Math.min(1, dt * 2);
+    // the throwing arm comes back down into the swing
+    this.armR.rotation.x += (stride * 0.14 - this.armR.rotation.x) * Math.min(1, dt * 2);
   }
 }
 

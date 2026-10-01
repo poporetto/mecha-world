@@ -4,7 +4,7 @@
 
 import * as THREE from 'three';
 import {
-  blade, chain, cone, ellipsoid, fin, mirrorX, noise3, onLattice, Prim, SculptSpec, sculpted, sphere, squash, surfaceHit, surfaceY, V3,
+  blade, chain, cone, ellipsoid, fin, mirrorX, roundBox, noise3, onLattice, Prim, SculptSpec, sculpted, sphere, squash, surfaceHit, surfaceY, V3,
 } from '../render/voxelSculpt';
 
 /** Roughly the city's voxel grain once MONSTER_SCALE (2.2) is applied. */
@@ -582,6 +582,163 @@ export function serpentSegmentGlow(i: number): THREE.BufferGeometry {
   }));
 }
 
+// ============================================================ IRON COLOSSUS
+// A hulking armoured construct: a barrel chest with a furnace heart, a small
+// head sunk between huge shoulders behind a glowing visor slit, gorilla-heavy
+// arms ending in iron fists, short pillar legs. Its hide is welded iron,
+// seamed and rust-streaked; the rust-red plates bolted over it are separate
+// pieces, because it sheds them as the fight wears on.
+
+const C = {
+  IRON: 0x8d939e, IRON_LOW: 0xa3a9b3, DARK: 0x3c4048, RUST: 0xb87e5e, RUST_DARK: 0x7d4b33,
+  FURNACE: 0xff9a3c, EYE: 0xff3355,
+};
+enum CS { IRON, DARK, RUST }
+
+/** Shoulder and hip pivots (left side; the right mirrors). */
+export const COLOSSUS_SHOULDER: V3 = [4.6, 11.2, 0.3];
+export const COLOSSUS_HIP: V3 = [2.0, 6.0, 0];
+/** Fist centre in the left arm's pivot space. */
+export const COLOSSUS_FIST: V3 = [-0.3, -7.5, 1.9];
+
+function colossusPaint(slot: number, p: V3, n: V3): number {
+  if (slot === CS.DARK) return hide(C.DARK, scale(C.DARK, 1.2), p, n, 83);
+  if (slot === CS.RUST) {
+    const patina = noise3(p[0] * 1.3, p[1] * 1.3, p[2] * 1.3, 85);
+    return mix(C.RUST, C.RUST_DARK, smooth(0.45, 0.85, patina) * 0.8);
+  }
+  let c = hide(C.IRON, C.IRON_LOW, p, n, 87);
+  // rust running down from the seams in streaks
+  const streak = noise3(p[0] * 1.4, p[1] * 0.3, p[2] * 1.4, 89);
+  if (streak > 0.6) c = mix(c, C.RUST_DARK, Math.min(0.75, (streak - 0.6) * 2.4));
+  // welded panel seams
+  const seamX = Math.abs((((p[0] + 20) * 0.62) % 1) - 0.5) > 0.44;
+  const seamY = Math.abs((((p[1] + 20) * 0.5) % 1) - 0.5) > 0.45;
+  return seamX || seamY ? scale(c, 0.62) : c;
+}
+
+let colossusBodyMemo: SculptSpec | null = null;
+function colossusBodyBase(): SculptSpec {
+  if (colossusBodyMemo) return colossusBodyMemo;
+  const add: Prim[] = [
+    ellipsoid([0, 6.4, 0], [2.6, 1.5, 1.8], CS.IRON),
+    // a deep barrel chest pitched forward over the hips, a hump of back
+    ellipsoid([0, 9.6, 0.8], [3.5, 3.0, 2.9], CS.IRON),
+    ellipsoid([0, 11.2, -0.9], [3.2, 2.1, 2.5], CS.IRON),
+    // a small head sunk forward between the shoulders
+    ellipsoid([0, 12.0, 2.2], [1.15, 1.0, 1.2], CS.DARK),
+    ...mirrorX([ellipsoid([3.9, 11.4, 0.3], [1.8, 1.7, 2.0], CS.IRON)]),
+  ];
+  const hard: Prim[] = [
+    // a heavy brow over the visor, and a jaw like a ram
+    roundBox([0, 12.75, 3.05], [1.05, 0.26, 0.45], 0.12, CS.DARK),
+    roundBox([0, 11.3, 2.6], [0.85, 0.36, 0.65], 0.15, CS.DARK),
+    // hydraulics down the back
+    ...mirrorX([cone([2.7, 7.6, -1.6], [3.1, 11.0, -1.4], 0.3, 0.3, CS.DARK)]),
+  ];
+  colossusBodyMemo = { cell: CELL, blend: 0.9, add, hard, paint: colossusPaint, seed: 91 };
+  return colossusBodyMemo;
+}
+
+/** The visor slit and the furnace in the chest, cut into the hide and lit. */
+let colossusLightsMemo: { visor: Prim; furnace: Prim } | null = null;
+function colossusLights(): { visor: Prim; furnace: Prim } {
+  if (colossusLightsMemo) return colossusLightsMemo;
+  const base = colossusBodyBase();
+  const vy = L(12.2), fy = L(9.6);
+  const v = surfaceHit(base, [L(0.2), vy, L(6)], [0, 0, -1], 5, CELL);
+  const f = surfaceHit(base, [L(0.2), fy, L(7)], [0, 0, -1], 6, CELL);
+  colossusLightsMemo = {
+    visor: ellipsoid([0, vy, v ? v[2] : 2.7], [0.75, 0.17, 0.2], 0),
+    furnace: ellipsoid([0, fy, f ? f[2] : 2.9], [0.6, 0.55, 0.2], 1),
+  };
+  return colossusLightsMemo;
+}
+
+/** Weak core on the upper back, behind the head. */
+export function colossusCore(): V3 {
+  const z = -1.5;
+  return [0, surfaceY(colossusBodyBase(), 0, z) - 0.2, z];
+}
+
+export function colossusBody(): THREE.BufferGeometry {
+  return sculpted('colossus.body', () => {
+    const l = colossusLights();
+    return { ...colossusBodyBase(), cut: [l.visor, l.furnace] };
+  });
+}
+
+export function colossusGlow(): THREE.BufferGeometry {
+  return sculpted('colossus.glow', () => {
+    const l = colossusLights();
+    return { cell: CELL, blend: 0, add: [l.visor, l.furnace], paint: (slot) => (slot === 0 ? C.EYE : C.FURNACE), seed: 93 };
+  });
+}
+
+/** Left arm in shoulder-pivot space (outward is -x); the fist moves with it. */
+export function colossusArm(): THREE.BufferGeometry {
+  return sculpted('colossus.arm', () => ({
+    cell: CELL, blend: 0.7, paint: colossusPaint, seed: 95,
+    add: [
+      // carried forward of the body, knuckles leading, the way an ape stands
+      cone([0, 0, 0], [-0.4, -3.4, 0.8], 1.3, 1.05, CS.IRON),
+      cone([-0.4, -3.4, 0.8], [-0.3, -6.4, 1.8], 1.12, 1.3, CS.IRON),
+    ],
+    hard: [
+      roundBox(COLOSSUS_FIST, [1.1, 0.95, 1.15], 0.38, CS.DARK),
+      // knuckle ridge
+      roundBox([COLOSSUS_FIST[0], COLOSSUS_FIST[1] - 0.2, COLOSSUS_FIST[2] + 1.05], [0.95, 0.5, 0.3], 0.15, CS.DARK),
+    ],
+  }));
+}
+
+/** Left leg in hip-pivot space; the foot is planted on the ground. */
+export function colossusLeg(): THREE.BufferGeometry {
+  return sculpted('colossus.leg', () => ({
+    cell: CELL, blend: 0.7, paint: colossusPaint, seed: 97,
+    add: [
+      cone([0, 0, 0], [-0.2, -2.6, 0.3], 1.4, 1.15, CS.IRON),
+      cone([-0.2, -2.6, 0.3], [-0.2, -4.9, 0], 1.15, 1.0, CS.IRON),
+    ],
+    hard: [roundBox([-0.2, -5.6, 0.5], [1.1, 0.42, 1.5], 0.3, CS.DARK)],
+  }));
+}
+
+/**
+ * The plates, in the order they come off: the breastplate (with a port for
+ * the furnace), a shoulder plate, the other shoulder plate, then a pauldron
+ * ridge and a hip tasset per side. Left-side pieces are mirrored for the
+ * right, so the list holds geometry plus a mirror flag.
+ */
+export function colossusPlates(): { geo: THREE.BufferGeometry; mirror: boolean }[] {
+  const base = colossusBodyBase();
+  const chestZ = surfaceHit(base, [L(1.0), L(9.6), L(7)], [0, 0, -1], 6, CELL)?.[2] ?? 2.9;
+  const shoulderY = surfaceY(base, -3.9, 0);
+  const breast = sculpted('colossus.plate.breast', () => ({
+    cell: CELL, blend: 0, paint: colossusPaint, seed: 101,
+    add: [roundBox([0, 9.6, chestZ + 0.2], [2.4, 1.8, 0.32], 0.22, CS.RUST)],
+    cut: [roundBox([0, L(9.6), chestZ], [0.85, 0.75, 1.2], 0.1, CS.RUST)],
+  }));
+  const shoulder = sculpted('colossus.plate.shoulder', () => ({
+    cell: CELL, blend: 0, paint: colossusPaint, seed: 103,
+    add: [ellipsoid([-4.0, shoulderY - 0.4, 0], [2.0, 1.0, 2.15], CS.RUST)],
+  }));
+  const ridge = sculpted('colossus.plate.ridge', () => ({
+    cell: CELL, blend: 0, paint: colossusPaint, seed: 105,
+    add: [roundBox([-4.1, shoulderY + 0.55, 0], [1.25, 0.28, 1.6], 0.14, CS.RUST)],
+  }));
+  const tasset = sculpted('colossus.plate.tasset', () => ({
+    cell: CELL, blend: 0, paint: colossusPaint, seed: 107,
+    add: [roundBox([-2.45, 5.5, 0.4], [1.0, 0.95, 1.3], 0.26, CS.RUST)],
+  }));
+  return [
+    { geo: breast, mirror: false },
+    { geo: shoulder, mirror: false }, { geo: shoulder, mirror: true },
+    { geo: ridge, mirror: false }, { geo: tasset, mirror: false },
+    { geo: ridge, mirror: true }, { geo: tasset, mirror: true },
+  ];
+}
+
 // ================================================================ PREWARM
 
 /**
@@ -595,6 +752,7 @@ const PARTS: (() => THREE.BufferGeometry)[] = [
   serpentHead, serpentHeadGlow,
   ...Array.from({ length: SERPENT_SEGMENTS }, (_, i) => () => serpentSegment(i)),
   ...Array.from({ length: SERPENT_SEGMENTS }, (_, i) => () => serpentSegmentGlow(i)),
+  colossusBody, colossusGlow, colossusArm, colossusLeg, () => colossusPlates()[0].geo,
 ];
 
 /** Build the sculpts one per idle slot (the cache keeps them). */
