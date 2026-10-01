@@ -739,6 +739,122 @@ export function colossusPlates(): { geo: THREE.BufferGeometry; mirror: boolean }
   ];
 }
 
+// =============================================================== SKY REAVER
+// A wyvern-raptor built for the dive: a keeled body, a long neck, a hooked
+// ivory beak under a swept crest, membrane wings on bone spars with
+// scalloped trailing edges and wrist claws, a fanned tail and talons folded
+// up under the chest. Most often seen in silhouette against the sky, so the
+// outline does the work.
+
+const R = {
+  BACK: 0x3b7884, BELLY: 0xbfd8d2, BEAK: 0xf2e2b8, BONE: 0xd9e8e2,
+  MEMBRANE: 0x356f7a, MEM_LOW: 0x86bcb9, CLAW: 0x2b2a2a, EYE: 0xffe14f,
+};
+enum RS { HIDE, BEAK, BONE, MEMBRANE, CLAW, CREST }
+
+/** Wing root pivot (left wing; the right mirrors). */
+export const REAVER_WING_ROOT: V3 = [1.4, 8.2, 0];
+
+function reaverPaint(slot: number, p: V3, n: V3): number {
+  switch (slot) {
+    case RS.BEAK: return scale(R.BEAK, 0.9 + 0.1 * noise3(p[0] * 2, p[1] * 2, p[2] * 2, 111));
+    case RS.BONE: return hide(R.BONE, scale(R.BONE, 1.05), p, n, 113);
+    case RS.CLAW: return R.CLAW;
+    case RS.CREST: return mix(R.BELLY, R.BEAK, smooth(8.8, 10, p[1]));
+    case RS.MEMBRANE: {
+      // veins fanning out from the root, pale on the underside
+      const vein = Math.abs((((Math.atan2(p[2] - 1, -p[0]) + 3) * 3.2) % 1) - 0.5) < 0.09;
+      const c = hide(R.MEMBRANE, R.MEM_LOW, p, n, 115);
+      return vein ? scale(c, 0.72) : c;
+    }
+    default: return hide(R.BACK, R.BELLY, p, n, 117, -0.1);
+  }
+}
+
+let reaverBodyMemo: SculptSpec | null = null;
+function reaverBodyBase(): SculptSpec {
+  if (reaverBodyMemo) return reaverBodyMemo;
+  const add: Prim[] = [
+    ellipsoid([0, 8.0, 0.2], [1.5, 1.1, 3.0], RS.HIDE),
+    ellipsoid([0, 7.3, 0.9], [0.9, 0.95, 1.9], RS.HIDE),
+    ellipsoid([0, 8.4, 1.0], [1.9, 0.8, 1.3], RS.HIDE),
+    cone([0, 8.4, 2.4], [0, 8.6, 3.8], 0.75, 0.6, RS.HIDE),
+    ellipsoid([0, 8.55, 4.3], [0.75, 0.65, 0.95], RS.HIDE),
+    cone([0, 8.4, 4.9], [0, 7.95, 6.6], 0.45, 0.12, RS.BEAK),
+    ...chain([[0, 7.9, -2.4], [0, 7.9, -5.0], [0, 7.95, -6.6]], [0.85, 0.45, 0.2], RS.HIDE),
+    ...mirrorX([
+      cone([0.8, 7.0, 0.2], [1.0, 6.2, 0.8], 0.48, 0.36, RS.HIDE),
+      cone([1.0, 6.2, 0.8], [1.0, 5.8, 1.5], 0.34, 0.28, RS.HIDE),
+    ]),
+  ];
+  const hard: Prim[] = [
+    cone([0, 7.95, 6.55], [0, 7.55, 6.75], 0.14, 0.05, RS.BEAK),
+    // a swept crest off the back of the skull
+    fin([0, 8.95, 4.1], [0, 9.95, 2.1], 0.5, 0.1, 0.4, [1, 0, 0], RS.CREST),
+  ];
+  // the tail fans into three rudder feathers
+  for (const a of [-0.4, 0, 0.4]) {
+    hard.push(fin([0, 7.95, -6.0], [Math.sin(a) * 1.7, 7.95, -6.0 - Math.cos(a) * 1.9], 0.5, 0.18, 0.4, [0, 1, 0], RS.MEMBRANE));
+  }
+  // talons curled under the folded feet
+  for (let c = 0; c < 3; c++) {
+    hard.push(...mirrorX([cone([0.72 + c * 0.28, 5.75, 1.6], [0.72 + c * 0.3, 5.3, 2.0], 0.14, 0.04, RS.CLAW)]));
+  }
+  reaverBodyMemo = { cell: CELL, blend: 0.7, add, hard, paint: reaverPaint, seed: 119 };
+  return reaverBodyMemo;
+}
+
+let reaverEyeMemo: V3 | null = null;
+function reaverEye(): V3 {
+  if (!reaverEyeMemo) {
+    const y = L(8.75), z = L(4.6);
+    const hit = surfaceHit(reaverBodyBase(), [L(3), y, z], [-1, 0, 0], 3, CELL);
+    reaverEyeMemo = hit ?? [L(0.7), y, z];
+  }
+  return reaverEyeMemo;
+}
+
+export function reaverCore(): V3 {
+  const z = -0.6;
+  return [0, surfaceY(reaverBodyBase(), 0, z) - 0.45, z];
+}
+
+export function reaverBody(): THREE.BufferGeometry {
+  return sculpted('reaver.body', () => {
+    const e = reaverEye();
+    return { ...reaverBodyBase(), cut: [sphere(e, 0.2, RS.HIDE), sphere([-e[0], e[1], e[2]], 0.2, RS.HIDE)] };
+  });
+}
+
+export function reaverGlow(): THREE.BufferGeometry {
+  return sculpted('reaver.glow', () => {
+    const e = reaverEye();
+    return { cell: CELL, blend: 0, add: [sphere(e, 0.2, 0), sphere([-e[0], e[1], e[2]], 0.2, 0)], paint: () => R.EYE, seed: 121 };
+  });
+}
+
+/** Left wing in wing-root space, reaching out along -x. */
+export function reaverWing(): THREE.BufferGeometry {
+  return sculpted('reaver.wing', () => {
+    const elbow: V3 = [-3.0, 0.35, 1.6], wrist: V3 = [-5.6, 0.2, 1.4], tip: V3 = [-7.7, 0.0, 0.3];
+    const add: Prim[] = [
+      // the arm: shoulder, elbow, wrist, the long last finger to the tip
+      ...chain([[0, 0.15, 1.0], elbow, wrist, tip], [0.55, 0.42, 0.32, 0.12], RS.BONE),
+    ];
+    const hard: Prim[] = [
+      // membrane: one broad leaf from root to tip...
+      fin([-0.4, 0.05, 0.6], [-7.0, 0.05, -0.2], 2.1, 0.5, 0.4, [0, 1, 0], RS.MEMBRANE),
+      // ...scalloped along the trailing edge by the spread fingers
+      cone(wrist, [-6.0, 0.0, 2.3], 0.18, 0.05, RS.CLAW),
+    ];
+    for (let i = 0; i < 4; i++) {
+      const x = -1.3 - i * 1.5;
+      hard.push(fin([x, 0.05, 0.6], [x - 0.5, 0.0, -2.3 + i * 0.3], 0.75, 0.3, 0.4, [0, 1, 0], RS.MEMBRANE));
+    }
+    return { cell: CELL, blend: 0.5, add, hard, paint: reaverPaint, seed: 123 };
+  });
+}
+
 // ================================================================ PREWARM
 
 /**
@@ -753,6 +869,7 @@ const PARTS: (() => THREE.BufferGeometry)[] = [
   ...Array.from({ length: SERPENT_SEGMENTS }, (_, i) => () => serpentSegment(i)),
   ...Array.from({ length: SERPENT_SEGMENTS }, (_, i) => () => serpentSegmentGlow(i)),
   colossusBody, colossusGlow, colossusArm, colossusLeg, () => colossusPlates()[0].geo,
+  reaverBody, reaverGlow, reaverWing,
 ];
 
 /** Build the sculpts one per idle slot (the cache keeps them). */

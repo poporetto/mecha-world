@@ -47,6 +47,8 @@ const allViews = [0, Math.PI/4, Math.PI/2, Math.PI, Math.PI*1.25, -Math.PI/2];
 // ?view=1 shows one of the six angles full-frame, ?zoom=2 moves in on it
 const one = new URLSearchParams(location.search).get('view');
 const zoom = Number(new URLSearchParams(location.search).get('zoom')) || 1;
+// ?elev=0.6 raises the camera to look down on the model
+const elev = Number(new URLSearchParams(location.search).get('elev')) || 0.05;
 const views = one === null ? allViews : [allViews[Number(one)] ?? 0];
 if (!bossName) frameR /= zoom;
 // ?at=0,26,10 looks at a world point (e.g. a boss's head) instead of the middle
@@ -59,7 +61,7 @@ function render(){
   // a boss is framed so its whole bounds fit the panel from every angle
   let r=frameR;
   if(!r){const t=Math.tan(THREE.MathUtils.degToRad(camera.fov/2)),wide=Math.max(frameSize.x,frameSize.z);r=(Math.max(frameSize.y/2/t,wide/2/(t*cw/ch))*1.12+wide/2)/zoom;}
-  views.forEach((a,i)=>{const frameR=r;const col=i%3,row=Math.floor(i/3);const x=col*cw,y=h-(row+1)*ch;renderer.setViewport(x,y,cw,ch);renderer.setScissor(x,y,cw,ch);camera.aspect=cw/ch;camera.updateProjectionMatrix();camera.position.set(look.x+Math.sin(a)*frameR,look.y+frameR*0.05,look.z+Math.cos(a)*frameR);camera.lookAt(look);renderer.render(scene,camera);});
+  views.forEach((a,i)=>{const frameR=r;const col=i%3,row=Math.floor(i/3);const x=col*cw,y=h-(row+1)*ch;renderer.setViewport(x,y,cw,ch);renderer.setScissor(x,y,cw,ch);camera.aspect=cw/ch;camera.updateProjectionMatrix();camera.position.set(look.x+Math.sin(a)*frameR,look.y+frameR*elev,look.z+Math.cos(a)*frameR);camera.lookAt(look);renderer.render(scene,camera);});
 }addEventListener('resize',render);
 if (new URLSearchParams(location.search).has('saber')) {
   let last=performance.now(), t=0, restart=0, combo=0;

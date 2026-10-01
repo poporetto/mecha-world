@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import {
   MAW_MUZZLES, mawBody, mawCore, mawGlow, mawMuzzleGlow,
   COLOSSUS_FIST, COLOSSUS_HIP, COLOSSUS_SHOULDER, colossusArm, colossusBody, colossusCore, colossusGlow, colossusLeg, colossusPlates,
+  REAVER_WING_ROOT, reaverBody, reaverCore, reaverGlow, reaverWing,
   SERPENT_SEGMENTS, serpentCore, serpentHead, serpentHeadGlow, serpentSegment, serpentSegmentGlow,
   GORGOSAUR_CORE, GORGOSAUR_HIP, GORGOSAUR_JAW_HINGE, GORGOSAUR_MOUTH, GORGOSAUR_TAIL_ROOT,
   gorgosaurBody, gorgosaurEye, gorgosaurJaw, gorgosaurLeg, gorgosaurPlates, gorgosaurTail, gorgosaurTailPlates,
@@ -1089,8 +1090,8 @@ export class SkyReaver extends Monster {
   name = 'SKY REAVER';
   reward: Reward = 'railgun';
   hitRadius = 14;
-  private wingL: THREE.Mesh;
-  private wingR: THREE.Mesh;
+  private wingL: THREE.Group;
+  private wingR: THREE.Group;
   private orbitA = Math.random() * Math.PI * 2;
   private diveT = 6;
   private diving = false;
@@ -1100,91 +1101,27 @@ export class SkyReaver extends Monster {
 
   constructor(x: number, z: number) {
     super(190);
-    const HULL = 0x4a8a96; // teal
-    const BELLY = 0xbfd8d2;
-
-    // A raptor built for the dive: narrow keeled chest, a beaked head with a
-    // crest, and wings that are actually structured — leading-edge spar,
-    // membrane, and a row of primaries at the trailing edge. This is the boss
-    // most often seen in silhouette against the sky, so the outline does the
-    // work.
-    const body = box(3.2, 1.6, 6.5, HULL);
-    body.position.y = 8;
-    const keel = box(1.4, 1.3, 4.6, BELLY);
-    keel.position.set(0, 6.9, 0.6);
-    const belly = box(2.6, 0.8, 5.5, BELLY);
-    belly.position.y = 7.2;
-    const shoulders = box(4.0, 1.2, 2.6, HULL);
-    shoulders.position.set(0, 8.5, 1.0);
-    const neck = box(1.5, 1.2, 1.6, HULL);
-    neck.position.set(0, 8.4, 3.0);
-    const head = box(1.8, 1.2, 2.2, HULL);
-    head.position.set(0, 8.2, 4);
-    const beak = box(0.9, 0.7, 1.6, 0xf2e2b8);
-    beak.position.set(0, 8.05, 5.4);
-    const beakTip = box(0.5, 0.5, 0.6, 0xf2e2b8);
-    beakTip.position.set(0, 7.85, 6.3);
-    const crest = box(0.3, 1.5, 2.0, BELLY);
-    crest.position.set(0, 9.2, 3.4);
-    crest.rotation.x = 0.3;
-    const eye = box(1.4, 0.35, 0.3, 0xffe14f, 0xffe14f);
-    eye.position.set(0, 8.4, 5.1);
-    this.group.add(keel, shoulders, neck, beak, beakTip, crest);
-
-    this.wingL = box(7, 0.4, 4, HULL);
-    this.wingL.geometry.translate(-3.5, 0, 0);
-    this.wingL.position.set(-1.4, 8.2, 0);
-    this.wingR = box(7, 0.4, 4, HULL);
-    this.wingR.geometry.translate(3.5, 0, 0);
-    this.wingR.position.set(1.4, 8.2, 0);
-    // wing structure rides with each wing so it banks and folds with them
-    for (const [wing, side] of [[this.wingL, -1], [this.wingR, 1]] as [THREE.Mesh, number][]) {
-      const spar = box(7, 0.7, 0.9, BELLY);
-      spar.geometry.translate(side * 3.5, 0, 0);
-      spar.position.set(0, 0.15, 1.5);
-      const claw = box(0.5, 0.5, 1.4, 0xf2e2b8);
-      claw.position.set(side * 6.6, 0.15, 1.9);
-      wing.add(spar, claw);
-      // primaries fanning off the trailing edge
-      for (let i = 0; i < 4; i++) {
-        const f = 1.4 + i * 1.5;
-        const p1 = box(1.4, 0.3, 2.6 - i * 0.35, HULL);
-        p1.position.set(side * f, 0, -2.2 - i * 0.25);
-        p1.rotation.y = side * (0.10 + i * 0.05);
-        wing.add(p1);
-      }
-    }
-
-    const tail = box(0.8, 0.5, 4, HULL);
-    tail.position.set(0, 8, -5);
-    const finT = box(0.4, 1.8, 1.6, BELLY);
-    finT.position.set(0, 9, -5.5);
-    // tail fans out into three rudder feathers
-    for (const a of [-0.35, 0, 0.35]) {
-      const rud = box(0.9, 0.28, 2.6, HULL);
-      rud.position.set(Math.sin(a) * 1.5, 7.95, -6.6);
-      rud.rotation.y = a;
-      this.group.add(rud);
-    }
-    // folded talons under the chest, ready for the dive
-    for (const side of [-1, 1]) {
-      const leg = box(0.7, 1.6, 0.7, HULL);
-      leg.position.set(side * 1.0, 6.4, 0.4);
-      leg.rotation.x = 0.5;
-      const foot = box(0.6, 0.5, 1.3, BELLY);
-      foot.position.set(side * 1.0, 5.6, 1.1);
-      this.group.add(leg, foot);
-      for (let c = 0; c < 3; c++) {
-        const talon = box(0.18, 0.5, 0.18, 0xf2e2b8);
-        talon.position.set(side * 1.0 - 0.3 + c * 0.3, 5.2, 1.6);
-        talon.rotation.x = 0.6;
-        this.group.add(talon);
-      }
-    }
-    this.group.add(body, belly, head, eye, this.wingL, this.wingR, tail, finT);
+    // Sculpted voxel anatomy (bossModels.ts): a wyvern-raptor on membrane
+    // wings. Each wing is sculpted in its own root space, so it flaps and
+    // folds about the shoulder without moving any shared geometry.
+    this.group.add(hidePart(reaverBody()), glowPart(reaverGlow()));
+    const wing = (side: number): THREE.Group => {
+      const g = new THREE.Group();
+      g.position.set(side * REAVER_WING_ROOT[0], REAVER_WING_ROOT[1], REAVER_WING_ROOT[2]);
+      const mesh = hidePart(reaverWing());
+      if (side > 0) mesh.scale.x = -1; // built as the left wing
+      g.add(mesh);
+      this.group.add(g);
+      return g;
+    };
+    this.wingL = wing(-1);
+    this.wingR = wing(1);
     this.group.scale.setScalar(MONSTER_SCALE);
     this.group.position.set(x, 26, z);
-    this.addCore(9.5);
+    const core = reaverCore();
+    this.addCore(core[1], core[2], false);
+    this.coreScale = 0.5;
+    this.weakCore.scale.setScalar(this.coreScale);
     this.rememberEmissives();
   }
 
