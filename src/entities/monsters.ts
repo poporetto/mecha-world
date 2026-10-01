@@ -101,6 +101,17 @@ export abstract class Monster {
   get threatening(): boolean {
     return this.telegraph;
   }
+  /**
+   * A radial attack being wound up: its true reach in world units around the
+   * boss, and how close it is to landing (0 at the start of the tell, 1 on
+   * impact). Rebuilt every frame by the boss; null when nothing radial is
+   * coming. Drawn on the ground so the pilot can see whether they are inside
+   * it and which way is out — a dodge is only a skill if the attack can be read.
+   */
+  aoe: { radius: number; progress: number } | null = null;
+  protected markAoe(radius: number, progress: number): void {
+    this.aoe = { radius, progress: Math.max(0, Math.min(1, progress)) };
+  }
 
   /** A frame-perfect evade converts the avoided attack into a short opening. */
   rewardEvade(sec = 1.15): void {
@@ -186,6 +197,7 @@ export abstract class Monster {
   }
 
   protected updateFlash(dt: number): void {
+    this.aoe = null; // the boss re-declares any footprint later this frame
     this.coreT += dt;
     this.updateCore(this.coreT);
     this.flashT -= dt;
@@ -603,6 +615,7 @@ export class Kaiju extends Monster {
 
     // stomp: carve the city under and ahead of it
     this.telegraph = this.stompT < 0.5 && this.stompT > 0;
+    if (this.telegraph && !beaming) this.markAoe(20, 1 - this.stompT / 0.5);
     this.stompT -= dt;
     if (this.stompT <= 0 && !this.vulnerable && !beaming) {
       this.stompT = 1.1 / this.tempo;
@@ -1200,7 +1213,11 @@ export class IronColossus extends Monster {
     this.legR.rotation.x = -Math.sin(t * gait) * 0.3;
 
     // slow devastating stomps
-    this.telegraph = this.stompT < 0.6 && this.stompT > 0;
+    // Both tells are combined below. This used to assign the stomp's tell
+    // and then overwrite it with the throw's a few lines later, so the stomp
+    // never showed a warning unless a throw happened to coincide.
+    const stompTell = this.stompT < 0.6 && this.stompT > 0;
+    if (stompTell) this.markAoe(22, 1 - this.stompT / 0.6);
     this.stompT -= dt;
     if (this.stompT <= 0 && !this.vulnerable) {
       this.stompT = 1.6 / this.tempo;
@@ -1211,7 +1228,7 @@ export class IronColossus extends Monster {
     }
 
     // hurl a boulder in a high arc
-    this.telegraph = this.throwT < 0.8 && this.throwT > 0;
+    this.telegraph = stompTell || (this.throwT < 0.8 && this.throwT > 0);
     this.throwT -= dt;
     if (this.throwT <= 0 && ctx.throwBoulder && dist < 90 && !this.vulnerable) {
       this.throwT = 5 / this.tempo;
@@ -1550,7 +1567,6 @@ export class CrimsonMantis extends Monster {
       this.crouchT -= dt;
       if (above > 18 && dist < 60 && !this.vulnerable && this.crouchT <= 0) {
         // a visible crouch first: a leap that lands with no tell is a tax
-        this.telegraph = true;
         this.crouchT = 0.5;
         this.pounceWind = 0.5;
       }
@@ -1564,6 +1580,13 @@ export class CrimsonMantis extends Monster {
         }
       }
     }
+
+    // The tell is derived fresh every frame. The pounce used to set it and
+    // nothing ever cleared it, so after the first leap the warning tint and
+    // the danger ring stayed on for the rest of the fight; and the slashes
+    // had no tell at all.
+    this.telegraph = this.pounceWind > 0
+      || (this.slashT < 0 && this.lungeT < 0.45 && this.lungeT > 0 && dist < 30 && !this.vulnerable);
 
     // idle sway + raised scythes
     const sway = Math.sin(t * 3) * 0.1;
@@ -1726,7 +1749,9 @@ export class MagmaGolem extends Monster {
     (this.core.material as THREE.MeshLambertMaterial).emissiveIntensity = pulse;
 
     // ground slam: both fists down, ring of destruction around the feet
-    this.telegraph = this.slamT < 0.7 && this.slamT > 0;
+    // combined with the throw's tell below rather than overwritten by it
+    const slamTell = this.slamT < 0.7 && this.slamT > 0;
+    if (slamTell) this.markAoe(30, 1 - this.slamT / 0.7);
     this.slamT -= dt;
     if (this.slamT <= 0 && dist < 40 && !this.vulnerable) {
       this.slamT = 3.5 / this.tempo;
@@ -1753,7 +1778,7 @@ export class MagmaGolem extends Monster {
     this.armR.rotation.x *= 1 - Math.min(1, dt * 2.5);
 
     // lob a molten boulder at range
-    this.telegraph = this.throwT < 0.8 && this.throwT > 0;
+    this.telegraph = slamTell || (this.throwT < 0.8 && this.throwT > 0);
     this.throwT -= dt;
     if (this.throwT <= 0 && ctx.throwBoulder && dist > 24 && dist < 95 && !this.vulnerable) {
       this.throwT = 4.5 / this.tempo;
@@ -1843,6 +1868,7 @@ export class DeepMaw extends Monster {
     const gy = ctx.world.groundHeight(this.group.position.x, this.group.position.z, 20);
     this.surfaceY = gy > 14 ? 0 : gy;
     this.phaseT -= dt;
+    this.telegraph = false; // re-derived below while it is still underground
 
     if (this.submerged) {
       // chase the player from just below ground; body hidden, mound only
@@ -1866,6 +1892,10 @@ export class DeepMaw extends Monster {
         ctx.destroyAt(from, 4, 0.2);
         ctx.throwBoulder(from, ctx.playerPos.clone());
       }
+      // The eruption is the attack, and it comes up under you; the last
+      // 0.8s before it breaks the surface is its tell and its footprint.
+      this.telegraph = this.phaseT < 0.8 && this.phaseT > 0 && d < 34;
+      if (this.telegraph) this.markAoe(22, 1 - this.phaseT / 0.8);
       if (this.phaseT <= 0 && d < 30) {
         this.submerged = false;
         this.phaseT = 3.5;

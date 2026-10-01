@@ -243,6 +243,20 @@ export class Game {
     new THREE.RingGeometry(2.1, 2.75, 32),
     new THREE.MeshBasicMaterial({ color: 0xffb04a, transparent: true, opacity: 0.52, depthWrite: false, side: THREE.DoubleSide })
   );
+  /**
+   * A boss's radial attack footprint: an outer ring at its true reach and a
+   * disc that fills from the centre as the hit lands. Additive, so bloom
+   * picks it up on High. Separate from the danger ring at the pilot's feet,
+   * which says "something is coming"; this one says how big it is.
+   */
+  private aoeRing = new THREE.Mesh(
+    new THREE.RingGeometry(0.93, 1, 64),
+    new THREE.MeshBasicMaterial({ color: 0xff4a2a, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending })
+  );
+  private aoeFill = new THREE.Mesh(
+    new THREE.CircleGeometry(1, 64),
+    new THREE.MeshBasicMaterial({ color: 0xff3a1a, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending })
+  );
   private evadeRewarded = false;
   private comboWindow = 0; // time left to chain the next saber hit
   private comboStep = 0; // 0..2 in the saber combo
@@ -325,6 +339,12 @@ export class Game {
     this.bossTelegraphCore.rotation.x = -Math.PI / 2;
     this.bossTelegraphCore.visible = false;
     this.scene.add(this.bossTelegraphCore);
+    for (const m of [this.aoeRing, this.aoeFill]) {
+      m.rotation.x = -Math.PI / 2;
+      m.visible = false;
+      m.renderOrder = 2;
+      this.scene.add(m);
+    }
 
 
     // beam (unlockable): a long emissive box scaled to hit distance
@@ -3211,6 +3231,22 @@ export class Game {
     } else {
       this.bossTelegraph.visible = false;
       this.bossTelegraphCore.visible = false;
+    }
+    const aoe = this.monster && !this.monster.dying ? this.monster.aoe : null;
+    this.aoeRing.visible = this.aoeFill.visible = !!aoe;
+    if (aoe && this.monster) {
+      const bp = this.monster.group.position;
+      // at the street the pilot is fighting on, not wherever the boss's
+      // origin happens to sit inside a half-flattened block
+      const gy = this.world.groundHeight(bp.x, bp.z, 30);
+      const y = (gy > 12 ? 0 : gy) + 0.3;
+      this.aoeRing.position.set(bp.x, y, bp.z);
+      this.aoeFill.position.set(bp.x, y + 0.02, bp.z);
+      this.aoeRing.scale.setScalar(aoe.radius);
+      // the fill closes from the centre to the rim exactly as the hit lands
+      this.aoeFill.scale.setScalar(Math.max(0.05, aoe.progress) * aoe.radius);
+      (this.aoeRing.material as THREE.MeshBasicMaterial).opacity = 0.55 + aoe.progress * 0.4 + Math.sin(this.time * 24) * 0.05;
+      (this.aoeFill.material as THREE.MeshBasicMaterial).opacity = 0.12 + aoe.progress * 0.22;
     }
     // shelters: only kaiju hurt them, and losing one ends the run
     const dronePos = this.drones.group.children.map((d) => d.position);
