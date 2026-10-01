@@ -4,7 +4,7 @@
 
 import * as THREE from 'three';
 import {
-  blade, chain, cone, ellipsoid, mirrorX, noise3, Prim, SculptSpec, sculpted, squash, surfaceHit, surfaceY, V3,
+  blade, chain, cone, ellipsoid, mirrorX, noise3, onLattice, Prim, SculptSpec, sculpted, sphere, squash, surfaceHit, surfaceY, V3,
 } from '../render/voxelSculpt';
 
 /** Roughly the city's voxel grain once MONSTER_SCALE (2.2) is applied. */
@@ -249,6 +249,181 @@ export function gorgosaurTailPlates(): THREE.BufferGeometry {
   });
 }
 
+// ============================================================== MISSILE MAW
+// A hunched, armoured artillery beast that hovers on jets in its soles: a
+// segmented carapace over a pale belly, a head sunk under a hooded crest
+// with four red eyes and a fanged slot of a mouth, small grasping forelimbs,
+// and clusters of bony launch tubes grown out of each shoulder. The tubes
+// glow down their bores and every rocket leaves from one of them.
+
+const M = {
+  BACK: 0x413379, BELLY: 0xaea6c2, BROW: 0x2f2747, BONE: 0xd9cfb4, BONE_BAND: 0x7a705c,
+  CLAW: 0xe8e2d0, MOUTH: 0x3a1420, NOZZLE: 0x26232f, SPIKE: 0x2a2440,
+  EYE: 0xff3355, TUBE: 0xff7a2f, JET: 0x39e6e0,
+};
+enum MS { HIDE, BROW, BONE, CLAW, NOZZLE, SPIKE }
+
+const L = (v: number) => onLattice(v, CELL);
+/** Launch tubes, one side: axis (x, y) on lattice columns, pointing forward. */
+const MAW_TUBES: [number, number][] = [[L(2.7), L(10.6)], [L(2.34), L(9.9)], [L(3.06), L(9.9)]];
+const MAW_TUBE_BACK = -0.9, MAW_TUBE_FRONT = 1.8, MAW_TUBE_R = 0.46;
+/** The glowing plug sits one voxel behind the bore. */
+const MAW_PLUG_Z = L(0.95);
+/**
+ * Rocket muzzles in model space, alternating left and right so a salvo
+ * ripples across both shoulders.
+ */
+export const MAW_MUZZLES: V3[] = MAW_TUBES.flatMap(([x, y]) => [
+  [-x, y, MAW_TUBE_FRONT + MAW_TUBE_R] as V3, [x, y, MAW_TUBE_FRONT + MAW_TUBE_R] as V3,
+]);
+const MAW_MOUTH = { c: [0, 8.35, 4.95] as V3, r: [1.0, 0.32, 0.75] as V3 };
+const MAW_FOOT: V3 = [2.0, L(2.4), 0.2];
+
+function mawPaint(slot: number, p: V3, n: V3): number {
+  switch (slot) {
+    case MS.BROW: return hide(M.BROW, M.BACK, p, n, 31);
+    case MS.CLAW: return M.CLAW;
+    case MS.NOZZLE: return M.NOZZLE;
+    case MS.SPIKE: return M.SPIKE;
+    case MS.BONE: {
+      // growth rings down each tube
+      const ring = Math.abs(((p[2] + 4) * 1.6) % 1 - 0.5) < 0.14;
+      return scale(ring ? M.BONE_BAND : M.BONE, 0.92 + 0.08 * noise3(p[0] * 2, p[1] * 2, p[2] * 2, 37));
+    }
+    default: {
+      // the mouth: a dark throat wherever the slot was carved
+      const mq = Math.hypot((p[0] - MAW_MOUTH.c[0]) / MAW_MOUTH.r[0], (p[1] - MAW_MOUTH.c[1]) / MAW_MOUTH.r[1], (p[2] - MAW_MOUTH.c[2]) / MAW_MOUTH.r[2]);
+      if (mq < 1.9 && p[2] > 4.2) return M.MOUTH;
+      const base = hide(M.BACK, M.BELLY, p, n, 33, 0.1);
+      // carapace segments: dark seams across the back
+      if (n[1] > 0.15 && p[2] < 2.4 && Math.abs(((p[2] + 8) / 1.15) % 1) < 0.17) return scale(base, 0.58);
+      return base;
+    }
+  }
+}
+
+let mawBaseMemo: SculptSpec | null = null;
+/** Everything but the cuts that depend on where the surface turned out to be. */
+function mawBaseSpec(): SculptSpec {
+  if (mawBaseMemo) return mawBaseMemo;
+  const add: Prim[] = [
+    // a hunched body: shoulder dome over chest over belly, a stub of a tail
+    ellipsoid([0, 8.6, 0.8], [2.4, 1.9, 2.2], MS.HIDE),
+    ellipsoid([0, 7.7, -1.4], [2.1, 1.7, 2.2], MS.HIDE),
+    ellipsoid([0, 9.7, 0.0], [2.25, 1.25, 2.6], MS.HIDE),
+    cone([0, 7.8, -2.6], [0, 7.0, -5.4], 1.4, 0.4, MS.HIDE),
+    // head sunk low between the shoulders, under a hooded crest
+    cone([0, 9.0, 2.0], [0, 8.9, 3.2], 1.3, 1.15, MS.HIDE),
+    ellipsoid([0, 9.0, 3.8], [1.5, 1.25, 1.35], MS.HIDE),
+    ellipsoid([0, 10.05, 3.35], [1.85, 0.5, 1.45], MS.BROW),
+    ellipsoid([0, 8.0, 4.0], [1.3, 0.62, 1.25], MS.HIDE),
+    ...mirrorX([
+      // fleshy collars the launch tubes grow out of
+      ellipsoid([2.65, 10.0, -0.6], [1.2, 1.05, 1.4], MS.HIDE),
+      // heavy legs tucked up under it while it hovers: thigh forward,
+      // shin folded back, the jetting foot hanging beneath
+      ellipsoid([1.85, 6.4, -0.5], [1.15, 1.5, 1.45], MS.HIDE),
+      cone([2.0, 5.6, 0.3], [2.05, 4.2, 1.25], 1.0, 0.8, MS.HIDE),
+      cone([2.05, 4.2, 1.25], [2.0, MAW_FOOT[1] + 1.05, -0.2], 0.78, 0.55, MS.HIDE),
+      ellipsoid([MAW_FOOT[0], MAW_FOOT[1] + 0.7, MAW_FOOT[2] + 0.15], [0.85, 0.5, 1.15], MS.HIDE),
+      // grasping forelimbs held up in front of the chest, like a mantis's
+      cone([2.2, 8.0, 1.9], [2.75, 6.7, 2.9], 0.8, 0.62, MS.HIDE),
+      cone([2.75, 6.7, 2.9], [2.3, 7.2, 4.3], 0.6, 0.5, MS.HIDE),
+      ellipsoid([2.2, 7.15, 4.65], [0.6, 0.48, 0.55], MS.HIDE),
+    ]),
+  ];
+  const hard: Prim[] = [];
+  for (const [x, y] of MAW_TUBES) {
+    hard.push(...mirrorX([cone([x, y, MAW_TUBE_BACK], [x, y, MAW_TUBE_FRONT], MAW_TUBE_R, MAW_TUBE_R, MS.BONE)]));
+  }
+  for (let c = 0; c < 3; c++) {
+    const dx = (c - 1) * 0.42;
+    // hooked hand claws, and toe claws curling down off the hanging feet
+    hard.push(...mirrorX([cone([2.2 + dx, 7.1, 5.05], [2.2 + dx * 1.2, 6.45, 5.45], 0.2, 0.05, MS.CLAW)]));
+    hard.push(...mirrorX([cone([MAW_FOOT[0] + dx * 1.3, MAW_FOOT[1] + 0.6, MAW_FOOT[2] + 1.15], [MAW_FOOT[0] + dx * 1.5, MAW_FOOT[1] + 0.05, MAW_FOOT[2] + 1.55], 0.2, 0.05, MS.CLAW)]));
+  }
+  // jet nozzles in the soles
+  hard.push(...mirrorX([cone([MAW_FOOT[0], MAW_FOOT[1] + 0.4, MAW_FOOT[2]], [MAW_FOOT[0], MAW_FOOT[1] - 0.15, MAW_FOOT[2]], 0.52, 0.6, MS.NOZZLE)]));
+  // fangs on lattice columns so each one is at least a whole voxel
+  for (let i = 0; i < 5; i++) {
+    const x = L(-0.72 + i * 0.36), z = L(5.05);
+    hard.push(cone([x, 8.7, z], [x, 8.1, z], 0.15, 0.05, MS.CLAW));
+  }
+  for (const x of [L(-0.5), L(0.5)]) hard.push(cone([x, 7.9, L(4.9)], [x, 8.45, L(4.9)], 0.14, 0.05, MS.CLAW));
+  mawBaseMemo = { cell: CELL, blend: 0.85, add, hard, paint: mawPaint, seed: 41 };
+  return mawBaseMemo;
+}
+
+/** Eye voxels: the first hide voxel on four rays in from the front of the head. */
+let mawEyesMemo: V3[] | null = null;
+function mawEyes(): V3[] {
+  if (mawEyesMemo) return mawEyesMemo;
+  const base = mawBaseSpec();
+  const out: V3[] = [];
+  // an inner pair and a higher, wider outer pair, arced under the hood
+  for (const [x, y] of [[0.5, 9.2], [1.3, 9.5]] as [number, number][]) {
+    const hit = surfaceHit(base, [L(x), L(y), L(8)], [0, 0, -1], 6, CELL);
+    if (hit) out.push(hit, [-hit[0], hit[1], hit[2]]);
+  }
+  mawEyesMemo = out;
+  return out;
+}
+
+/** Weak core, nested in the carapace between the shoulder tubes. */
+export function mawCore(): V3 {
+  const z = -1.0;
+  return [0, surfaceY(mawBaseSpec(), 0, z) - 0.25, z];
+}
+
+export function mawBody(): THREE.BufferGeometry {
+  return sculpted('maw.body', () => {
+    const base = mawBaseSpec();
+    // dorsal spikes down the carapace, clear of the core
+    const hard = [...(base.hard ?? [])];
+    for (const z of [1.5, 2.4, -2.3, -3.3]) {
+      const y = surfaceY(base, 0, z);
+      if (!Number.isNaN(y)) hard.push(cone([0, y - 0.3, z], [0, y + 0.85, z - 0.55], 0.36, 0.06, MS.SPIKE));
+    }
+    const cut: Prim[] = [
+      ellipsoid(MAW_MOUTH.c, MAW_MOUTH.r, MS.HIDE),
+      // eye sockets: exactly the voxels the glowing eyes fill
+      ...mawEyes().map((e) => sphere(e, 0.2, MS.HIDE)),
+    ];
+    // bores down the launch tubes and the jet nozzles
+    for (const [x, y] of MAW_TUBES) {
+      // from just behind the plug's voxel, so the glow fills it, out past the tip
+      cut.push(...mirrorX([cone([x, y, MAW_PLUG_Z - CELL * 0.3], [x, y, MAW_TUBE_FRONT + 1], 0.2, 0.2, MS.BONE)]));
+    }
+    cut.push(...mirrorX([cone([MAW_FOOT[0], MAW_FOOT[1] - 0.4, MAW_FOOT[2]], [MAW_FOOT[0], MAW_FOOT[1] + 0.1, MAW_FOOT[2]], 0.4, 0.4, MS.NOZZLE)]));
+    return { ...base, hard, cut };
+  });
+}
+
+/** Light sources that are not tinted by state: eyes and jets. */
+export function mawGlow(): THREE.BufferGeometry {
+  return sculpted('maw.glow', () => {
+    const add: Prim[] = [
+      ...mawEyes().map((e) => sphere(e, 0.2, 0)),
+      ...mirrorX([ellipsoid(MAW_FOOT, [0.3, 0.2, 0.3], 1)]),
+    ];
+    return {
+      cell: CELL, blend: 0, add,
+      paint: (slot) => (slot === 0 ? M.EYE : M.JET),
+      seed: 43,
+    };
+  });
+}
+
+/** The glowing plugs at the bottom of each launch bore; they flare to fire. */
+export function mawMuzzleGlow(): THREE.BufferGeometry {
+  return sculpted('maw.muzzles', () => ({
+    cell: CELL, blend: 0,
+    add: MAW_TUBES.flatMap(([x, y]) => mirrorX([sphere([x, y, MAW_PLUG_Z], 0.2, 0)])),
+    paint: () => M.TUBE,
+    seed: 47,
+  }));
+}
+
 // ================================================================ PREWARM
 
 /**
@@ -258,6 +433,7 @@ export function gorgosaurTailPlates(): THREE.BufferGeometry {
  */
 const PARTS: (() => THREE.BufferGeometry)[] = [
   gorgosaurBody, gorgosaurJaw, gorgosaurLeg, gorgosaurTail, gorgosaurPlates, gorgosaurTailPlates,
+  mawBody, mawGlow, mawMuzzleGlow,
 ];
 
 /** Build the sculpts one per idle slot (the cache keeps them). */

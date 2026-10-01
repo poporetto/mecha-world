@@ -14,14 +14,15 @@ const bossName = new URLSearchParams(location.search).get('boss');
 const model = new MechaModel();
 let target: THREE.Object3D = model.group;
 let frameR = 23, frameY = 5.3;
+const frameSize = new THREE.Vector3();
 if (bossName) {
   const B = (Monsters as unknown as Record<string, new (x: number, z: number) => { group: THREE.Group }>)[bossName];
   const boss = new B(0, 0);
   boss.group.position.set(0, 0, 0);
   target = boss.group;
   const box = new THREE.Box3().setFromObject(boss.group);
-  const size = box.getSize(new THREE.Vector3());
-  frameR = Math.max(size.x, size.y, size.z) * 1.55;
+  box.getSize(frameSize);
+  frameR = 0; // fitted to the panel in render()
   frameY = (box.min.y + box.max.y) / 2;
 }
 scene.add(target);
@@ -34,7 +35,7 @@ const allViews = [0, Math.PI/4, Math.PI/2, Math.PI, Math.PI*1.25, -Math.PI/2];
 const one = new URLSearchParams(location.search).get('view');
 const zoom = Number(new URLSearchParams(location.search).get('zoom')) || 1;
 const views = one === null ? allViews : [allViews[Number(one)] ?? 0];
-frameR /= zoom;
+if (!bossName) frameR /= zoom;
 // ?at=0,26,10 looks at a world point (e.g. a boss's head) instead of the middle
 const at = new URLSearchParams(location.search).get('at')?.split(',').map(Number);
 const look = new THREE.Vector3(0, frameY, 0);
@@ -42,7 +43,10 @@ if (at && at.length === 3) look.set(at[0], at[1], at[2]);
 function render(){
   const w=innerWidth,h=innerHeight;renderer.setSize(w,h,true);renderer.setScissorTest(true);
   const cw=views.length>1?w/3:w,ch=views.length>1?h/2:h;
-  views.forEach((a,i)=>{const col=i%3,row=Math.floor(i/3);const x=col*cw,y=h-(row+1)*ch;renderer.setViewport(x,y,cw,ch);renderer.setScissor(x,y,cw,ch);camera.aspect=cw/ch;camera.updateProjectionMatrix();camera.position.set(look.x+Math.sin(a)*frameR,look.y+frameR*0.05,look.z+Math.cos(a)*frameR);camera.lookAt(look);renderer.render(scene,camera);});
+  // a boss is framed so its whole bounds fit the panel from every angle
+  let r=frameR;
+  if(!r){const t=Math.tan(THREE.MathUtils.degToRad(camera.fov/2)),wide=Math.max(frameSize.x,frameSize.z);r=(Math.max(frameSize.y/2/t,wide/2/(t*cw/ch))*1.12+wide/2)/zoom;}
+  views.forEach((a,i)=>{const frameR=r;const col=i%3,row=Math.floor(i/3);const x=col*cw,y=h-(row+1)*ch;renderer.setViewport(x,y,cw,ch);renderer.setScissor(x,y,cw,ch);camera.aspect=cw/ch;camera.updateProjectionMatrix();camera.position.set(look.x+Math.sin(a)*frameR,look.y+frameR*0.05,look.z+Math.cos(a)*frameR);camera.lookAt(look);renderer.render(scene,camera);});
 }addEventListener('resize',render);
 if (new URLSearchParams(location.search).has('saber')) {
   let last=performance.now(), t=0, restart=0, combo=0;

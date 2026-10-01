@@ -2,10 +2,12 @@
 
 import * as THREE from 'three';
 import {
+  MAW_MUZZLES, mawBody, mawCore, mawGlow, mawMuzzleGlow,
   GORGOSAUR_CORE, GORGOSAUR_HIP, GORGOSAUR_JAW_HINGE, GORGOSAUR_MOUTH, GORGOSAUR_TAIL_ROOT,
   gorgosaurBody, gorgosaurEye, gorgosaurJaw, gorgosaurLeg, gorgosaurPlates, gorgosaurTail, gorgosaurTailPlates,
 } from './bossModels';
 import { hideMaterial } from '../render/voxelSculpt';
+import { glow } from '../render/hdr';
 import { World } from '../core/world';
 
 // Every boss teaches something distinct: a wheel weapon or a passive/ability.
@@ -34,6 +36,19 @@ export interface MonsterCtx {
    * answer for a player who has simply flown out of reach.
    */
   monsterBeam?: (from: THREE.Vector3, toward: THREE.Vector3, dps: number, dt: number) => void;
+}
+
+/** A sculpted part with its own lit, vertex-coloured hide material. */
+function hidePart(geo: THREE.BufferGeometry): THREE.Mesh {
+  const m = new THREE.Mesh(geo, hideMaterial());
+  m.castShadow = true;
+  m.receiveShadow = true;
+  return m;
+}
+
+/** A sculpted light source (eyes, jets, bores): unlit, glows on High. */
+function glowPart(geo: THREE.BufferGeometry): THREE.Mesh {
+  return new THREE.Mesh(geo, glow(new THREE.MeshBasicMaterial({ vertexColors: true })));
 }
 
 function box(w: number, h: number, d: number, color: number, emissive = 0): THREE.Mesh {
@@ -480,12 +495,7 @@ export class Kaiju extends Monster {
     // Sculpted voxel anatomy (bossModels.ts) in place of the old crate
     // assembly. Pivots, hip positions, the jaw hinge, the beam origin and
     // the dorsal core all keep their meaning; only the meshes changed.
-    const part = (geo: THREE.BufferGeometry): THREE.Mesh => {
-      const m = new THREE.Mesh(geo, hideMaterial());
-      m.castShadow = true;
-      m.receiveShadow = true;
-      return m;
-    };
+    const part = hidePart;
 
     const body = part(gorgosaurBody());
     this.group.add(body);
@@ -698,105 +708,32 @@ export class RocketBeast extends Monster {
   private fireT = 3;
   private salvo = 0;   // rockets left in the current burst
   private salvoT = 0;
-  private podL: THREE.Mesh;
-  private podR: THREE.Mesh;
+  /** Glowing plugs in the launch bores; they flare as a volley winds up. */
+  private muzzleGlow: THREE.Mesh;
+  /** Next launch tube, cycling left and right across both shoulders. */
+  private muzzle = 0;
 
   constructor(x: number, z: number) {
     super(160);
-    const HULL = 0x5b4a9e;
-    const DARK = 0x2c2a38;
-
-    // A walking missile battery: armoured hull with a segmented carapace, a
-    // hooded head sunk between shoulder blocks, and pods that read as
-    // ordnance — individual tubes, a hinge, and warning flashes — rather than
-    // as two grey boxes.
-    const body = box(4.5, 3.5, 5.5, HULL);
-    body.position.y = 8;
-    const spine = box(2.2, 0.8, 5.8, DARK);
-    spine.position.y = 9.9;
-    const collar = box(5.2, 1.0, 2.2, DARK);
-    collar.position.set(0, 9.8, 1.6);
-    const hood = box(3.4, 1.4, 2.4, HULL);
-    hood.position.set(0, 10.4, 2.8);
-    hood.rotation.x = -0.25;
-    const head = box(2.6, 2, 2.8, DARK);
-    head.position.set(0, 9.6, 3.4);
-    const brow = box(2.9, 0.6, 1.2, HULL);
-    brow.position.set(0, 10.5, 4.2);
-    const eye = box(1.8, 0.5, 0.3, 0xff3355, 0xff3355);
-    eye.position.set(0, 9.8, 4.9);
-    const maw = box(2.0, 0.7, 1.0, 0x1a1822);
-    maw.position.set(0, 8.7, 4.6);
-    // fangs in the maw the thing is named for
-    for (let i = 0; i < 4; i++) {
-      const f = box(0.22, 0.5, 0.22, 0xe8e2d0);
-      f.position.set(-0.75 + i * 0.5, 8.8, 5.0);
-      this.group.add(f);
-    }
-    // carapace ribs down the flanks
-    for (let i = 0; i < 4; i++) {
-      for (const side of [-1, 1]) {
-        const rib = box(0.5, 2.6 - i * 0.3, 0.6, DARK);
-        rib.position.set(side * 2.35, 8.2, 1.8 - i * 1.4);
-        this.group.add(rib);
-      }
-    }
-    this.group.add(spine, collar, hood, brow, maw);
-
-    this.podL = box(1.6, 1.6, 3, DARK);
-    this.podL.position.set(-3.2, 9.6, 0);
-    this.podR = this.podL.clone();
-    this.podR.position.x = 3.2;
-    const tubesL = box(1.2, 1.2, 0.4, 0xff7a2f, 0xff7a2f);
-    tubesL.position.set(-3.2, 9.6, 1.6);
-    const tubesR = tubesL.clone();
-    tubesR.position.x = 3.2;
-    // pod detail: a 2x2 muzzle cluster, a mount arm, and a hazard stripe
-    for (const side of [-1, 1]) {
-      for (let i = 0; i < 4; i++) {
-        const mx = side * 3.2 + (i % 2 ? 0.38 : -0.38);
-        const my = 9.6 + (i < 2 ? 0.38 : -0.38);
-        const tube = box(0.44, 0.44, 0.5, 0x14121c);
-        tube.position.set(mx, my, 1.75);
-        this.group.add(tube);
-      }
-      const arm = box(1.0, 0.7, 1.4, HULL);
-      arm.position.set(side * 2.5, 9.4, -0.2);
-      const stripe = box(1.7, 0.3, 0.5, 0xffc44f);
-      stripe.position.set(side * 3.2, 10.5, -0.8);
-      const vent = box(0.5, 1.0, 1.4, 0x14121c);
-      vent.position.set(side * 4.05, 9.6, -0.6);
-      this.group.add(arm, stripe, vent);
-    }
-
-    const legL = box(1.2, 5, 1.6, HULL);
-    legL.position.set(-1.6, 4, 0);
-    const legR = legL.clone();
-    legR.position.x = 1.6;
-    // knee joints and splayed feet so it stands rather than hovers on posts
-    for (const side of [-1, 1]) {
-      const knee = box(1.5, 1.1, 1.9, DARK);
-      knee.position.set(side * 1.6, 3.4, 0.1);
-      const shin = box(1.0, 2.2, 1.2, HULL);
-      shin.position.set(side * 1.6, 2.1, 0.2);
-      const foot = box(1.8, 0.7, 2.6, DARK);
-      foot.position.set(side * 1.7, 0.9, 0.5);
-      this.group.add(knee, shin, foot);
-      for (let c = 0; c < 3; c++) {
-        const toe = box(0.4, 0.4, 0.8, 0xe8e2d0);
-        toe.position.set(side * 1.7 - 0.5 + c * 0.5, 0.75, 1.9);
-        this.group.add(toe);
-      }
-    }
-    const jetL = box(0.9, 0.6, 0.9, 0x39e6e0, 0x39e6e0);
-    jetL.position.set(-1.6, 1.2, 0);
-    const jetR = jetL.clone();
-    jetR.position.x = 1.6;
-    this.group.add(body, head, eye, this.podL, this.podR, tubesL, tubesR, legL, legR, jetL, jetR);
+    // Sculpted voxel anatomy (bossModels.ts): a hunched artillery beast with
+    // launch tubes grown out of its shoulders, hovering on jets in its soles.
+    this.group.add(hidePart(mawBody()), glowPart(mawGlow()));
+    this.muzzleGlow = glowPart(mawMuzzleGlow());
+    this.group.add(this.muzzleGlow);
     this.group.scale.setScalar(MONSTER_SCALE);
     this.group.position.set(x, 0, z);
-    this.addCore(11.0);
+    const core = mawCore();
+    this.addCore(core[1], core[2], false);
+    this.coreScale = 0.7;
+    this.weakCore.scale.setScalar(this.coreScale);
     this.rememberEmissives();
+  }
+
+  /** World position of the next launch tube's muzzle. */
+  private nextMuzzle(): THREE.Vector3 {
+    const m = MAW_MUZZLES[this.muzzle++ % MAW_MUZZLES.length];
+    this.group.updateMatrixWorld();
+    return this.group.localToWorld(new THREE.Vector3(m[0], m[1], m[2]));
   }
 
   update(dt: number, t: number, ctx: MonsterCtx): void {
@@ -822,12 +759,13 @@ export class RocketBeast extends Monster {
     this.group.rotation.y = Math.atan2(dx, dz);
 
     this.telegraph = this.fireT < 0.7 && this.fireT > 0;
+    // the bores flare white-hot through the tell and while a salvo empties
+    const hot = this.telegraph || this.salvo > 0;
+    (this.muzzleGlow.material as THREE.MeshBasicMaterial).color.setScalar(hot ? 1.7 + Math.sin(t * 34) * 0.5 : 1);
     this.fireT -= dt;
     if (this.fireT <= 0 && ctx.fireRocket && !this.vulnerable) {
       this.fireT = 3.2 / this.tempo;
-      const from = this.group.position.clone();
-      from.y += 9.6 * MONSTER_SCALE;
-      ctx.fireRocket(from, ctx.playerPos.clone().setY(ctx.playerPos.y + 2));
+      ctx.fireRocket(this.nextMuzzle(), ctx.playerPos.clone().setY(ctx.playerPos.y + 2));
       // in the later gears it empties both pods in a salvo, then hangs there
       // venting heat with nothing left to shoot back with
       if (this.phase > 1) {
@@ -840,9 +778,7 @@ export class RocketBeast extends Monster {
       if (this.salvoT <= 0 && ctx.fireRocket) {
         this.salvoT = 0.22;
         this.salvo--;
-        const from = this.group.position.clone();
-        from.y += 9.6 * MONSTER_SCALE;
-        ctx.fireRocket(from, ctx.playerPos.clone().setY(ctx.playerPos.y + 2));
+        ctx.fireRocket(this.nextMuzzle(), ctx.playerPos.clone().setY(ctx.playerPos.y + 2));
         if (this.salvo === 0) this.openWindow(1.9);
       }
     }

@@ -248,18 +248,33 @@ function slab(f: Field, z0: number, z1: number): Field {
   return { add: f.add.filter(keep), hard: f.hard.filter(keep), cut: f.cut.filter(keep), blend: f.blend, cell: f.cell };
 }
 
+/** ...and within one row of y inside that slab. */
+function row(f: Field, y: number): Field {
+  const m = f.blend + f.cell * 2;
+  const keep = (p: Prim) => p.max[1] + m > y && p.min[1] - m < y;
+  return { add: f.add.filter(keep), hard: f.hard.filter(keep), cut: f.cut.filter(keep), blend: f.blend, cell: f.cell };
+}
+
+/** Centre of the lattice cell containing v, so a part lands on whole voxels. */
+export const onLattice = (v: number, cell: number): number => (Math.floor(v / cell) + 0.5) * cell;
+
 /**
  * First point where a ray from `from` along `dir` enters a sculpt, or null.
  * Accents and attachments use it to sit on the hide instead of being placed
  * by hand and ending up buried in it or floating off it.
  */
-export function surfaceHit(spec: SculptSpec, from: V3, dir: V3, range = 120, step = 0.04): V3 | null {
+export function surfaceHit(spec: SculptSpec, from: V3, dir: V3, range = 120, step = 0): V3 | null {
   const f = fieldOf(spec);
   const l = Math.hypot(dir[0], dir[1], dir[2]) || 1;
   const dx = dir[0] / l, dy = dir[1] / l, dz = dir[2] / l;
-  for (let t = 0; t < range; t += step) {
+  for (let t = 0; t < range;) {
     const x = from[0] + dx * t, y = from[1] + dy * t, z = from[2] + dz * t;
-    if (evalField(f, x, y, z) <= 0) return [x, y, z];
+    const d = evalField(f, x, y, z);
+    if (d <= 0) return [x, y, z];
+    // A fixed step marches lattice centres. Otherwise sphere-trace: the
+    // field is a distance bound, halved because squashed primitives can
+    // overstate it, and empty space reads as one long stride.
+    t += step > 0 ? step : Math.max(0.02, Math.min(d === Infinity ? 1 : d * 0.5, 1));
   }
   return null;
 }
@@ -317,13 +332,20 @@ export function sculpt(spec: SculptSpec): THREE.BufferGeometry {
   const solid = new Uint8Array(nx * ny * nz);
   const owner = new Uint8Array(nx * ny * nz);
 
+  // Each voxel only tests the primitives whose bounds reach its row. The
+  // rows are kept for the paint pass below: a primitive outside a row's
+  // margin cannot change the field near that row's surface either.
   const field = fieldOf(spec);
+  const rows: (Field | null)[] = new Array(nz * ny).fill(null);
   for (let k = 0; k < nz; k++) {
     const z = oz + (k + 0.5) * cell;
-    const f = slab(field, z, z);
-    if (!f.add.length && !f.hard.length) continue;
+    const zs = slab(field, z, z);
+    if (!zs.add.length && !zs.hard.length) continue;
     for (let j = 0; j < ny; j++) {
       const y = oy + (j + 0.5) * cell;
+      const f = row(zs, y);
+      if (!f.add.length && !f.hard.length) continue;
+      rows[k * ny + j] = f;
       for (let i = 0; i < nx; i++) {
         const x = ox + (i + 0.5) * cell;
         if (evalField(f, x, y, z) <= 0) { const n = idx(i, j, k); solid[n] = 1; owner[n] = fieldSlot; }
@@ -350,9 +372,10 @@ export function sculpt(spec: SculptSpec): THREE.BufferGeometry {
         painted = true;
         const px = ox + (i + 0.5) * cell, py = oy + (j + 0.5) * cell, pz = oz + (k + 0.5) * cell;
         // outward normal of the whole field, for countershading
-        const gx = evalField(field, px + e, py, pz) - evalField(field, px - e, py, pz);
-        const gy = evalField(field, px, py + e, pz) - evalField(field, px, py - e, pz);
-        const gz = evalField(field, px, py, pz + e) - evalField(field, px, py, pz - e);
+        const rf = rows[k * ny + j] ?? field;
+        const gx = evalField(rf, px + e, py, pz) - evalField(rf, px - e, py, pz);
+        const gy = evalField(rf, px, py + e, pz) - evalField(rf, px, py - e, pz);
+        const gz = evalField(rf, px, py, pz + e) - evalField(rf, px, py, pz - e);
         const gl = Math.hypot(gx, gy, gz) || 1;
         c.setHex(spec.paint(owner[idx(i, j, k)], [px, py, pz], [gx / gl, gy / gl, gz / gl]));
         // the same faint per-voxel variation the city blocks carry
