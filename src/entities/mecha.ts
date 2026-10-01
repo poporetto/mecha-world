@@ -3,6 +3,7 @@
 // green plasma edge over a compact dark mechanical skeleton.
 
 import * as THREE from 'three';
+import { EMISSIVE_GAIN } from '../render/hdr';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 /** Thruster heat the armour takes on under boost. */
@@ -862,12 +863,22 @@ export class MechaModel {
       });
     }
     const k = v * v; // late-loading, so a tap does not light the whole suit
+    // Panel heat is a tint, not a light source. On High every emissive term
+    // is scaled up for bloom, and at full spool that turned all 203 panels
+    // into one glowing blob with no readable form; dividing the gain back out
+    // keeps the whole-armour heat exactly as it looked before HDR and leaves
+    // the actual glow to the thrusters and dash jets.
+    const heat = (k * 0.55) / EMISSIVE_GAIN.value;
     for (const m of this.boostLitParts) {
       const mat = m.material as THREE.MeshLambertMaterial;
       const base = mat.userData.boostBase ??
         (mat.userData.boostBase = mat.emissive.clone());
-      mat.emissive.copy(base).lerp(_BOOST_HEAT, k * 0.55);
-      mat.emissiveIntensity = Math.max(mat.emissiveIntensity ?? 1, k);
+      // restore from the remembered base each time; the old version ratcheted
+      // intensity upward with Math.max and never brought it back down
+      const baseI = mat.userData.boostBaseI ??
+        (mat.userData.boostBaseI = mat.emissiveIntensity ?? 1);
+      mat.emissive.copy(base).lerp(_BOOST_HEAT, heat);
+      mat.emissiveIntensity = baseI + (1 - baseI) * k;
     }
     // the ankle flames stretch with the spool so the two read as one system
     const stretch = 1 + k * 1.6;

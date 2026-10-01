@@ -3,6 +3,7 @@
 
 import * as THREE from 'three';
 import { RIFT_SITE } from '../core/worldgen';
+import { glow } from '../render/hdr';
 
 const CYCLE = 300; // seconds for a full day
 // Where the sky goes as the seam takes over. Deliberately desaturated and
@@ -298,19 +299,19 @@ export class Sky {
       sheath.position.set(jitter, t * H, -3);
       const core = new THREE.Mesh(
         new THREE.BoxGeometry(w, band, 1),
-        new THREE.MeshBasicMaterial({
+glow(new THREE.MeshBasicMaterial({
           color: 0xc79bff, fog: false, transparent: true, opacity: 0.5 + taper * 0.45,
           depthWrite: false,
-        })
+        }))
       );
       core.position.set(jitter, t * H, 0);
       // a thin white-hot filament down the middle of the tear
       const filament = new THREE.Mesh(
         new THREE.BoxGeometry(Math.max(1.6, w * 0.22), band, 1),
-        new THREE.MeshBasicMaterial({
+glow(new THREE.MeshBasicMaterial({
           color: 0xfdf4ff, fog: false, transparent: true, opacity: 0.5 + taper * 0.45,
           depthWrite: false,
-        })
+        }))
       );
       filament.position.set(jitter, t * H, 1.5);
       g.add(sheath, core, filament);
@@ -331,7 +332,7 @@ export class Sky {
     this.sun = new THREE.Group();
     const core = new THREE.Mesh(
       new THREE.CircleGeometry(22, 24),
-      new THREE.MeshBasicMaterial({ color: 0xfff6c8, fog: false })
+      glow(new THREE.MeshBasicMaterial({ color: 0xfff6c8, fog: false }))
     );
     const halo = new THREE.Mesh(
       new THREE.CircleGeometry(44, 24),

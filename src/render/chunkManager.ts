@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { CS } from '../core/worldgen';
 import { World } from '../core/world';
 import { buildChunkGeometry } from './mesher';
+import { CITY_GLOW_GAIN } from './hdr';
 
 // View distance in chunks (CS=32 units each). Cost scales with the SQUARE of
 // this, so it is the main lever on frame rate: 6 draws ~169 chunks where 4
@@ -44,15 +45,16 @@ export class ChunkManager {
     });
     mat.onBeforeCompile = (shader) => {
       shader.uniforms.uNight = this.nightAmount;
+      shader.uniforms.uCityGlow = CITY_GLOW_GAIN;
       shader.vertexShader = 'attribute float aGlow;\nvarying float vGlow;\n' +
         shader.vertexShader.replace(
           '#include <begin_vertex>',
           '#include <begin_vertex>\n  vGlow = aGlow;'
         );
-      shader.fragmentShader = 'uniform float uNight;\nvarying float vGlow;\n' +
+      shader.fragmentShader = 'uniform float uNight;\nuniform float uCityGlow;\nvarying float vGlow;\n' +
         shader.fragmentShader.replace(
           '#include <emissivemap_fragment>',
-          '#include <emissivemap_fragment>\n  totalEmissiveRadiance += vGlow * uNight * vec3(1.0, 0.84, 0.52);'
+          '#include <emissivemap_fragment>\n  totalEmissiveRadiance += vGlow * uNight * uCityGlow * vec3(1.0, 0.84, 0.52);'
         );
     };
     return mat;

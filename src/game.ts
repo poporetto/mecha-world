@@ -7,6 +7,7 @@ import { corruptionAt, RIFT_SITE } from './core/worldgen';
 import { Revenant } from './entities/revenant';
 import { ChunkManager } from './render/chunkManager';
 import { PostFX } from './render/post';
+import { installHdrMaterials } from './render/hdr';
 import { castShadows, SunShadow } from './render/sunShadow';
 import { DASH_DURATION, Player } from './entities/player';
 import { NpcManager } from './entities/npcs';
@@ -274,6 +275,8 @@ export class Game {
       const saved = JSON.parse(localStorage.getItem('mecha-city.settings.v1') ?? 'null');
       if (saved && typeof saved === 'object') this.settings = { ...this.settings, ...saved };
     } catch { /* settings are optional */ }
+    // before any material exists: every program compiles with the HDR hooks
+    installHdrMaterials();
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     // cap DPR: phones report 3+ which tanks the frame rate on a full-screen voxel scene
@@ -3008,7 +3011,7 @@ export class Game {
     // title chewed through your health while you could not move, dodge or
     // even see it. The card is modal for the simulation too now.
     if (this.paused || this.hud.cardOpen) {
-      this.post.render();
+      this.post.render(0);
       return;
     }
     // slow-motion scales the whole simulation; its own timer uses raw time
@@ -3318,7 +3321,13 @@ export class Game {
 
     this.updateCamera(rawDt);
     this.updateTargetLock();
-    this.post.render();
+    // The lens takes the game's existing impact signals — the punch-in zoom
+    // and anything above a moderate shake — so every heavy hit that already
+    // moves the camera also shudders the image, with no new call sites.
+    if (!this.settings.reducedMotion) {
+      this.post.impact(Math.max(this.impactZoom - 0.2, (this.shake - 0.6) * 0.8));
+    }
+    this.post.render(rawDt);
     if (frameStart) this.samplePerf(performance.now() - frameStart, rawDt);
   }
 
