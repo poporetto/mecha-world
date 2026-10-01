@@ -105,7 +105,11 @@ export class Revenant extends Monster {
     // hovering above its head.
     this.centerY = 6.5;
     this.addCore(4.8, -0.75);
-    this.weakCore.scale.setScalar(0.42);
+    // updateCore pulses around this every frame; setting the mesh's scale
+    // directly was overwritten on the first frame and the core showed at
+    // full kaiju size on a frame a third as tall
+    this.coreScale = 0.42;
+    this.weakCore.scale.setScalar(this.coreScale);
     this.rememberEmissives();
   }
 

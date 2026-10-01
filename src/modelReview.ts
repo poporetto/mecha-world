@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { MechaModel } from './entities/mecha';
 import * as Monsters from './entities/monsters';
+import { Revenant } from './entities/revenant';
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(2, devicePixelRatio));
@@ -17,7 +18,7 @@ let frameR = 23, frameY = 5.3;
 const frameSize = new THREE.Vector3();
 const frameCenter = new THREE.Vector3();
 if (bossName) {
-  const B = (Monsters as unknown as Record<string, new (x: number, z: number) => Monsters.Monster>)[bossName];
+  const B = ({ ...Monsters, Revenant } as unknown as Record<string, new (x: number, z: number) => Monsters.Monster>)[bossName];
   const boss = new B(0, 0);
   boss.group.position.set(0, 0, 0);
   target = boss.group;
