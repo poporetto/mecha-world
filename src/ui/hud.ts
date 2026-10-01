@@ -33,6 +33,8 @@ export const DIFFICULTY: Record<Difficulty, {
 
 export interface GameSettings {
   difficulty: Difficulty;
+  /** High: tone mapping, post-processing and shadows. Low: the plain renderer. */
+  graphics: 'high' | 'low';
   music: number;
   effects: number;
   shake: number;

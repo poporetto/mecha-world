@@ -6,6 +6,7 @@ import { World } from './core/world';
 import { corruptionAt, RIFT_SITE } from './core/worldgen';
 import { Revenant } from './entities/revenant';
 import { ChunkManager } from './render/chunkManager';
+import { PostFX } from './render/post';
 import { DASH_DURATION, Player } from './entities/player';
 import { NpcManager } from './entities/npcs';
 import { CinderWyrm, CrimsonMantis, DeepMaw, IronColossus, Kaiju, MagmaGolem, Monster, MonsterCtx, Phase, Reward, RocketBeast, SkyReaver, TideLeviathan, VoltSerpent } from './entities/monsters';
@@ -252,8 +253,12 @@ export class Game {
   private time = 0;
   private footstepT = 0;
   private servoT = 0;
+  private post!: PostFX;
   private settings: GameSettings = {
     difficulty: 'normal',
+    // Phones get the plain renderer: the post chain and shadow pass are
+    // desktop-GPU features, and the touch devices this ships to cannot afford them.
+    graphics: isTouchDevice() ? 'low' : 'high',
     music: 0.62, effects: 0.68, shake: 0.85, sensitivity: 1,
     subtitles: true, highContrast: false, reducedMotion: false,
   };
@@ -271,6 +276,8 @@ export class Game {
 
     // far plane reaches past the fog so the Mount Fuji backdrop stays visible
     this.camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.2, 1600);
+    this.post = new PostFX(this.renderer, this.scene, this.camera);
+    this.post.setQuality(this.settings.graphics);
 
     // sky, fog, lights — pastel day, drives the day/night cycle each frame
     this.scene.background = new THREE.Color(0xa5d5f5);
@@ -335,6 +342,7 @@ export class Game {
       this.camera.aspect = window.innerWidth / window.innerHeight;
       this.camera.updateProjectionMatrix();
       this.renderer.setSize(window.innerWidth, window.innerHeight);
+      this.post.setSize(window.innerWidth, window.innerHeight);
     });
 
     (window as any).__game = this; // debug handle
@@ -343,6 +351,7 @@ export class Game {
     this.hud.bindPause(() => this.setPaused(false), () => this.restart());
     this.hud.bindSettings(this.settings, (settings) => {
       this.settings = settings;
+      this.post?.setQuality(settings.graphics);
       sfx.setVolumes(settings.music, settings.effects);
       try { localStorage.setItem('mecha-city.settings.v1', JSON.stringify(settings)); } catch { /* optional */ }
     });
@@ -2990,7 +2999,7 @@ export class Game {
     // title chewed through your health while you could not move, dodge or
     // even see it. The card is modal for the simulation too now.
     if (this.paused || this.hud.cardOpen) {
-      this.renderer.render(this.scene, this.camera);
+      this.post.render();
       return;
     }
     // slow-motion scales the whole simulation; its own timer uses raw time
@@ -3271,7 +3280,7 @@ export class Game {
 
     this.updateCamera(rawDt);
     this.updateTargetLock();
-    this.renderer.render(this.scene, this.camera);
+    this.post.render();
     if (frameStart) this.samplePerf(performance.now() - frameStart, rawDt);
   }
 
