@@ -1240,6 +1240,137 @@ export function deepMawGullet(): THREE.BufferGeometry {
   }));
 }
 
+// ============================================================== CINDER WYRM
+// A fire drake: ember-red scales over a pale underbelly that glows with the
+// heat inside it, a long neck to a horned head with a fire-lit throat, a
+// ridge of spines from skull to tail, a glowing spade at the tail's end, and
+// membrane wings stretched over finger bones.
+
+const W = {
+  SCALE: 0x7e2a20, SCALE_LOW: 0xb2442c, UNDER: 0xf0a24a, HORN: 0x3a2420, MEMBRANE: 0x5c1f1a,
+  MEM_EDGE: 0xc4661f, EYE: 0xffe14f, FIRE: 0xffb040,
+};
+enum WS { SCALE, UNDER, HORN, MEMBRANE }
+
+export const WYRM_WING_ROOT: V3 = [1.3, 9.0, 0];
+/** Where the breath leaves the mouth. */
+export const WYRM_MOUTH: V3 = [0, 8.85, 8.1];
+
+function wyrmPaint(slot: number, p: V3, n: V3): number {
+  switch (slot) {
+    case WS.HORN: return hide(W.HORN, scale(W.HORN, 1.3), p, n, 231);
+    case WS.UNDER: return W.UNDER;
+    case WS.MEMBRANE: {
+      // membranes darken toward the bones and catch fire-light at the edge
+      const edge = smooth(0.35, 0.8, noise3(p[0] * 1.6, p[1] * 1.6, p[2] * 1.6, 233));
+      return mix(W.MEMBRANE, W.MEM_EDGE, edge * 0.5);
+    }
+    default: {
+      // the belly is banded underscale, glowing through the shader's heat
+      if (n[1] < -0.4) return scale(W.UNDER, Math.abs(((p[2] + 12) * 1.3) % 1 - 0.5) < 0.12 ? 0.7 : 1);
+      return hide(W.SCALE, W.SCALE_LOW, p, n, 235);
+    }
+  }
+}
+
+let wyrmBodyMemo: SculptSpec | null = null;
+function wyrmBodyBase(): SculptSpec {
+  if (wyrmBodyMemo) return wyrmBodyMemo;
+  const add: Prim[] = [
+    ellipsoid([0, 8.0, 0.2], [1.5, 1.3, 3.2], WS.SCALE),
+    ellipsoid([0, 8.05, 2.0], [1.45, 1.35, 1.6], WS.SCALE),
+    ...chain([[0, 8.4, 2.8], [0, 9.0, 4.6], [0, 9.3, 5.8]], [0.95, 0.8, 0.75], WS.SCALE),
+    ellipsoid([0, 9.45, 6.4], [0.95, 0.75, 1.05], WS.SCALE),
+    cone([0, 9.3, 6.8], [0, 9.05, 8.3], 0.7, 0.45, WS.SCALE),
+    cone([0, 8.6, 6.2], [0, 8.45, 8.0], 0.55, 0.35, WS.SCALE),
+    ...chain([[0, 7.9, -2.8], [0, 7.8, -5.2], [0.3, 7.6, -7.6], [0.6, 7.4, -9.4]], [1.0, 0.7, 0.4, 0.2], WS.SCALE),
+    ...mirrorX([
+      // forelegs tucked under the chest
+      cone([1.0, 7.2, 1.8], [1.3, 6.2, 2.3], 0.45, 0.35, WS.SCALE),
+      cone([1.3, 6.2, 2.3], [1.2, 5.85, 2.95], 0.33, 0.28, WS.SCALE),
+      // hind legs drawn up under the body
+      ellipsoid([1.1, 7.2, -1.6], [0.7, 0.9, 1.0], WS.SCALE),
+      cone([1.2, 6.8, -1.4], [1.25, 5.9, -0.9], 0.45, 0.32, WS.SCALE),
+    ]),
+  ];
+  const hard: Prim[] = [
+    // swept-back horns
+    ...mirrorX(chain([[0.55, 9.9, 5.9], [0.85, 10.45, 5.0], [0.95, 10.65, 3.85]], [0.3, 0.2, 0.06], WS.HORN)),
+    // the glowing spade at the end of the tail
+    fin([0.6, 7.4, -9.2], [0.75, 7.4, -10.8], 0.85, 0.1, 0.42, [0, 1, 0], WS.UNDER),
+  ];
+  for (let c = 0; c < 3; c++) {
+    const dx = (c - 1) * 0.28;
+    hard.push(...mirrorX([cone([1.2 + dx, 5.8, 3.15], [1.2 + dx * 1.2, 5.45, 3.5], 0.15, 0.05, WS.HORN)]));
+    hard.push(...mirrorX([cone([1.25 + dx, 5.85, -0.7], [1.25 + dx * 1.2, 5.5, -0.35], 0.15, 0.05, WS.HORN)]));
+  }
+  wyrmBodyMemo = { cell: CELL, blend: 0.7, add, hard, paint: wyrmPaint, seed: 237 };
+  return wyrmBodyMemo;
+}
+
+const WYRM_THROAT: Prim = ellipsoid([0, L(8.85), L(7.55)], [0.42, 0.2, 0.75], 0);
+
+let wyrmEyeMemo: V3 | null = null;
+function wyrmEye(): V3 {
+  if (!wyrmEyeMemo) {
+    const y = L(9.7), z = L(6.75);
+    const hit = surfaceHit(wyrmBodyBase(), [L(3), y, z], [-1, 0, 0], 3, CELL);
+    wyrmEyeMemo = hit ?? [L(0.8), y, z];
+  }
+  return wyrmEyeMemo;
+}
+
+export function wyrmCore(): V3 {
+  const z = -0.6;
+  return [0, surfaceY(wyrmBodyBase(), 0, z) - 0.3, z];
+}
+
+export function wyrmBody(): THREE.BufferGeometry {
+  return sculpted('wyrm.body', () => {
+    const base = wyrmBodyBase();
+    const hard = [...(base.hard ?? [])];
+    // a ridge of spines from the skull to the tail, clear of the core
+    for (const z of [5.4, 4.3, 3.2, 2.1, 1.0, -2.2, -3.4, -4.6, -5.8, -7.0]) {
+      const y = surfaceY(base, 0, z);
+      if (Number.isNaN(y)) continue;
+      const h = z > 0 ? 0.75 : 0.95 - (-z - 2) * 0.1;
+      hard.push(fin([0, y - 0.25, z], [0, y + h, z - 0.55], 0.38, 0.05, 0.42, [1, 0, 0], WS.HORN));
+    }
+    const e = wyrmEye();
+    return { ...base, hard, cut: [WYRM_THROAT, sphere(e, 0.2, 0), sphere([-e[0], e[1], e[2]], 0.2, 0)] };
+  });
+}
+
+export function wyrmEyes(): THREE.BufferGeometry {
+  return sculpted('wyrm.eyes', () => {
+    const e = wyrmEye();
+    return { cell: CELL, blend: 0, add: [sphere(e, 0.2, 0), sphere([-e[0], e[1], e[2]], 0.2, 0)], paint: () => W.EYE, seed: 239 };
+  });
+}
+
+/** The fire in its throat, which swells before and during a breath. */
+export function wyrmThroat(): THREE.BufferGeometry {
+  return sculpted('wyrm.throat', () => ({ cell: CELL, blend: 0, add: [WYRM_THROAT], paint: () => W.FIRE, seed: 241 }));
+}
+
+/** Left wing in root space: arm and finger bones with membrane between. */
+export function wyrmWing(): THREE.BufferGeometry {
+  return sculpted('wyrm.wing', () => {
+    const elbow: V3 = [-2.6, 0.6, 1.4], wrist: V3 = [-4.8, 0.4, 0.8];
+    const tips: V3[] = [[-7.8, 0.1, -0.4], [-6.8, -0.1, -2.3], [-5.0, -0.2, -3.5]];
+    const add: Prim[] = [...chain([[0, 0, 0.6], elbow, wrist], [0.5, 0.38, 0.3], WS.SCALE)];
+    const hard: Prim[] = [
+      ...tips.map((tip) => cone(wrist, tip, 0.24, 0.08, WS.HORN)),
+      cone(wrist, [-5.0, 0.6, 1.6], 0.2, 0.05, WS.HORN),
+      // membrane from the body to the arm, then between the fingers
+      fin([-0.3, 0.0, 0.3], [-4.6, 0.1, -2.7], 1.9, 0.6, 0.42, [0, 1, 0], WS.MEMBRANE),
+      fin([-4.5, 0.25, 0.5], [-7.2, 0.05, -0.6], 1.0, 0.25, 0.42, [0, 1, 0], WS.MEMBRANE),
+      fin([-4.6, 0.2, 0.1], [-6.3, -0.05, -2.3], 1.1, 0.3, 0.42, [0, 1, 0], WS.MEMBRANE),
+    ];
+    return { cell: CELL, blend: 0.4, add, hard, paint: wyrmPaint, seed: 243 };
+  });
+}
+
 // ================================================================ PREWARM
 
 /**
@@ -1258,6 +1389,7 @@ const PARTS: (() => THREE.BufferGeometry)[] = [
   mantisBody, mantisGlow, mantisScythe, () => mantisLeg(false), () => mantisLeg(true),
   golemBody, golemLava, golemHeart, golemArm, golemArmLava, golemLeg,
   deepMawHead, deepMawGullet, ...Array.from({ length: MAW_SEGMENTS }, (_, i) => () => deepMawSegment(i)),
+  wyrmBody, wyrmEyes, wyrmThroat, wyrmWing,
 ];
 
 /** Build the sculpts one per idle slot (the cache keeps them). */

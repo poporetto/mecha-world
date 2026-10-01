@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import {
   MAW_MUZZLES, mawBody, mawCore, mawGlow, mawMuzzleGlow,
   COLOSSUS_FIST, COLOSSUS_HIP, COLOSSUS_SHOULDER, colossusArm, colossusBody, colossusCore, colossusGlow, colossusLeg, colossusPlates,
+  WYRM_MOUTH, WYRM_WING_ROOT, wyrmBody, wyrmCore, wyrmEyes, wyrmThroat, wyrmWing,
   MAW_SEGMENTS, deepMawGullet, deepMawHead, deepMawSegment,
   GOLEM_FIST, GOLEM_HIP, GOLEM_SHOULDER, golemArm, golemArmLava, golemBody, golemCore, golemHeart, golemLava, golemLeg,
   MANTIS_HIPS, MANTIS_SCYTHE, mantisBody, mantisCore, mantisGlow, mantisLeg, mantisScythe,
@@ -1617,8 +1618,9 @@ export class CinderWyrm extends Monster {
   name = 'CINDER WYRM';
   reward: Reward = 'flamer';
   hitRadius = 13;
-  private wingL: THREE.Mesh;
-  private wingR: THREE.Mesh;
+  private wingL: THREE.Group;
+  private wingR: THREE.Group;
+  /** The fire in its throat. */
   private maw: THREE.Mesh;
   private orbitA = Math.random() * Math.PI * 2;
   private breathT = 3;
@@ -1626,71 +1628,31 @@ export class CinderWyrm extends Monster {
 
   constructor(x: number, z: number) {
     super(185);
-    const SCALE = 0x8c2f24; // dark ember red
-    const UNDER = 0xf0a24a; // glowing underscale
-    const HORN = 0x3a2420;
-
-    const body = box(3, 2.6, 6.5, SCALE);
-    body.position.y = 8;
-    const neck = box(1.8, 1.8, 2.4, SCALE);
-    neck.position.set(0, 8.8, 4);
-    const head = box(2.2, 1.8, 2.6, SCALE);
-    head.position.set(0, 9.2, 6);
-    this.maw = box(1.8, 0.9, 1.4, 0xffc65a, 0xff7a2f);
-    this.maw.position.set(0, 8.7, 7.2);
-    const eyeL = box(0.4, 0.4, 0.3, 0xffe14f, 0xffe14f);
-    eyeL.position.set(-0.7, 9.6, 6.9);
-    const eyeR = eyeL.clone();
-    eyeR.position.x = 0.7;
-    const hornL = box(0.35, 1.4, 0.35, HORN);
-    hornL.position.set(-0.7, 10.4, 5.4);
-    hornL.rotation.z = 0.35;
-    const hornR = hornL.clone();
-    hornR.position.x = 0.7;
-    hornR.rotation.z = -0.35;
-    const belly = box(2.2, 0.6, 5.5, UNDER, 0xff8a2f);
-    belly.position.set(0, 6.7, 0.4);
-    this.wingL = box(7, 0.3, 4.5, SCALE);
-    this.wingL.geometry.translate(-3.5, 0, 0);
-    this.wingL.position.set(-1.3, 9, 0);
-    this.wingR = box(7, 0.3, 4.5, SCALE);
-    this.wingR.geometry.translate(3.5, 0, 0);
-    this.wingR.position.set(1.3, 9, 0);
-    const tail = box(1.2, 1.2, 5, SCALE);
-    tail.position.set(0, 7.8, -5.5);
-    const tailTip = box(1.6, 0.4, 1.6, UNDER, 0xff8a2f);
-    tailTip.position.set(0, 7.8, -8);
-    this.group.add(body, neck, head, this.maw, eyeL, eyeR, hornL, hornR, belly, this.wingL, this.wingR, tail, tailTip);
-    // Drake anatomy: a ridge of spines from skull to tail, wing fingers
-    // spanning the membrane, and heat bleeding through the throat and flanks.
-    for (let i = 0; i < 7; i++) {
-      const spine = box(0.3, 1.3 - i * 0.13, 0.4, HORN);
-      spine.position.set(0, 9.4 - i * 0.25, 3.0 - i * 1.5);
-      spine.rotation.x = 0.3;
-      this.group.add(spine);
-    }
-    for (const side of [-1, 1]) {
-      for (let f = 0; f < 3; f++) {
-        const finger = box(4.2 - f * 0.8, 0.22, 0.35, HORN);
-        finger.position.set(side * (2.4 + f * 0.5), 9.0, -0.8 - f * 1.1);
-        finger.rotation.y = side * (0.12 + f * 0.16);
-        this.group.add(finger);
-      }
-      const jawSpike = box(0.28, 0.9, 0.28, HORN);
-      jawSpike.position.set(side * 0.8, 8.4, 6.4);
-      jawSpike.rotation.z = side * 0.4;
-      const flank = box(0.35, 1.1, 2.4, UNDER, 0xc4661f);
-      flank.position.set(side * 1.55, 7.6, 0.6);
-      const claw = box(0.5, 1.1, 0.5, HORN);
-      claw.position.set(side * 1.3, 6.2, 2.2);
-      this.group.add(jawSpike, flank, claw);
-    }
-    const throatC = box(1.1, 0.7, 1.3, UNDER, 0xff7a2f);
-    throatC.position.set(0, 8.3, 6.2);
-    this.group.add(throatC);
+    // Sculpted voxel anatomy (bossModels.ts): a fire drake. Its hide carries
+    // a dim ember emissive, which the hide shader scales by the scale colour,
+    // so the pale belly glows with heat and the dark back barely does.
+    const body = hidePart(wyrmBody());
+    (body.material as THREE.MeshStandardMaterial).emissive.setHex(0x5a2a10);
+    this.group.add(body, glowPart(wyrmEyes()));
+    this.maw = glowPart(wyrmThroat());
+    this.group.add(this.maw);
+    const wing = (side: number): THREE.Group => {
+      const g = new THREE.Group();
+      g.position.set(side * WYRM_WING_ROOT[0], WYRM_WING_ROOT[1], WYRM_WING_ROOT[2]);
+      const mesh = hidePart(wyrmWing());
+      if (side > 0) mesh.scale.x = -1; // built as the left wing
+      g.add(mesh);
+      this.group.add(g);
+      return g;
+    };
+    this.wingL = wing(-1);
+    this.wingR = wing(1);
     this.group.scale.setScalar(MONSTER_SCALE);
     this.group.position.set(x, 22, z);
-    this.addCore(8.0);
+    const core = wyrmCore();
+    this.addCore(core[1], core[2], false);
+    this.coreScale = 0.55;
+    this.weakCore.scale.setScalar(this.coreScale);
     this.rememberEmissives();
   }
 
@@ -1727,14 +1689,18 @@ export class CinderWyrm extends Monster {
       this.breathing = this.phase === 3 ? 2.6 : this.phase === 2 ? 2.0 : 1.6;
       this.breathT = (5 + Math.random() * 2) / this.tempo;
     }
-    (this.maw.material as THREE.MeshLambertMaterial).emissiveIntensity = this.breathing > 0 ? 1.4 : 1;
+    // the throat fills with fire through the tell and roars through the breath
+    const throat = this.breathing > 0 ? 2.2 + Math.sin(t * 30) * 0.4
+      : this.telegraph ? 1 + (1 - this.breathT / 0.8) * 1.4 : 1;
+    (this.maw.material as THREE.MeshBasicMaterial).color.setScalar(throat);
     if (this.breathing > 0) {
       const wasBreathing = this.breathing;
       this.breathing -= dt;
       // out of breath: it has to glide and refill before it can burn again
       if (wasBreathing > 0 && this.breathing <= 0) this.openWindow(2.0);
-      const from = this.group.position.clone();
-      from.y += 8;
+      // the breath leaves the mouth, not the middle of the body
+      this.group.updateMatrixWorld(true);
+      const from = this.group.localToWorld(new THREE.Vector3(...WYRM_MOUTH));
       const dir = ctx.playerPos.clone().setY(ctx.playerPos.y + 4).sub(from).normalize();
       // spray flame along the breath line
       for (let d = 8; d <= 46; d += 6) {
