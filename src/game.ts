@@ -2338,6 +2338,11 @@ export class Game {
       // silhouette still reads as the kaiju you already know
       const f = 0.3 + amount * 0.34;
       const col = mesh.geometry.getAttribute('color') as THREE.BufferAttribute | undefined;
+      // Sculpted light sources (eyes, lava, bores, gullets) are unlit and
+      // carry their light in the vertex colour. Blending them would dim
+      // every light on an Act II boss toward mud; the old emissive boxes
+      // kept their glow under corruption, and so do these.
+      if (mat.vertexColors && (mat as unknown as THREE.MeshBasicMaterial).isMeshBasicMaterial) return;
       if (mat.vertexColors && col) {
         // Sculpted parts carry their colour per vertex and share one cached
         // geometry between spawns. Lerping the material colour would multiply
