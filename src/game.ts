@@ -3602,6 +3602,14 @@ export class Game {
       aim.divideScalar(len);
       return !this.world.raycast(from.x, from.y, from.z, aim.x, aim.y, aim.z, len - radius * 0.3);
     };
+    /** Is the whole segment between two points free of city? */
+    const clearPath = (a: THREE.Vector3, b: THREE.Vector3): boolean => {
+      aim.subVectors(b, a);
+      const len = aim.length();
+      if (len < 0.5) return true;
+      aim.divideScalar(len);
+      return !this.world.raycast(a.x, a.y, a.z, aim.x, aim.y, aim.z, len);
+    };
     let best: THREE.Vector3 | null = null;
     let bestScore = 0;
     let partial: THREE.Vector3 | null = null;
@@ -3645,6 +3653,9 @@ export class Game {
         if (at.y < this.world.groundHeight(at.x, at.z) + 3 || this.world.solidAt(at.x, at.y, at.z)) continue;
         // and the camera itself stays over built city
         if (Math.hypot(at.x - this.player.pos.x, at.z - this.player.pos.z) > city - 8) continue;
+        // and it can get there: the ease in and out runs straight between
+        // the play camera and this point, and must not pass through a block
+        if (!clearPath(this.cameraChase, at)) continue;
         // the middle of the boss has to be in sight; then count how much of
         // the rest of it is (a building filling half the frame is not a shot)
         // (stopping a little short of the middle, so rubble the boss is
@@ -3653,7 +3664,11 @@ export class Game {
         if (centre) {
           // in front of the obstruction will do, well outside the boss
           const clear = dist - centre.dist - 2;
-          if (clear >= radius * 1.6 && clear > partialClear) { partialClear = clear; partial = dir.clone(); }
+          if (clear >= radius * 1.6 && clear > partialClear
+            && clearPath(this.cameraChase, aim.copy(focus).addScaledVector(dir, clear).clone())) {
+            partialClear = clear;
+            partial = dir.clone();
+          }
           continue;
         }
         side.crossVectors(dir, _UP_AXIS).normalize().multiplyScalar(radius * 0.75);
