@@ -10,7 +10,7 @@ import {
   GOLEM_FIST, GOLEM_HIP, GOLEM_SHOULDER, golemArm, golemArmLava, golemBody, golemCore, golemHeart, golemLava, golemLeg,
   MANTIS_HIPS, MANTIS_SCYTHE, mantisBody, mantisCore, mantisGlow, mantisLeg, mantisScythe,
   REAVER_WING_ROOT, reaverBody, reaverCore, reaverGlow, reaverWing,
-  SERPENT_SEGMENTS, serpentCore, serpentHead, serpentHeadGlow, serpentSegment, serpentSegmentGlow,
+  SERPENT_SEGMENTS, serpentCore, serpentSegmentSize, serpentHead, serpentHeadGlow, serpentSegment, serpentSegmentGlow,
   GORGOSAUR_CORE, GORGOSAUR_HIP, GORGOSAUR_JAW_HINGE, GORGOSAUR_MOUTH, GORGOSAUR_TAIL_ROOT,
   gorgosaurBody, gorgosaurEye, gorgosaurJaw, gorgosaurLeg, gorgosaurPlates, gorgosaurTail, gorgosaurTailPlates,
 } from './bossModels';
@@ -335,6 +335,36 @@ export abstract class Monster {
    */
   roots(): THREE.Object3D[] {
     return [this.group];
+  }
+
+  /** One hit sphere: world centre and radius. */
+  protected readonly hitBody = { c: new THREE.Vector3(), r: 0 };
+  private readonly hitList: { c: THREE.Vector3; r: number }[] = [];
+
+  /**
+   * Where shots can land, as world-space spheres. Most bosses are one
+   * sphere around their middle. Bosses with a long body add spheres along
+   * it; on one sphere the Volt Serpent's body and the top half of the Deep
+   * Maw, its open maw included, could not be hit at all.
+   */
+  hitSpheres(): readonly { c: THREE.Vector3; r: number }[] {
+    this.hitBody.c.copy(this.group.position);
+    this.hitBody.c.y += this.centerY;
+    this.hitBody.r = this.hitRadius;
+    this.hitList.length = 0;
+    this.hitList.push(this.hitBody);
+    this.addHitSpheres(this.hitList);
+    return this.hitList;
+  }
+
+  /** Extra spheres for a long body; none by default. */
+  protected addHitSpheres(_out: { c: THREE.Vector3; r: number }[]): void {}
+
+  /** A pool of spheres for subclasses to fill, so hit tests allocate nothing. */
+  protected readonly hitPool: { c: THREE.Vector3; r: number }[] = [];
+  protected hitSphere(i: number): { c: THREE.Vector3; r: number } {
+    while (this.hitPool.length <= i) this.hitPool.push({ c: new THREE.Vector3(), r: 0 });
+    return this.hitPool[i];
   }
 
   /** The body's bounds in group space, measured once from its meshes. */
@@ -764,6 +794,17 @@ export class VoltSerpent extends Monster {
 
   roots(): THREE.Object3D[] {
     return [this.group, ...this.segments];
+  }
+
+  protected addHitSpheres(out: { c: THREE.Vector3; r: number }[]): void {
+    // each body segment, around the middle of its ring
+    this.segments.forEach((seg, i) => {
+      const h = this.hitSphere(i);
+      const sz = serpentSegmentSize(i);
+      seg.localToWorld(h.c.set(0, sz * 0.58 + 0.5, 0));
+      h.r = sz * 0.62 * MONSTER_SCALE;
+      out.push(h);
+    });
   }
 
   // segments are children of group but positioned in group-local space
@@ -1463,6 +1504,21 @@ export class DeepMaw extends Monster {
     this.coreScale = 0.6;
     this.weakCore.scale.setScalar(this.coreScale);
     this.rememberEmissives();
+  }
+
+  protected addHitSpheres(out: { c: THREE.Vector3; r: number }[]): void {
+    if (this.submerged) return;
+    // the body up the column, and the maw at the top of it
+    this.segs.forEach((seg, i) => {
+      const h = this.hitSphere(i);
+      seg.localToWorld(h.c.set(0, 3 + i * 2.1, 0));
+      h.r = (3.2 - i * 0.3) * 0.6 * MONSTER_SCALE;
+      out.push(h);
+    });
+    const maw = this.hitSphere(this.segs.length);
+    this.head.localToWorld(maw.c.set(0, 15.6, 0));
+    maw.r = 2.1 * MONSTER_SCALE;
+    out.push(maw);
   }
 
   cinematicFocus(out: THREE.Vector3): number {

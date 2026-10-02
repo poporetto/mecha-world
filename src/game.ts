@@ -1189,10 +1189,16 @@ export class Game {
     this.killDrones(this.drones.damageSphere(p, radius, scaledDamage));
     this.notePlanesDowned(this.planes.damageSphere(p, radius, scaledDamage));
     const m = this.monster;
+    // the sphere of the boss's body this lands in, if any
+    let body: { c: THREE.Vector3; r: number } | null = null;
     if (m && !m.dying) {
-      _v.copy(m.group.position);
-      _v.y += m.centerY;
-      if (_v.distanceTo(p) < radius + m.hitRadius) {
+      for (const s of m.hitSpheres()) {
+        if (s.c.distanceTo(p) < radius + s.r) { body = s; break; }
+      }
+    }
+    if (m && body) {
+      _v.copy(body.c);
+      {
         const bonus = this.weakPointBonus(p);
         if (bonus > 1) this.bark('weakPoint');
         // catching it mid-recovery is the big payoff, so the feedback for it
@@ -1246,13 +1252,16 @@ export class Game {
     this.notePlanesDowned(this.planes.damageRay(from, dir, maxDist, scaledDamage));
     const m = this.monster;
     if (!m || m.dying) return;
-    _v.copy(m.group.position);
-    _v.y += m.centerY;
-    const toM = _v.clone().sub(from);
-    const along = toM.dot(dir);
-    if (along < 0 || along > maxDist) return;
-    const perp = toM.sub(dir.clone().multiplyScalar(along)).length();
-    if (perp < m.hitRadius) {
+    // the nearest sphere of the boss's body the ray passes through
+    let along = Infinity;
+    for (const s of m.hitSpheres()) {
+      const toS = s.c.clone().sub(from);
+      const t = toS.dot(dir);
+      if (t < 0 || t > maxDist) continue;
+      const perp = toS.sub(dir.clone().multiplyScalar(t)).length();
+      if (perp < s.r && t < along) along = t;
+    }
+    if (along !== Infinity) {
       const open = m.vulnerable;
       const dealt = m.takeDamage(scaledDamage * PLAYER_BOSS_DAMAGE, src ?? this.selectedWeapon);
       const hitAt = from.clone().addScaledVector(dir, along);
