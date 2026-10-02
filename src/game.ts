@@ -56,6 +56,8 @@ interface SaveData {
 }
 
 const _v = new THREE.Vector3();
+const _UP_AXIS = new THREE.Vector3(0, 1, 0);
+const _v2 = new THREE.Vector3();
 const _white = new THREE.Color(0xffffff);
 /** Global outgoing balance modifiers, kept at the collision boundary so new
  * weapons and support shots inherit the intended campaign difficulty. */
@@ -212,6 +214,14 @@ export class Game {
   private dashCameraT = 0;
   private bossIntroT = 0;
   private readonly bossIntroDuration = 3;
+  /**
+   * The arrival shot: a camera offset from the boss's focus, or for a
+   * distant arrival how far to crane the pilot's camera up. Undefined until
+   * planned; null when no clear viewpoint was found.
+   */
+  private introShot: THREE.Vector3 | number | null | undefined = undefined;
+  private readonly introFocus = new THREE.Vector3();
+  private readonly bossRay = new THREE.Raycaster();
   private lockOn = false; // lock-on targets the boss
   // Camera state is intentionally separate from the player transform. A
   // lightly sprung chase camera makes a 30-ton machine feel weighty while
@@ -2853,6 +2863,7 @@ export class Game {
 
   private beginBossIntro(name: string, subtitle: string): void {
     this.bossIntroT = this.bossIntroDuration;
+    this.introShot = undefined; // planned on the first frame of the intro
     this.hud.showBossIntro(name, subtitle);
     this.shake = Math.max(this.shake, 0.3);
     sfx.roar();
@@ -3548,25 +3559,132 @@ export class Game {
     }
   }
 
+  /** Lens for the arrival shot: longer than play, so the boss looms. */
+  private static readonly INTRO_FOV = 52;
+
+  /**
+   * Plan the arrival shot. The old intro slid the camera's pivot onto the
+   * boss and kept whatever heading the player had, forty units out, so the
+   * building-collision pulled it in to a few units from the boss's middle —
+   * inside the body — and for the Deep Maw, thirty units underground. This
+   * picks a viewpoint on the pilot's side of the boss, backs off until the
+   * boss's own bounds fit the lens, and tries a few heights and angles until
+   * it has a clear line of sight.
+   */
+  private planIntroShot(m: Monster): THREE.Vector3 | number | null {
+    const radius = m.cinematicFocus(this.introFocus);
+    const focus = this.introFocus;
+    const half = THREE.MathUtils.degToRad(Game.INTRO_FOV / 2);
+    const fit = Math.min(half, Math.atan(Math.tan(half) * this.camera.aspect));
+    const dist = Math.min(150, radius / Math.sin(fit) * 1.08);
+    // from the boss toward the pilot, flat
+    const toward = new THREE.Vector3(this.player.pos.x - focus.x, 0, this.player.pos.z - focus.z);
+    if (toward.lengthSq() < 1) toward.set(Math.sin(this.camYaw), 0, Math.cos(this.camYaw));
+    toward.normalize();
+    const dir = new THREE.Vector3(), at = new THREE.Vector3(), aim = new THREE.Vector3();
+    const side = new THREE.Vector3(), up = new THREE.Vector3();
+    /**
+     * Is the line from `from` toward `to` free of city? It stops short of
+     * the point, which may itself be down among the buildings it stands in.
+     */
+    const open = (from: THREE.Vector3, to: THREE.Vector3): boolean => {
+      aim.subVectors(to, from);
+      const len = aim.length();
+      aim.divideScalar(len);
+      return !this.world.raycast(from.x, from.y, from.z, aim.x, aim.y, aim.z, len - radius * 0.3);
+    };
+    let best: THREE.Vector3 | null = null;
+    let bestScore = 0;
+    let partial: THREE.Vector3 | null = null;
+    let partialClear = 0;
+    // The city is only built out to the view distance around the pilot.
+    // Most bosses land further out than that (a mid or far spawn is 170-500
+    // units off), where they stand on unbuilt ground in the haze. The old
+    // intro flew the camera nine-tenths of the way out there regardless, into
+    // the void and often into the boss. Those arrivals get no shot at all:
+    // the arrival card and the minimap arrow are how they are found.
+    const flat = Math.hypot(focus.x - this.player.pos.x, focus.z - this.player.pos.z);
+    const city = this.chunks.viewDistance;
+    if (flat > city + radius * 0.5) return null;
+    // Nearer the edge, a close shot would show the unbuilt ground beyond it,
+    // so keep the pilot's camera, crane it up until it can see over the
+    // rooftops, and turn it onto the threat with a longer lens. From there,
+    // the head and shoulders over the skyline is the shot.
+    const crane = (): number | null => {
+      const from = new THREE.Vector3(), to = new THREE.Vector3();
+      const upper = focus.clone().setY(focus.y + radius * 0.45);
+      for (const lift of [0, 12, 24, 40, 60, 85]) {
+        from.copy(this.cameraChase).setY(this.cameraChase.y + lift);
+        if (this.world.solidAt(from.x, from.y, from.z)) continue;
+        to.subVectors(upper, from);
+        const len = to.length() - radius * 0.3;
+        to.normalize();
+        if (!this.world.raycast(from.x, from.y, from.z, to.x, to.y, to.z, len)) return lift;
+      }
+      return null;
+    };
+    if (flat + radius * 1.5 > city) return crane();
+    const elevs = [0.12, 0.3, 0.5, 0.75, 1.0, 1.2, 1.38];
+    const yaws = [0, 0.45, -0.45, 0.9, -0.9, 1.4, -1.4, 2.1, -2.1, Math.PI];
+    // low, heroic angles first, from the pilot's side first; then round the
+    // boss and up to a crane shot over the rooftops
+    for (const elev of elevs) {
+      for (const yaw of yaws) {
+        dir.copy(toward).applyAxisAngle(_UP_AXIS, yaw);
+        dir.multiplyScalar(Math.cos(elev)).setY(Math.sin(elev));
+        at.copy(focus).addScaledVector(dir, dist);
+        if (at.y < this.world.groundHeight(at.x, at.z) + 3 || this.world.solidAt(at.x, at.y, at.z)) continue;
+        // and the camera itself stays over built city
+        if (Math.hypot(at.x - this.player.pos.x, at.z - this.player.pos.z) > city - 8) continue;
+        // the middle of the boss has to be in sight; then count how much of
+        // the rest of it is (a building filling half the frame is not a shot)
+        // (stopping a little short of the middle, so rubble the boss is
+        // standing in does not count against it)
+        const centre = this.world.raycast(at.x, at.y, at.z, -dir.x, -dir.y, -dir.z, dist - radius * 0.3);
+        if (centre) {
+          // in front of the obstruction will do, well outside the boss
+          const clear = dist - centre.dist - 2;
+          if (clear >= radius * 1.6 && clear > partialClear) { partialClear = clear; partial = dir.clone(); }
+          continue;
+        }
+        side.crossVectors(dir, _UP_AXIS).normalize().multiplyScalar(radius * 0.75);
+        up.crossVectors(side, dir).normalize().multiplyScalar(radius * 0.6);
+        let score = 1;
+        for (const [a, b] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          if (open(at, aim.copy(focus).addScaledVector(side, a).addScaledVector(up, b).clone())) score++;
+        }
+        if (score === 5) return dir.clone().multiplyScalar(dist);
+        if (score > bestScore) { bestScore = score; best = dir.clone(); }
+      }
+    }
+    if (best) return best.multiplyScalar(dist);
+    if (partial) return partial.multiplyScalar(partialClear);
+    // nothing usable up close: try the reveal from the pilot's camera, and
+    // failing that the arrival plays on the normal camera rather than
+    // holding on a wall
+    return crane();
+  }
+
   private updateCamera(rawDt: number): void {
     const pivot = this.player.pos.clone();
     pivot.y += 9.9;
     const speed = Math.hypot(this.player.vel.x, this.player.vel.z);
     const dashPull = this.dashCameraT > 0 ? Math.sin((this.dashCameraT / 0.3) * Math.PI) : 0;
-    let cinematicBlend = 0;
-    if (this.bossIntroT > 0 && this.monster && !this.monster.dying) {
-      const progress = 1 - this.bossIntroT / this.bossIntroDuration;
-      cinematicBlend = Math.sin(progress * Math.PI) * 0.92;
-      _v.copy(this.monster.group.position);
-      _v.y += this.monster.centerY;
-      pivot.lerp(_v, cinematicBlend);
+    // arrival shot weight: ease in, hold on the boss, ease back to play
+    let cinematic = 0;
+    const m = this.monster;
+    if (this.bossIntroT > 0 && m && !m.dying) {
+      const shown = this.bossIntroDuration - this.bossIntroT;
+      const ease = (x: number) => { const t = THREE.MathUtils.clamp(x, 0, 1); return t * t * (3 - 2 * t); };
+      if (this.introShot === undefined) this.introShot = this.planIntroShot(m);
+      if (this.introShot !== null) cinematic = ease(shown / 0.55) * ease(this.bossIntroT / 0.75);
     }
     // When locked on, bias toward the space between Terra-Armor and the boss.
     // This keeps both silhouettes readable without stealing yaw control from
     // the player, and fades away naturally for distant targets.
-    if (cinematicBlend < 0.01 && this.lockOn && this.monster && !this.monster.dying) {
-      _v.copy(this.monster.group.position);
-      _v.y += this.monster.centerY;
+    if (cinematic < 0.01 && this.lockOn && m && !m.dying) {
+      _v.copy(m.group.position);
+      _v.y += m.centerY;
       const separation = _v.distanceTo(this.player.pos);
       const combatBlend = THREE.MathUtils.clamp((155 - separation) / 430, 0, 0.27);
       pivot.lerp(_v, combatBlend);
@@ -3574,13 +3692,19 @@ export class Game {
     const dist = 28
       + Math.min(5, speed * 0.18)
       + dashPull * 4.5
-      + cinematicBlend * 12
       - Math.min(4.2, this.impactZoom * 2.8);
-    const targetFov = 65
+    const playFov = 65
       + Math.min(6, speed * 0.16)
       + dashPull * 3
-      + cinematicBlend * 5
       - Math.min(5, this.impactZoom * 3.4);
+    // a distant arrival is framed by the lens, from where the camera is
+    let shotFov = Game.INTRO_FOV;
+    if (cinematic > 0 && m && typeof this.introShot === 'number') {
+      const r = m.cinematicFocus(this.introFocus);
+      const away = this.introFocus.distanceTo(this.cameraChase);
+      shotFov = THREE.MathUtils.clamp(THREE.MathUtils.radToDeg(2 * Math.atan((r * 1.4) / Math.max(1, away))), 24, Game.INTRO_FOV);
+    }
+    const targetFov = playFov + (shotFov - playFov) * cinematic;
     this.camera.fov += (targetFov - this.camera.fov) * (1 - Math.exp(-rawDt * 10));
     this.camera.updateProjectionMatrix();
     const dir = new THREE.Vector3(
@@ -3590,7 +3714,24 @@ export class Game {
     );
     // keep the camera out of buildings
     const hit = this.world.raycast(pivot.x, pivot.y, pivot.z, dir.x, dir.y, dir.z, dist);
-    const d = hit ? Math.max(3.5, hit.dist - 0.8) : dist;
+    let d = hit ? Math.max(3.5, hit.dist - 0.8) : dist;
+    let blocked = !!hit;
+    // ...and out of the boss. Its body is not part of the voxel world, so a
+    // boss standing right behind the pilot used to swallow the camera whole.
+    // Only tested when the camera is anywhere near it, so it costs nothing
+    // the rest of the time.
+    if (m && !m.dying) {
+      const r = m.cinematicFocus(_v);
+      if (_v.distanceTo(pivot) < r * 1.6 + d) {
+        this.bossRay.set(pivot, dir);
+        this.bossRay.far = d;
+        const hits = this.bossRay.intersectObjects(m.roots(), true);
+        if (hits.length) {
+          d = Math.max(3.5, Math.min(d, hits[0].distance - 1.5));
+          blocked = true;
+        }
+      }
+    }
     const desiredCamera = pivot.clone().addScaledVector(dir, d);
     if (!this.cameraReady) {
       this.cameraPivot.copy(pivot);
@@ -3600,11 +3741,25 @@ export class Game {
       const pivotBlend = 1 - Math.exp(-rawDt * 11);
       // Occlusion gets a much firmer response so smoothing never lets the
       // viewpoint coast through a wall; open-air motion stays cinematic.
-      const chaseBlend = 1 - Math.exp(-rawDt * (hit ? 24 : 7.5));
+      const chaseBlend = 1 - Math.exp(-rawDt * (blocked ? 24 : 7.5));
       this.cameraPivot.lerp(pivot, pivotBlend);
       this.cameraChase.lerp(desiredCamera, chaseBlend);
     }
     this.camera.position.copy(this.cameraChase);
+    const look = _v2.copy(this.cameraPivot);
+    if (cinematic > 0 && m && this.introShot != null) {
+      // the shot follows the boss through the slow-motion of its arrival
+      m.cinematicFocus(this.introFocus);
+      if (typeof this.introShot === 'number') {
+        this.camera.position.y += this.introShot * cinematic;
+        // look at the head and shoulders the line was cleared for
+        this.introFocus.y += m.cinematicFocus(_v) * 0.3;
+      } else {
+        _v.copy(this.introFocus).add(this.introShot);
+        this.camera.position.lerp(_v, cinematic);
+      }
+      look.lerp(this.introFocus, cinematic);
+    }
     // directional shove first, so a blow reads as a push rather than static
     this.camera.position.add(this.kick);
     // additive shake — jitter the final camera position, never the input yaw/pitch
@@ -3614,7 +3769,7 @@ export class Game {
       this.camera.position.y += (Math.random() - 0.5) * s;
       this.camera.position.z += (Math.random() - 0.5) * s;
     }
-    this.camera.lookAt(this.cameraPivot);
+    this.camera.lookAt(look);
     // Roll last: lookAt zeroes it, so banking and impact tilt have to be
     // applied to the already-oriented camera.
     if (Math.abs(this.camRoll) > 0.0005) this.camera.rotateZ(this.camRoll);

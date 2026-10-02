@@ -337,6 +337,40 @@ export abstract class Monster {
     return [this.group];
   }
 
+  /** The body's bounds in group space, measured once from its meshes. */
+  private frameCenter: THREE.Vector3 | null = null;
+  private frameRadius = 0;
+
+  /**
+   * Where a camera has to look to frame this boss (written to `out`, world
+   * space) and the radius it has to fit. Measured from the body itself, not
+   * a fixed height above the feet: a flier's body is twenty metres up and a
+   * serpent's is at kerb height.
+   */
+  cinematicFocus(out: THREE.Vector3): number {
+    if (!this.frameCenter) {
+      this.group.updateMatrixWorld(true);
+      const inv = this.group.matrixWorld.clone().invert();
+      const rel = new THREE.Matrix4();
+      const box = new THREE.Box3(), part = new THREE.Box3();
+      this.group.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (!mesh.isMesh || mesh === this.weakCore) return;
+        if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
+        rel.multiplyMatrices(inv, mesh.matrixWorld);
+        box.union(part.copy(mesh.geometry.boundingBox!).applyMatrix4(rel));
+      });
+      const size = box.getSize(new THREE.Vector3());
+      this.frameCenter = box.getCenter(new THREE.Vector3());
+      // most of the bounding sphere: a long body's ends come toward the lens
+      // in a three-quarter shot, so the length has to count in full
+      this.frameRadius = size.length() * 0.5 * 0.85;
+    }
+    out.copy(this.frameCenter);
+    this.group.localToWorld(out);
+    return this.frameRadius * this.group.scale.x;
+  }
+
   protected rememberEmissives(): void {
     for (const root of this.roots()) root.traverse((o) => {
       const m = o as THREE.Mesh;
@@ -1431,6 +1465,13 @@ export class DeepMaw extends Monster {
     this.rememberEmissives();
   }
 
+  cinematicFocus(out: THREE.Vector3): number {
+    if (!this.submerged) return super.cinematicFocus(out);
+    // still under the street: frame the ground it is about to come out of
+    out.set(this.group.position.x, this.surfaceY + 8, this.group.position.z);
+    return 16;
+  }
+
   update(dt: number, t: number, ctx: MonsterCtx): void {
     this.updateFlash(dt);
     if (this.updateDeath(dt)) return;
@@ -1450,7 +1491,10 @@ export class DeepMaw extends Monster {
         this.group.position.x += (dx / d) * speed * dt;
         this.group.position.z += (dz / d) * speed * dt;
       }
-      this.group.position.y = this.surfaceY - 30; // buried
+      // buried. Thirty used to be the depth, but the worm is ~39 tall, so
+      // its toothed maw rode through the streets seven metres above the
+      // road while it was meant to be hidden under it.
+      this.group.position.y = this.surfaceY - 42;
       // churn a shallow dust mound where it travels
       if (Math.random() < 0.25) ctx.destroyAt(this.group.position.clone().setY(this.surfaceY + 1), 2.4, 0.15);
       // It cannot bite what is in the air, so it throws the ground at it.
